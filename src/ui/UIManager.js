@@ -9,6 +9,7 @@ import { FleetEditorPanel } from './panels/FleetEditorPanel.js';
 import { BoatUpgradePanel } from './panels/BoatUpgradePanel.js';
 import { SubUpgradePanel } from './panels/SubUpgradePanel.js';
 import { SubExpeditionPanel } from './panels/SubExpeditionPanel.js';
+import { TrophyPanel } from './panels/TrophyPanel.js';
 import { ContractsPanel } from './panels/ContractsPanel.js';
 import { ProcessingPanel } from './panels/ProcessingPanel.js';
 import { QuestPanel } from './panels/QuestPanel.js';
@@ -36,6 +37,7 @@ export class UIManager {
     this.register('boatUpgrade', new BoatUpgradePanel(game));
     this.register('subUpgrade', new SubUpgradePanel(game));
     this.register('subExpedition', new SubExpeditionPanel(game));
+    this.register('trophies', new TrophyPanel(game));
     this.register('contracts', new ContractsPanel(game));
     this.register('processing', new ProcessingPanel(game));
     this.register('quests', new QuestPanel(game));
@@ -84,6 +86,7 @@ export class UIManager {
     bus.on('company:processing', (d) => this.show('processing', d));
     bus.on('company:quests', (d) => this.show('quests', d));
     bus.on('company:subExpedition', (d) => this.show('subExpedition', d));
+    bus.on('interact:trophies', (d) => this.show('trophies', d));
     bus.on('interact:contracts', (d) => this.show('contracts', d));
     return this;
   }

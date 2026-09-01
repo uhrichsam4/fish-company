@@ -199,6 +199,20 @@ export const HARBOR_BUILDINGS = [
     ],
   },
   {
+    id: 'trophy_room', icon: '🏆', name: 'Trophy Room',
+    desc: 'A wall for the ones worth remembering. Your biggest of each species, mounted.',
+    cost: 22000, requires: ['warehouse'], reqResearch: null, reqRegion: 'harbor',
+    effects: { unlock: 'trophies' },
+    size: [11, 9], wallH: 3.4, offset: [26, -18],
+    interact: { kind: 'trophies', label: 'View Trophies', at: [0, 1.4, -5] },
+    parts: [
+      { prop: 'shack', opts: { width: 7.2, depth: 5.8, height: 3.2, roof: 'shingle' }, at: [0, 0, 0] },
+      { prop: 'lampPost', opts: { height: 3.4 }, at: [-4.4, 0, -3.4] },
+      { prop: 'signpost', opts: { height: 2.2, arrows: 1 }, at: [4.0, 0, -3.0] },
+      { prop: 'fishCrate', opts: {}, at: [4.4, 0, 1.8] },
+    ],
+  },
+  {
     id: 'radio_tower', icon: '📡', name: 'Radio Tower',
     desc: 'Long-range comms and a weather feed. Better sonar coverage and one more contract slot.',
     cost: 55000, requires: [], reqResearch: null, reqRegion: 'harbor',
