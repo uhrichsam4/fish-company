@@ -42,6 +42,26 @@ export const PIECES = [
   { id: 'wall_door', name: 'Doorway', icon: '🚪', cost: { wood: 5 }, size: [GRID, WALL_H, 0.25], needs: 'floor', vertical: true },
   { id: 'post', name: 'Support Post', icon: '🪵', cost: { wood: 2 }, size: [0.3, WALL_H, 0.3], needs: 'floor', vertical: true },
   { id: 'roof', name: 'Roof', icon: '🔺', cost: { wood: 4 }, size: [GRID, 0.25, GRID], needs: 'wall' },
+
+  // ---- ground works ----
+  // These sit on terrain rather than stacking, so they can bridge the gaps
+  // and slopes that make the shop and sell station awkward to reach.
+  {
+    id: 'walkway', name: 'Walkway', icon: '🛤️', cost: { wood: 2 },
+    size: [GRID, 0.18, GRID], base: true, ground: true,
+    desc: 'Boardwalk decking. Lays flat on whatever is under it.',
+  },
+  {
+    id: 'ramp', name: 'Ramp', icon: '📐', cost: { wood: 3 },
+    size: [GRID, 0.9, GRID], base: true, ground: true, ramp: true,
+    desc: 'Gets you up a bank without a ladder.',
+  },
+  {
+    id: 'seawall', name: 'Sea Wall', icon: '🧱', cost: { wood: 6, stone: 2 },
+    size: [GRID, 2.4, 0.6], base: true, ground: true, defends: true,
+    material: 'stone',
+    desc: 'Holds the sea off what is behind it. Takes the hit so your house does not.',
+  },
 ];
 export const PIECE_BY_ID = Object.fromEntries(PIECES.map((p) => [p.id, p]));
 
@@ -130,7 +150,8 @@ export class BuildSystem {
     const sx = Math.round(x / GRID) * GRID;
     const sz = Math.round(z / GRID) * GRID;
     let sy = y;
-    if (def.base) sy = worldHeight(sx, sz) + def.size[1] / 2;
+    if (def.ground) sy = worldHeight(sx, sz) + def.size[1] / 2 - 0.05;
+    else if (def.base) sy = worldHeight(sx, sz) + def.size[1] / 2;
     else {
       // Stack on whatever is directly below at this cell.
       const below = this._topAt(sx, sz);
@@ -156,8 +177,22 @@ export class BuildSystem {
 
   canPlace(def, pos) {
     if (def.base) {
-      // Foundations want reasonably flat, dry ground.
       const h = worldHeight(pos.x, pos.z);
+      // Ground works are exactly the things you need at the waterline, so they
+      // skip the dry-land rule that keeps houses off the beach.
+      if (def.ground) {
+        if (def.defends) {
+          // A sea wall belongs at the water's edge or it defends nothing.
+          if (h > 3.5) return { ok: false, why: 'Sea walls go at the shoreline.' };
+        } else if (h < -1.5) return { ok: false, why: 'Too deep.' };
+        for (const p of this.pieces.values()) {
+          if (Math.abs(p.x - pos.x) < 0.1 && Math.abs(p.z - pos.z) < 0.1 && Math.abs(p.y - pos.y) < 0.6) {
+            return { ok: false, why: 'Something is already there.' };
+          }
+        }
+        return { ok: true };
+      }
+      // Foundations want reasonably flat, dry ground.
       if (h < 0.6) return { ok: false, why: 'Too close to the water.' };
       const spread = Math.max(
         Math.abs(worldHeight(pos.x + 1, pos.z) - h),
@@ -188,14 +223,16 @@ export class BuildSystem {
     const res = this.game.get('resources');
     if (res && !res.spend(def.cost)) return null;
 
-    const mat = MATERIALS[material] || MATERIALS.wood;
-    const mesh = this._makeMesh(def, material);
+    // A piece can pin its own material (a sea wall is masonry, not planks).
+    const useMat = def.material || material;
+    const mat = MATERIALS[useMat] || MATERIALS.wood;
+    const mesh = this._makeMesh(def, useMat);
     mesh.position.set(pos.x, pos.y, pos.z);
     mesh.rotation.y = rotation;
     this.root.add(mesh);
 
     const piece = {
-      id: `b${_nextId++}`, type: defId, def, material,
+      id: `b${_nextId++}`, type: defId, def, material: useMat,
       x: pos.x, y: pos.y, z: pos.z, rotation,
       mesh, health: mat.health, maxHealth: mat.health,
       stage: 'healthy', detached: false, supported: true,
@@ -338,13 +375,31 @@ export class BuildSystem {
     const seaEvent = storm.eventActive;
     if (!seaEvent && gust < 1.8 && storm.intensity < 0.55) return;
 
+    // Sea walls shelter what is behind them. Collected once per pass rather
+    // than per piece, because the wall list is tiny and the piece list is not.
+    const walls = [];
+    for (const p of this.pieces.values()) if (p.def.defends && !p.detached) walls.push(p);
+
     for (const p of this.pieces.values()) {
       if (p.detached || !p.mesh) continue;
       const mat = MATERIALS[p.material] || MATERIALS.wood;
       const ground = worldHeight(p.x, p.z);
 
+      // A standing sea wall within range takes the hit instead. Shelter falls
+      // off with distance so one wall does not protect the whole island, and a
+      // damaged wall protects proportionally less.
+      let shelter = 0;
+      if (!p.def.defends) {
+        for (const w of walls) {
+          const d = Math.hypot(w.x - p.x, w.z - p.z);
+          if (d > 14) continue;
+          const strength = clamp01(w.health / w.maxHealth);
+          shelter = Math.max(shelter, (1 - d / 14) * strength * 0.85);
+        }
+      }
+
       // ---- wave impact ----
-      const energy = storm.waveEnergyAt(p.x, p.z, p.y - p.def.size[1] / 2);
+      const energy = storm.waveEnergyAt(p.x, p.z, p.y - p.def.size[1] / 2) * (1 - shelter);
       if (energy > 0.15) {
         // Face area matters: a wall broadside to a wave takes far more than a
         // floor slab lying flat under it.
@@ -359,7 +414,7 @@ export class BuildSystem {
       if (gust > 1.8) {
         const exposed = !this._topAt(p.x, p.z) || this._topAt(p.x, p.z) === p;
         if (exposed && (p.type === 'roof' || p.def.vertical)) {
-          const dmg = (gust - 1.8) * (1 - mat.windResist) * dt * 1.6;
+          const dmg = (gust - 1.8) * (1 - mat.windResist) * (1 - shelter * 0.5) * dt * 1.6;
           if (dmg > 0.01) this.damage(p, dmg);
         }
       }
