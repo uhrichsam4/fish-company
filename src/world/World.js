@@ -8,6 +8,7 @@ import { bus } from '../core/EventBus.js';
 import { clamp, clamp01, lerp, damp, makeRNG } from '../util/math.js';
 import { setStatus } from '../core/Game.js';
 import * as Props from './props/index.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { batchStatic } from './StaticBatcher.js';
 import { dressRegion } from './RegionDressing.js';
 import { createTerrainMaterial } from './TerrainMaterial.js';
