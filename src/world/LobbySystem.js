@@ -25,6 +25,12 @@ const PAD_RING = 21;
 
 const PAD_COLORS = [0x2fd4c4, 0xffc22e, 0x43a9ff, 0xb96bff];
 
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 export class LobbySystem {
   constructor(game) {
     this.game = game;
@@ -37,6 +43,7 @@ export class LobbySystem {
     /** Pad the local player is standing in, if any. */
     this.current = null;
     this._lastPromptPad = null;
+    this._remotePadId = null;
   }
 
   async init(game) {
@@ -57,7 +64,55 @@ export class LobbySystem {
 
     this._buildUI();
     bus.on('game:newgame', () => this.leave());
+
+    // When a server is present it owns pad state; mirror its snapshots onto
+    // the local pads so the visuals and UI have one source either way.
+    bus.on('net:pads', ({ pads }) => this._applyServerPads(pads));
+    bus.on('net:launch', ({ pad }) => {
+      const p = this.pads[pad | 0];
+      if (p) this.launch(p);
+    });
+    bus.on('net:joined', ({ pad }) => {
+      const p = this.pads[pad | 0];
+      if (!p) return;
+      this.current = p;
+      this._remotePadId = p.id;
+      this._render();
+    });
     return this;
+  }
+
+  /** The net system, when one is loaded and actually connected. */
+  get net() {
+    const n = this.game.get('net');
+    return n?.online ? n : null;
+  }
+
+  _applyServerPads(list) {
+    for (const snap of list || []) {
+      const pad = this.pads[snap.id];
+      if (!pad) continue;
+      pad.size = snap.size;
+      pad.timer = snap.timer;
+      pad.members = snap.members || [];
+    }
+    if (this._remotePadId != null) {
+      const remotePad = this.pads[this._remotePadId];
+      const me = this.net?.id;
+      if (remotePad && me && remotePad.members.some((m) => m.id === me)) this.current = remotePad;
+      else { this.current = null; this._remotePadId = null; }
+    }
+    // A pad the local player was standing in may have been emptied by the
+    // server (host left, party launched); drop the panel rather than showing
+    // a countdown nobody is in.
+    if (this.current && !this._insidePad) {
+      const me = this.net?.id;
+      if (this.current.size == null || (me && !this.current.members.some((m) => m.id === me))) {
+        this.current = null;
+        this._remotePadId = null;
+      }
+    }
+    this._render();
   }
 
   // ------------------------------------------------------------------ visuals
@@ -136,6 +191,19 @@ export class LobbySystem {
     const hex = `#${pad.color.toString(16).padStart(6, '0')}`;
 
     if (pad.size == null) {
+      if (this._remotePadId === pad.id) {
+        this.el.innerHTML = `
+          <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:${hex};font-weight:800">
+            Start pad ${pad.id + 1}</div>
+          <div style="font-size:19px;font-weight:900;margin:7px 0 5px">Waiting for the host</div>
+          <div style="font-size:12.5px;color:var(--ink-faint,#6f8ba1);margin-bottom:12px">
+            The party will open as soon as they choose its size.</div>
+          <button data-act="leave" style="
+            padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;
+            background:transparent;color:var(--ink-dim,#a5bccd);
+            border:1px solid var(--line,#2b455e);border-radius:9px;font-family:inherit">Leave party</button>`;
+        return;
+      }
       this.el.innerHTML = `
         <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:${hex};font-weight:800">
           Start pad ${pad.id + 1}</div>
@@ -160,7 +228,7 @@ export class LobbySystem {
         flex:1;padding:9px 0;border-radius:9px;font-size:12.5px;font-weight:700;
         background:${m ? hex : 'var(--bg-2,#142333)'};
         color:${m ? '#08131b' : 'var(--ink-faint,#6f8ba1)'};
-        border:1px solid ${m ? hex : 'var(--line,#2b455e)'}">${m ? m.name : 'open'}</div>`;
+        border:1px solid ${m ? hex : 'var(--line,#2b455e)'}">${m ? escapeHtml(m.name) : 'open'}</div>`;
     }).join('');
 
     this.el.innerHTML = `
@@ -184,6 +252,11 @@ export class LobbySystem {
   choose(n) {
     const pad = this.current;
     if (!pad || pad.size != null) return;
+    if (this.net) {
+      // Server owns the clock; it will echo the pad back to everyone.
+      this.net._send('padSize', { pad: pad.id, size: n | 0 });
+      return;
+    }
     pad.size = Math.max(1, Math.min(PAD_COUNT, n | 0));
     pad.timer = COUNTDOWN;
     pad.hostIsLocal = true;
@@ -197,6 +270,8 @@ export class LobbySystem {
   leave() {
     const pad = this.current;
     this.current = null;
+    this._remotePadId = null;
+    if (this.net) { this.net._send('padLeave', {}); this._render(); return; }
     if (!pad) { this._render(); return; }
     pad.members = pad.members.filter((m) => !m.local);
     if (pad.hostIsLocal && !pad.members.length) { pad.size = null; pad.timer = 0; pad.hostIsLocal = false; }
@@ -211,6 +286,7 @@ export class LobbySystem {
     bus.emit('lobby:launch', { pad: pad.id, members: pad.members.map((m) => m.id) });
     pad.size = null; pad.timer = 0; pad.members = []; pad.hostIsLocal = false;
     this.current = null;
+    this._remotePadId = null;
     this._render();
     if (spawn) this.game.get('player')?.teleport(spawn.x, spawn.y + 1.5, spawn.z);
     this.game.audio?.play('levelup', { volume: 0.7 });
@@ -225,6 +301,8 @@ export class LobbySystem {
     if (!player) return;
     const px = player.position.x, pz = player.position.z;
     const t = performance.now() / 1000;
+    const net = this.net;
+    const online = !!net;
 
     let inside = null;
     for (const pad of this.pads) {
@@ -238,7 +316,10 @@ export class LobbySystem {
       pad.disc.material.opacity = live ? 0.5 : 0.34;
       pad.beam.material.opacity = live ? 0.28 : 0.16;
 
-      if (live) {
+      // Offline, this client runs the clock. Online, the server does and its
+      // snapshots overwrite pad.timer -- ticking here too would race it and
+      // make the countdown stutter between two sources of truth.
+      if (live && !online) {
         pad.timer -= dt;
         if (pad.timer <= 0) { this.launch(pad); return; }
         // Full parties do not wait out the clock.
@@ -248,16 +329,29 @@ export class LobbySystem {
 
     // Entering a pad selects it; walking out of one you have not committed to
     // drops it, so brushing past a pad does not trap you in a menu.
+    this._insidePad = inside;
+    if (inside && this._remotePadId != null && inside.id !== this._remotePadId) this._remotePadId = null;
     if (inside !== this.current) {
-      if (this.current && this.current.size == null) this.current = null;
+      // Joining with an invite code intentionally keeps the player in a party
+      // without requiring them to stand on the host's physical pad.
+      if (!inside && this._remotePadId === this.current?.id) {
+        if (this.current?.size != null) this._render();
+        return;
+      }
+      const wasIn = this.current;
       if (inside) {
         this.current = inside;
         if (inside !== this._lastPromptPad) {
           this._lastPromptPad = inside;
           game.audio?.play('pickup', { volume: 0.35, rate: 1.4 });
+          if (online) net._send('padJoin', { pad: inside.id });
         }
-      } else if (this.current && !this.current.members.some((m) => m.local)) {
+      } else {
+        // Stepping out of a pad leaves the party. Offline that only matters
+        // for the panel; online the server has to be told or you occupy a
+        // slot from across the island.
         this.current = null;
+        if (online && wasIn) net._send('padLeave', {});
       }
       this._render();
     }

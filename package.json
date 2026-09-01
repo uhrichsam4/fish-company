@@ -9,11 +9,14 @@
     "build": "vite build",
     "preview": "vite preview --port 5179",
     "test": "node --test",
-    "lint": "node tools/checkImports.mjs"
+    "lint": "node tools/checkImports.mjs",
+    "server": "node server/index.js",
+    "start": "node server/index.js"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.20.0",
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "vite": "^8.2.2"

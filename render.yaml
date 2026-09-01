@@ -1,0 +1,18 @@
+# Render blueprint: one web service serving both the built client and the
+# game WebSocket, so there is a single origin and no cross-origin ws/wss to
+# configure.
+#
+# The free plan sleeps after ~15 minutes idle and takes 30-60s to wake, so the
+# first player to connect after a quiet spell waits. The client retries with
+# backoff and plays fine offline in the meantime.
+services:
+  - type: web
+    name: fish-company
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
