@@ -56,9 +56,12 @@ export class FloodSystem {
     const col = new Float32Array(N * N * 4);
     geo.setAttribute('color', new THREE.BufferAttribute(col, 4));
 
+    // Rough, not glossy. This is a near-flat sheet held up to the sky, so a low
+    // roughness gives it one enormous specular highlight and it reads as a
+    // sheet of white plastic laid over the hill rather than as water.
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true, transparent: true, opacity: 1,
-      roughness: 0.16, metalness: 0.0, depthWrite: false,
+      roughness: 0.62, metalness: 0.0, depthWrite: false,
     });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.name = 'flood-water';
@@ -198,13 +201,17 @@ export class FloodSystem {
         const v = i;                       // plane vertices are in the same order
         const d = this.depth[i];
         pos.array[v * 3 + 1] = this.ground[i] + Math.max(0, d) + 0.02;
-        const a = d <= DRY ? 0 : clamp01(d / 0.55) * 0.72;
+        // Ease the alpha in rather than ramping it linearly from the dry
+        // threshold: a linear ramp makes the boundary a visible polygon edge
+        // where one cell is lit and its neighbour is not.
+        const t = clamp01((d - DRY) / 0.62);
+        const a = d <= DRY ? 0 : t * t * (3 - 2 * t) * 0.58;
         if (a > 0) any = true;
-        // Shallow water is browner (silt), deep is bluer.
+        // Shallow water is browner (silt), deep tends to the sea's own colour.
         const deep = clamp01(d / 1.2);
-        col.array[v * 4] = lerp(0.42, 0.22, deep);
-        col.array[v * 4 + 1] = lerp(0.40, 0.44, deep);
-        col.array[v * 4 + 2] = lerp(0.30, 0.58, deep);
+        col.array[v * 4] = lerp(0.30, 0.12, deep);
+        col.array[v * 4 + 1] = lerp(0.38, 0.40, deep);
+        col.array[v * 4 + 2] = lerp(0.34, 0.52, deep);
         col.array[v * 4 + 3] = a;
       }
     }

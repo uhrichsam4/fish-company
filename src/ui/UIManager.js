@@ -162,10 +162,19 @@ export class UIManager {
 
     if (input.rawPressed('Escape')) {
       if (anyOpen) this.closeAll();
+      // Leaving build mode is what Escape means while building. Falling
+      // through to the pause menu made exiting build mode a two-step detour
+      // through a modal, which is also why players got stuck in it.
+      else if (building) bus.emit('build:toggle', {});
       else if (lobbyOpen) game.get('lobby')?.leave();
       else if (debugOpen) game.get('debug').toggle();
       else this.show('pause');
     }
+    // B closes build mode as well as opening it. Build mode sets uiCapture, so
+    // the B below this is unreachable while building -- the key that turned it
+    // on could not turn it off, and the build-mode toast advertised that it
+    // could.
+    if (building && !anyOpen && input.rawPressed('KeyB')) bus.emit('build:toggle', {});
     if (input.rawPressed('Tab') && !anyOpen) this.show('inventory');
     else if (input.rawPressed('Tab') && anyOpen) this.closeAll();
     if (!input.uiCapture) {

@@ -237,12 +237,16 @@ export class LobbySystem {
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
-    const face = new THREE.Mesh(
-      new THREE.PlaneGeometry(W - 0.16, H - 0.16),
-      new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
-    );
-    face.position.set(0, POST + H / 2 - 0.1, 0.076);
-    group.add(face);
+    // Both faces. Signs sit in open ground and players walk round the back of
+    // them; a blank brown board is indistinguishable from a bug.
+    const faceMat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+    const faceGeo = new THREE.PlaneGeometry(W - 0.16, H - 0.16);
+    for (const side of [1, -1]) {
+      const face = new THREE.Mesh(faceGeo, faceMat);
+      face.position.set(0, POST + H / 2 - 0.1, side * 0.076);
+      if (side < 0) face.rotation.y = Math.PI;
+      group.add(face);
+    }
 
     group.position.set(x, worldHeight(x, z), z);
     group.rotation.y = rot;

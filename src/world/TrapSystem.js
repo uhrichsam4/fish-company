@@ -166,6 +166,9 @@ export class TrapSystem {
     this.game.audio?.play('splash_medium', { volume: 0.6, position: new THREE.Vector3(x, surf, z) });
     bus.emit('ocean:ripple', { x, z, strength: 0.7 });
     bus.emit('toast', { text: `${def.icon} ${def.name} set in ${trap.depth.toFixed(1)} m`, kind: 'success', duration: 3200 });
+    // Distinct from traps:place, which is only the keypress and fires even
+    // when there is nothing to place or nowhere to put it.
+    bus.emit('traps:placed', { trap });
     bus.emit('traps:changed');
     return trap;
   }

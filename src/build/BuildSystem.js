@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { bus } from '../core/EventBus.js';
 import { clamp, clamp01, lerp } from '../util/math.js';
 import { worldHeight } from '../world/Terrain.js';
@@ -137,10 +138,11 @@ export class BuildSystem {
     this.mode = on;
     this.ghost.visible = false;
     bus.emit('build:mode', { on });
+    // The palette shows the controls now, so this only needs to mark the
+    // transition rather than be the documentation.
     bus.emit('toast', {
-      text: on ? '🔨 Build mode — [1-7] piece · [R] rotate · [LMB] place · [RMB] remove · [B] exit'
-        : 'Build mode off',
-      kind: on ? 'gold' : '', duration: on ? 5200 : 1800,
+      text: on ? '🔨 Build mode' : 'Build mode off',
+      kind: on ? 'gold' : '', duration: 1600,
     });
   }
 
@@ -154,23 +156,121 @@ export class BuildSystem {
 
   _sizeOf(def) { return def.size; }
 
+  /**
+   * Build the geometry for one piece.
+   *
+   * Every piece is boxes merged into a single BufferGeometry, so a finished
+   * house costs one draw call per piece exactly as a bare cube did -- the
+   * detail here is free at render time and paid for once at placement.
+   *
+   * The shapes matter more than they look like they should. A flat-shaded grey
+   * box reads as a missing asset; the same box with plank gaps and corner
+   * posts reads as a thing somebody built. Players judge a building system on
+   * whether the first wall they place looks deliberate.
+   */
   _makeMesh(def, material) {
     const m = MATERIALS[material] || MATERIALS.wood;
     const [w, h, d] = def.size;
-    const geo = new THREE.BoxGeometry(w, h, d);
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: m.color, roughness: 0.9 }));
+    const parts = [];
+    const box = (sx, sy, sz, px, py, pz, ry = 0) => {
+      const g = new THREE.BoxGeometry(sx, sy, sz);
+      if (ry) g.rotateY(ry);
+      g.translate(px, py, pz);
+      parts.push(g);
+    };
+
+    switch (def.id) {
+      case 'foundation':
+      case 'walkway':
+      case 'floor': {
+        // Decking: planks with a groove between them, on a slab, with a rim.
+        const thick = h * (def.id === 'foundation' ? 0.55 : 0.7);
+        box(w, thick, d, 0, -h / 2 + thick / 2, 0);
+        const planks = 5, pw = (w - 0.12) / planks;
+        for (let i = 0; i < planks; i++) {
+          box(pw - 0.055, h * 0.42, d - 0.12,
+            -w / 2 + 0.06 + pw * (i + 0.5), h / 2 - h * 0.21, 0);
+        }
+        if (def.id === 'foundation') for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+          box(0.22, h * 1.5, 0.22, sx * (w / 2 - 0.11), -h * 0.1, sz * (d / 2 - 0.11));
+        }
+        break;
+      }
+      case 'wall':
+      case 'wall_window':
+      case 'wall_door': {
+        // Frame first: posts, sill, head. Then infill, which is what changes
+        // between the three wall types.
+        for (const sx of [-1, 1]) box(0.2, h, d * 1.05, sx * (w / 2 - 0.1), 0, 0);
+        box(w, 0.18, d * 1.05, 0, h / 2 - 0.09, 0);
+        box(w, 0.18, d * 1.05, 0, -h / 2 + 0.09, 0);
+
+        if (def.id === 'wall') {
+          const rows = 6, rh = (h - 0.36) / rows;
+          for (let i = 0; i < rows; i++) {
+            box(w - 0.4, rh - 0.04, d * 0.8, 0, -h / 2 + 0.18 + rh * (i + 0.5), 0);
+          }
+        } else if (def.id === 'wall_window') {
+          // Solid below the sill, solid above the head, open in between.
+          box(w - 0.4, h * 0.3, d * 0.8, 0, -h / 2 + 0.18 + h * 0.15, 0);
+          box(w - 0.4, h * 0.16, d * 0.8, 0, h / 2 - 0.18 - h * 0.08, 0);
+          box(0.12, h * 0.36, d * 0.85, 0, h * 0.04, 0);           // mullion
+          box(w - 0.4, 0.12, d * 0.85, 0, h * 0.04, 0);            // transom
+        } else {
+          // Doorway: jambs and a lintel, nothing across the opening.
+          for (const sx of [-1, 1]) box(0.22, h - 0.36, d * 0.9, sx * (w / 2 - 0.42), -0.09, 0);
+          box(w - 0.4, 0.22, d * 0.9, 0, h / 2 - 0.29, 0);
+        }
+        break;
+      }
+      case 'post': {
+        box(w, h, d, 0, 0, 0);
+        for (const s2 of [-1, 1]) {                                // corner braces
+          box(0.16, 0.5, 0.5, 0, h / 2 - 0.3, s2 * 0.22);
+          box(0.5, 0.5, 0.16, s2 * 0.22, h / 2 - 0.3, 0);
+        }
+        break;
+      }
+      case 'roof': {
+        // A shallow gable out of stepped slats, rather than a flat lid.
+        const steps = 4;
+        for (let i = 0; i < steps; i++) {
+          const t = i / steps;
+          box(w - t * w * 0.34, h * 0.7, d, 0, h * 0.55 * t, 0);
+        }
+        box(w + 0.2, h * 0.6, d + 0.2, 0, -h * 0.2, 0);            // eaves
+        break;
+      }
+      case 'ramp': {
+        // Stepped, so it reads as climbable and matches how the controller
+        // actually gets up it (autostep, not a slope).
+        const steps = 4, sh = h / steps, sd = d / steps;
+        for (let i = 0; i < steps; i++) {
+          box(w, sh * (i + 1), sd, 0, -h / 2 + sh * (i + 1) / 2, d / 2 - sd * (i + 0.5));
+        }
+        break;
+      }
+      case 'seawall': {
+        box(w, h, d, 0, 0, 0);
+        // Battered face and a capstone: it should look like it holds water back.
+        box(w, h * 0.22, d + 0.35, 0, -h / 2 + h * 0.11, 0);
+        box(w + 0.12, 0.24, d + 0.18, 0, h / 2 - 0.12, 0);
+        for (let i = -1; i <= 1; i++) box(0.18, h * 0.8, d + 0.14, i * (w / 3), -h * 0.05, 0);
+        break;
+      }
+      default:
+        box(w, h, d, 0, 0, 0);
+    }
+
+    const geo = parts.length === 1 ? parts[0] : (mergeGeometries(parts, false) || parts[0]);
+    if (parts.length > 1) for (const g of parts) if (g !== geo) g.dispose();
+
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+      color: m.color, roughness: 0.86, flatShading: true,
+    }));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData.noBatch = true;
-    // A doorway is a hole, not a slab: two jambs and a lintel read as one from
-    // a distance and cost nothing extra to draw.
-    if (def.id === 'wall_door' || def.id === 'wall_window') {
-      mesh.geometry.dispose();
-      const g = new THREE.BufferGeometry();
-      mesh.geometry = new THREE.BoxGeometry(w, h, d);
-      mesh.material.transparent = true;
-      mesh.material.opacity = def.id === 'wall_window' ? 0.55 : 0.75;
-    }
     return mesh;
   }
 

@@ -54,6 +54,16 @@ export class HUD {
     this.eventStrip.id = 'event-strip';
     this.eventStrip.classList.add('hidden');
     tl.appendChild(this.eventStrip);
+
+    // Journey card: the one thing the player should do next, always present.
+    // Inserted above the objective card rather than below it. Both are
+    // instructions in the same corner, and whichever is on top reads as the
+    // one that matters -- that has to be the guided step, not whichever quest
+    // happens to be tracked.
+    this.journeyEl = el('div', 'journey-card');
+    this.journeyEl.style.display = 'none';
+    tl.insertBefore(this.journeyEl, this.objective);
+    this._journeySig = '';
     this._eventRows = [];
     this._eventSig = '';
     this.root.appendChild(tl);
@@ -67,7 +77,14 @@ export class HUD {
     this.moneySub.id = 'money-sub';
     tr.appendChild(this.moneyEl);
     tr.appendChild(this.moneySub);
+    // Carry strip: what you have on you, in one row under the money. Wood and
+    // fish are the two numbers every decision in the game keys off, and until
+    // now neither was on screen -- you had to open a panel to find out whether
+    // you could afford the thing you were standing in front of.
+    this.carryEl = el('div', 'hud-carry');
+    tr.appendChild(this.carryEl);
     this.root.appendChild(tr);
+    this._carrySig = '';
 
     // bottom-left bars
     const bl = el('div', 'hud-corner hud-bl');
@@ -202,6 +219,10 @@ export class HUD {
       document.documentElement.style.setProperty('--ui-scale', s.uiScale ?? 1);
     });
     bus.on('hud:visible', (v) => { this.visible = v; this.root.style.display = v ? '' : 'none'; });
+    bus.on('journey:changed', (j) => this.setJourney(j));
+    bus.on('resources:changed', () => this.refreshCarry());
+    bus.on('inventory:changed', () => this.refreshCarry());
+    bus.on('bucket:changed', () => this.refreshCarry());
   }
 
   _buildCompass() {
@@ -320,6 +341,60 @@ export class HUD {
       <div class="hb-row"><span>${b.count} fish</span>${b.alive ? `<em>${b.alive} alive</em>` : ''}</div>
       <div class="hb-bar ${full > 0.92 ? 'full' : full > 0.7 ? 'warn' : ''}"><i style="width:${Math.min(100, full * 100)}%"></i></div>
       <div class="hb-row sub"><span>${formatWeight(b.weight)} / ${formatWeight(b.capacity)}</span><b>${formatMoneyExact(b.value)}</b></div>`;
+  }
+
+  /**
+   * The journey card. Its own slot rather than the objective card, which the
+   * quest system owns and clears whenever nothing is tracked.
+   */
+  setJourney(j) {
+    if (!this.journeyEl) return;
+    if (!j) { this.journeyEl.style.display = 'none'; return; }
+    const sig = `${j.title}|${j.count}|${j.frac}|${j.done}`;
+    if (sig === this._journeySig) return;
+    const advanced = this._journeySig && this._journeySig.split('|')[0] !== j.title;
+    this._journeySig = sig;
+
+    this.journeyEl.style.display = '';
+    this.journeyEl.innerHTML = `
+      <div class="jc-label">${j.done ? 'Journey' : `Next · ${(j.index ?? 0) + 1}/${j.total ?? ''}`}</div>
+      <div class="jc-title">${j.title}</div>
+      <div class="jc-how">${j.how || ''}</div>
+      ${j.count ? `<div class="jc-bar"><i style="width:${Math.min(100, (j.frac || 0) * 100)}%"></i></div>
+        <div class="jc-count">${j.count}</div>` : ''}`;
+    if (advanced) {
+      this.journeyEl.classList.remove('pop');
+      void this.journeyEl.offsetWidth;
+      this.journeyEl.classList.add('pop');
+    }
+  }
+
+  /**
+   * The carry strip: fish, then the build materials you actually hold.
+   *
+   * Only non-zero materials are shown, so it starts as one chip and grows as
+   * the player finds things -- a row of five zeroes teaches nothing and costs
+   * the same space. Fish is always present because it is the thing the whole
+   * game is about, and a zero there is information.
+   */
+  refreshCarry() {
+    if (!this.carryEl) return;
+    const res = this.game.get('resources');
+    const bucket = this.game.get('bucket') || this.game.get('inventory');
+    const fish = bucket?.count ?? bucket?.fish?.length ?? 0;
+    const cap = bucket?.capacity ?? 0;
+
+    // Four digits of wood makes the chip wider than the minimap.
+    const compact = (n) => (n >= 10000 ? `${(n / 1000).toFixed(0)}k`
+      : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+    const chips = [['🐟', compact(fish), fish && cap && (bucket.weight / cap) > 0.9 ? 'full' : '']];
+    if (res) for (const r of res.summary()) chips.push([r.icon, compact(r.amount), '']);
+
+    const sig = chips.map((c) => c.join(':')).join('|');
+    if (sig === this._carrySig) return;        // this runs on every pickup
+    this._carrySig = sig;
+    this.carryEl.innerHTML = chips.map(([icon, n, cls]) =>
+      `<span class="carry-chip ${cls}"><i>${icon}</i>${n}</span>`).join('');
   }
 
   /**
