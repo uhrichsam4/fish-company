@@ -69,6 +69,11 @@ export class UIManager {
     bus.on('interact:sell', (d) => this.sellHere(d));
     bus.on('interact:hire', (d) => this.show('company', { tab: 'hire', ...d }));
     bus.on('ui:show', ({ id, data }) => this.show(id, data));
+
+    // Used by the live-refresh guard above.
+    window.addEventListener('pointerdown', (e) => { this._pointerDown = true; this._pointerTarget = e.target; }, true);
+    window.addEventListener('pointerup', () => { this._pointerDown = false; this._pointerTarget = null; }, true);
+    window.addEventListener('pointercancel', () => { this._pointerDown = false; this._pointerTarget = null; }, true);
     bus.on('ui:close', () => this.closeAll());
 
     // Company-panel link-outs. CompanyPanel forwards every data-action as
@@ -176,10 +181,25 @@ export class UIManager {
     }
 
     // Panels that need live data refresh at 4 Hz while open.
+    //
+    // render() replaces the panel's innerHTML wholesale, so refreshing on top
+    // of someone who is mid-interaction destroys the element under their
+    // cursor: :hover resets every 250 ms (a visible flicker) and a click never
+    // completes, because mousedown's target is gone before mouseup. Hold the
+    // refresh while a control is hovered or the button is down, and catch up
+    // as soon as they move off. Actions re-render explicitly anyway.
     this._t = (this._t || 0) + dt;
     if (this._t > 0.25) {
       this._t = 0;
-      for (const p of this.panels.values()) if (p.open && p.live) p.render();
+      for (const p of this.panels.values()) {
+        if (!p.open || !p.live || !p.el) continue;
+        if (this._pointerDown && p.el.contains(this._pointerTarget)) continue;
+        let busy = false;
+        try { busy = !!p.el.querySelector('[data-action]:hover, button:hover, input:focus'); }
+        catch { busy = false; }
+        if (busy) continue;
+        p.render();
+      }
     }
   }
 }
