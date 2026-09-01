@@ -7,3 +7,11 @@ tmp/
 
 # Automated visual-inspection captures: large, regenerable, and they filled the disk.
 tools/shots/
+
+# Secrets — never commit. Keys live in the environment / Render dashboard.
+.env
+.env.*
+!.env.example
+
+# Generated audio cache (regenerable, and large)
+public/assets/audio/generated/

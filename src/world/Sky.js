@@ -202,16 +202,23 @@ export class Sky {
     u.uHaze.value = lerp(0.3, 0.62, this.cloudiness) + storm * 0.25;
 
     // --- lights ---
-    const sunI = (0.12 + day * 2.7) * (1 - this.cloudiness * 0.5) * (1 - storm * 0.55);
+    // Night is lit by the moon, not by nothing. The old floor -- sun 0.12,
+    // ambient 0.07, bounce 0.05 -- summed to almost no light at all, which is
+    // why the island went pitch black rather than atmospheric. A moonlit
+    // scene reads as dim desaturated blue with legible shapes, so the night
+    // end of every curve is raised and tinted rather than the whole thing
+    // being multiplied up (which would just wash out the day).
+    const moon = night * night;                 // only ramps in once the sun is properly down
+    const sunI = (0.12 + day * 2.7) * (1 - this.cloudiness * 0.5) * (1 - storm * 0.55) + moon * 0.38;
     this.sun.intensity = sunI;
-    this.sun.color.copy(u.uSunColor.value).lerp(_c(0xffffff), 0.25);
+    this.sun.color.copy(u.uSunColor.value).lerp(_c(0xffffff), 0.25).lerp(_c(0x9db4ff), moon * 0.75);
     this.sun.castShadow = this.game.settings.shadows && elev > -0.02;
 
-    this.hemi.intensity = lerp(0.22, 1.15, day) * (1 - storm * 0.3) + this.cloudiness * 0.14;
-    this.hemi.color.copy(u.uHorizon.value);
-    this.hemi.groundColor.copy(_c(0x6b6152)).lerp(_c(0x161a22), night);
-    this.ambient.intensity = lerp(0.07, 0.28, day) + this.cloudiness * 0.06;
-    this.bounce.intensity = lerp(0.05, 0.3, day);
+    this.hemi.intensity = lerp(0.58, 1.15, day) * (1 - storm * 0.3) + this.cloudiness * 0.14;
+    this.hemi.color.copy(u.uHorizon.value).lerp(_c(0x6d82c4), moon * 0.6);
+    this.hemi.groundColor.copy(_c(0x6b6152)).lerp(_c(0x2a3142), night);
+    this.ambient.intensity = lerp(0.19, 0.28, day) + this.cloudiness * 0.06;
+    this.bounce.intensity = lerp(0.13, 0.3, day);
 
     // --- scene fog / background ---
     const sc = this.game.scene;
