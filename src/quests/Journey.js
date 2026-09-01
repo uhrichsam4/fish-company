@@ -39,11 +39,11 @@ const STEPS = [
     goal: 1, on: 'sell:completed', reward: { money: 120 }, marker: 'sell',
   },
   {
-    id: 'axe', title: 'Chop a Tree', how: 'Equip the felling axe from the hotbar and swing at a trunk',
+    id: 'axe', title: 'Chop a Tree', how: 'Press 2 for your axe, walk up to a tree and click',
     goal: 1, on: 'trees:felled', reward: { money: 80 }, marker: 'tree',
   },
   {
-    id: 'wood', title: 'Gather 25 Wood', how: 'Keep felling — wood is what everything is built from',
+    id: 'wood', title: 'Gather 25 Wood', how: 'Fell trees, smash crates and rocks — all of it drops materials',
     goal: 25, on: 'trees:felled', amount: (e) => e.wood || 1, reward: { money: 150 },
     marker: 'tree',
   },

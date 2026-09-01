@@ -97,9 +97,13 @@ export const BAIT_TYPES = [
 ];
 
 export const TOOLS = [
+  // Hands chop and mine, badly. Zero would mean a player who has not bought a
+  // tool yet swings at a tree and gets no reaction of any kind, which is
+  // indistinguishable from the feature being broken -- which is exactly how it
+  // was reported.
   { id: 'tool_hands', name: 'Bare Hands', icon: '🖐️', price: 0, tier: 0, shopTier: 1, slot: 'tool',
     desc: 'Free. Ineffective. Character building.',
-    stats: { damage: 4, range: 2.2, rate: 0.55, knockback: 2 } },
+    stats: { damage: 4, range: 2.4, rate: 0.55, knockback: 2, chop: 5, mine: 4 } },
   { id: 'tool_net', name: 'Landing Net', icon: '🥅', price: 180, tier: 1, shopTier: 1, slot: 'tool',
     desc: 'Scoop fish out of the water without the drama.',
     stats: { damage: 0, range: 3.2, rate: 0.9, scoop: true, scoopWeight: 25 } },
@@ -194,7 +198,15 @@ export function categoryOf(id) {
   for (const [k, c] of Object.entries(CATEGORY)) if (c.list.some((i) => i.id === id)) return k;
   return null;
 }
+/**
+ * The axe is starting kit, not a purchase.
+ *
+ * It used to cost 420, which put felling a tree behind selling a lot of fish
+ * -- while the guided path asks for wood at step five and the shop only at
+ * step ten. A new player following the game's own instructions could not carry
+ * them out.
+ */
 export const STARTING_LOADOUT = {
   rod: 'rod_stick', line: 'line_string', reel: 'reel_old',
-  bait: 'bait_none', tool: 'tool_hands', weapon: null, storage: 'store_basket',
+  bait: 'bait_none', tool: 'tool_axe', weapon: null, storage: 'store_basket',
 };

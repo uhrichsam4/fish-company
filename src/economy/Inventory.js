@@ -12,7 +12,7 @@ export class Inventory {
     this.game = game;
     this.name = 'inventory';
     this.order = 31;
-    this.owned = new Set(Object.values(STARTING_LOADOUT));
+    this.owned = new Set([...Object.values(STARTING_LOADOUT), 'tool_hands']);
     this.equipped = { ...STARTING_LOADOUT };
     this.consumables = { };     // itemId -> count
     /** @type {Array<{instance, freshness, processLevel, caughtAt}>} */
@@ -28,7 +28,7 @@ export class Inventory {
   }
 
   resetToStart() {
-    this.owned = new Set(Object.values(STARTING_LOADOUT));
+    this.owned = new Set([...Object.values(STARTING_LOADOUT), 'tool_hands']);
     this.equipped = { ...STARTING_LOADOUT };
     this.consumables = {};
     this.fish.length = 0;
