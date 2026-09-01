@@ -44,7 +44,7 @@ const F = await import('/tools/fleetScenario.js'); console.log(F.summary(await F
 | Weather | ✅ | 8 states, blended wave sets, lightning, region overrides |
 | Props | ✅ | 35 seeded builders (trees, rocks, docks, shacks, cranes, wrecks…) |
 | Ambience / music / birds | ✅ 🧪 | Positional beds, contextual music, flocking gulls |
-| Deep sea | 🟡 | In progress |
+| Deep sea | ✅ 🧪 | Depth-driven fog/light/colour, vents, wrecks, bioluminescence |
 
 ### Gameplay
 | System | State | Notes |
@@ -63,23 +63,48 @@ const F = await import('/tools/fleetScenario.js'); console.log(F.summary(await F
 | Boats | ✅ 💅 | 8 hulls, buoyancy, thrust, speed cap, self-righting, walkable decks, driving |
 | Fleets | ✅ 🧪 | Crews, autonomous trips, near/far simulation, fuel/wear/breakdowns |
 | Research / harbour / contracts / processing | ✅ 🧪 | 55 nodes, 14 buildings, generated contracts, 4 processing tiers |
-| Bosses | 🟡 | In progress |
-| Submarines | 🟡 | In progress |
+| Bosses | ✅ 🧪 | 6 bosses, phases, weak points, ram/dive/summon/shockwave/armour, health bar, rewards. Verified: 3 phases → death → payout → unlock |
+| Submarines | ✅ 🧪 | 4 subs, depth/hull/power/oxygen, sonar scope, lights, crush depth, expeditions |
+| World events | ✅ 🧪 | 11 events that change real state (spawn tables, weather, prices, fleets) |
+| NPCs + dialogue | ✅ 🧪 | 12 characters with idle animation, name labels, gossip driven by live state |
+| Gambling | ✅ | 5 minigames, in-game currency only, 6% stated edge verified empirically over 4000 plays |
+| Tutorial + waypoints | ✅ | Contextual hints keyed to real state; world-space markers with edge clamping |
 | VFX | ✅ | 28 GPU-simulated effects, wake ribbons, water decals |
 | UI | ✅ 💅 | HUD, shop, inventory, atlas, company, map, pause, fleet editor, boat upgrades |
 | Debug menu (F8) | ✅ | Money, fish, bosses, regions, weather, time, overlays, save tools |
 
 ## Verified end-to-end
-- **Core loop** — rod pickup → cast → bite → hook → fight → land → carry → store → sell → buy upgrade. Automated, zero console errors.
-- **Physics** — flopping, throwing, sell-bin trick shot, no NaN transforms.
-- **Save/load** — money, equipment, stored fish, quest flags all round-trip.
-- **Workers** — hired workers physically walk to the dock, cast, catch and bank money.
-- **Stress** — 34 AI fish + 24 physical fish + 99 bodies held frame budget.
+Run these from the console on the test server:
+```js
+const P = await import('/tools/progression.js'); console.log(P.summary(await P.run()))  // full game
+const S = await import('/tools/scenarios.js');   console.log(S.summary(await S.run()))  // core/physics/save/stress
+const U = await import('/tools/uiTest.js');      console.log(U.summary(await U.run()))  // real-pointer UI
+const F = await import('/tools/fleetScenario.js'); console.log(F.summary(await F.run()))
+```
+- **Full progression (26/26)** — fresh save → rod pickup → fishing → selling → shop → tricks → weapons →
+  region unlock → research → harbour → hire → worker fishes on their own → boat → captain → fleet →
+  autonomous trip returns $24,447 → save/load restores the whole company → no shader or console errors.
+- **UI (13 panels)** — every panel opens, its backdrop/close/controls pass a real `elementFromPoint`
+  hit test, renders live data, fits 1280×720, and tabs switch on a synthetic pointer click.
+- **Core loop / physics / save / stress** — flopping, throwing, sell-bin trick shot, no NaN transforms,
+  save round-trip, 34 AI fish + 24 physical + 99 bodies within budget.
+- **Fishing timing** — 5/5 catches at 7–12 s cast-to-land.
+- **Bosses** — 3 phases → death → $11,000 payout → feature unlock, no errors.
+
+## Measured performance
+~1 ms/frame CPU (all 40 systems), ~1 ms render at 2880×1620 with pixelRatio 2, ~210 draw calls,
+~700 k triangles. FPS numbers read while the automation pane isn't compositing are meaningless —
+the fallback ticker is throttled; measure `perf.renderMs` and per-system update cost instead.
 
 ## Next priorities
-1. Finish bosses + submarines (agents in flight).
-2. Draw-call reduction: 679 draws / 458k tris under load is too high — instance props, merge static geometry, cut ocean tri count at distance.
-3. Contracts + Processing tabs in the company panel.
-4. Economy balance pass: the value formula multiplies rarity × mass, so a Golden Abyssal Leviathan prices at ~$34 B. Needs a soft cap.
-5. Onboarding polish: the first five minutes must teach cast → bite → hook-set without a wall of text.
-6. Second visual pass on islands (density, silhouette variety, prop placement rules).
+1. **Play the whole thing by hand.** Everything below is verified by automation; the parts automation
+   can't judge (pacing, whether the first five minutes actually teach the game, whether a fight is fun)
+   need a human pass.
+2. **Underwater** — diving still has no distinct look above the deep-sea system's depth range: no
+   caustics, no surface-from-below, no particulate.
+3. **Region decoration depth** — Crash, Rocky, Harbour, Wilds, Storm, Frozen and Station have bespoke
+   dressing; the Abyss is bare and the inland areas of the larger islands are still generic.
+4. **Economy balance** — the soft cap fixed the tail, but the mid-game curve is untested over a long
+   session. A normal tuna at ~$22 k may outpace the shop.
+5. **Boat/sub crews on deck** — crew board and stand, but they don't work stations while under way.
+6. **More content passes** — quests beyond the main chain, per-region contracts, boss rematches.

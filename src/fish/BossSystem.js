@@ -1153,7 +1153,12 @@ export class BossSystem {
     // boss into the player's lap — that is also how a tether cheeses the kill.
     _v.copy(f.position).sub(player.position);
     const away = _v.length() || 1;
-    const minStand = b.attack === 'ram' && b.mode === 'strike' ? 0
+    // A hard floor in every mode. WeaponSystem lands a tethered harpoon the
+    // moment the fish is within 2.4 m of the eye — for a boss that would be a
+    // free kill, so it must never get that close, ram or not. The ram floor
+    // still sits inside the ram's own contact radius, so charges connect.
+    const minStand = b.attack === 'ram' && b.mode === 'strike'
+      ? Math.max(3.2, len * 0.30)
       : Math.max(4.5, len * 0.34);
     if (away < minStand) {
       // Horizontal push only: a player up on a dock must not lift the boss.

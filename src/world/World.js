@@ -408,22 +408,30 @@ export class World {
         length: a.dock.length, width: a.dock.width, height: a.dock.y,
         heightAt: (wx, wz) => worldHeight(wx, wz),
       });
+      const proc = !!dock;
       if (!dock) {
         dock = new THREE.Mesh(
-          new THREE.BoxGeometry(a.dock.length, 0.35, a.dock.width),
+          new THREE.BoxGeometry(a.dock.width, 0.35, a.dock.length),
           new THREE.MeshStandardMaterial({ color: 0x9a7b52, roughness: 0.9 }),
         );
       }
-      dock.position.set(a.dock.x, a.dock.y, a.dock.z);
-      dock.rotation.y = -a.dock.angle;
+      // buildDock puts its deck at `height` ABOVE the group origin and drives
+      // its pilings below it, so the group belongs at the waterline — placing
+      // it at deck height floated the planks 1.8 m over their own collider.
+      dock.position.set(a.dock.x, proc ? 0 : a.dock.y, a.dock.z);
+      // Its length runs along local +Z, so to point it along `outward` the
+      // yaw is (pi/2 - angle), not -angle (which put it across the shore).
+      const dockYaw = Math.PI / 2 - a.dock.angle;
+      dock.rotation.y = dockYaw;
       setShadows(dock);
       group.add(dock);
       s.dockObject = dock;
-      // Deck collider + side rails so you can walk out and not fall off instantly.
+      // Deck collider: same orientation, same axes, top surface exactly at the
+      // deck height the anchors advertise.
       s.bodies.push(this.game.physics.addBody({
-        type: 'fixed', position: { x: a.dock.x, y: a.dock.y - 0.18, z: a.dock.z },
-        rotation: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a.dock.angle),
-        shape: { kind: 'box', hx: a.dock.length / 2, hy: 0.2, hz: a.dock.width / 2, friction: 0.98 },
+        type: 'fixed', position: { x: a.dock.x, y: a.dock.y - 0.2, z: a.dock.z },
+        rotation: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dockYaw),
+        shape: { kind: 'box', hx: a.dock.width / 2, hy: 0.2, hz: a.dock.length / 2, friction: 0.98 },
         tag: 'dock', events: false, userData: { surface: 'wood' },
       }));
     }
