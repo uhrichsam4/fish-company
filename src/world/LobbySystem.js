@@ -193,6 +193,64 @@ export class LobbySystem {
   }
 
   /**
+   * A wooden noticeboard with real text on it.
+   *
+   * The face is a canvas texture rather than geometry: the lobby's whole job
+   * is explaining the game to someone who has just arrived, and that needs
+   * actual sentences, not an icon they have to guess at.
+   */
+  _makeSign(x, z, rot, title, lines, accent = '#2fd4c4') {
+    const W = 3.4, H = 2.0, POST = 1.5;
+    const group = new THREE.Group();
+
+    const wood = new THREE.MeshStandardMaterial({ color: 0x8b6239, roughness: 0.92 });
+    for (const sx of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, POST + H * 0.5, 7), wood);
+      post.position.set(sx * (W / 2 - 0.25), (POST + H * 0.5) / 2, 0);
+      post.castShadow = true;
+      group.add(post);
+    }
+    const board = new THREE.Mesh(new THREE.BoxGeometry(W, H, 0.14), wood);
+    board.position.y = POST + H / 2 - 0.1;
+    board.castShadow = true;
+    group.add(board);
+
+    const c = document.createElement('canvas');
+    c.width = 1024; c.height = Math.round(1024 * (H / W));
+    const g2 = c.getContext('2d');
+    g2.fillStyle = '#f2e6cf';
+    g2.fillRect(0, 0, c.width, c.height);
+    g2.strokeStyle = accent; g2.lineWidth = 14;
+    g2.strokeRect(18, 18, c.width - 36, c.height - 36);
+
+    g2.textAlign = 'center';
+    g2.fillStyle = '#2c3038';
+    g2.font = 'bold 76px Outfit, system-ui, sans-serif';
+    g2.fillText(title, c.width / 2, 116);
+    g2.strokeStyle = accent; g2.lineWidth = 6;
+    g2.beginPath(); g2.moveTo(c.width * 0.22, 148); g2.lineTo(c.width * 0.78, 148); g2.stroke();
+
+    g2.font = '44px Outfit, system-ui, sans-serif';
+    g2.fillStyle = '#4a4f58';
+    lines.forEach((ln, i) => g2.fillText(ln, c.width / 2, 218 + i * 58));
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
+    const face = new THREE.Mesh(
+      new THREE.PlaneGeometry(W - 0.16, H - 0.16),
+      new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
+    );
+    face.position.set(0, POST + H / 2 - 0.1, 0.076);
+    group.add(face);
+
+    group.position.set(x, worldHeight(x, z), z);
+    group.rotation.y = rot;
+    this.root.add(group);
+    return group;
+  }
+
+  /**
    * Everything on the plaza that is not a pad: the statue players orient by,
    * the paths between the pads, and enough dressing that the island reads as a
    * built gathering place rather than an empty field with markers on it.
@@ -243,14 +301,19 @@ export class LobbySystem {
 
     // ---- centrepiece ----
     place(Props.buildFishStatue?.(rng, {}), cx, cz, { y: cy, scale: 1.7 });
-    place(Props.buildSignpost?.(rng, {}), cx + 5.6, cz - 3.4, { rot: -0.7 });
+    // Off to one side and scaled down: at its default size it stands directly
+    // in front of the statue from the spawn point and hides the landmark.
+    place(Props.buildSignpost?.(rng, {}), cx + 9.5, cz + 7.5, { rot: -0.9, scale: 0.55 });
 
     // ---- banners between the pads, marking the plaza edge ----
     const bannerColors = [0x3d7fa6, 0xe0b23f, 0x3d7fa6, 0xe0b23f];
+    // Ringing the plaza edge, not standing in it: at PAD_RING one lands square
+    // on the sightline from the spawn point and hides the statue behind a pole.
     for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2;
-      const bx = cx + Math.cos(a) * (PAD_RING - 1);
-      const bz = cz + Math.sin(a) * (PAD_RING - 1);
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const bx = cx + Math.cos(a) * (PAD_RING + 9);
+      const bz = cz + Math.sin(a) * (PAD_RING + 9);
+      if (worldHeight(bx, bz) < 1.5) continue;
       place(Props.buildBanner?.(rng, { color: bannerColors[i] }), bx, bz, { rot: -a + Math.PI / 2 });
     }
 
@@ -277,6 +340,33 @@ export class LobbySystem {
 
     // A stall by the plaza so arrivals have somewhere to walk towards.
     place(Props.buildTent?.(rng, {}), cx - PAD_RING - 3, cz + 4, { rot: 1.1 });
+
+    // ---- noticeboards ----
+    // Placed facing the spawn point, because a sign nobody walks past teaches
+    // nobody anything.
+    this._makeSign(cx - 7.5, cz + 12, 0.35, 'HOW TO START', [
+      'Step onto a glowing pad.',
+      'Choose how many players.',
+      'Everyone on the pad goes together.',
+    ], '#2fd4c4');
+
+    this._makeSign(cx + 7.5, cz + 12, -0.35, 'HOW TO FISH', [
+      'Hold LEFT MOUSE to charge a cast.',
+      'Release to throw the line.',
+      'Click again when the float dips.',
+    ], '#ffc22e');
+
+    this._makeSign(cx - 15, cz - 8, 1.25, 'YOUR COMPANY', [
+      'Sell your catch at the shop.',
+      'Buy better rods, boats and crew.',
+      'Press O for the company panel.',
+    ], '#43a9ff');
+
+    this._makeSign(cx + 15, cz - 8, -1.25, 'CONTROLS', [
+      'WASD move  ·  SPACE jump',
+      'E interact  ·  TAB bag  ·  M map',
+      'ESC for the menu.',
+    ], '#b96bff');
   }
 
   // ----------------------------------------------------------------------- UI
