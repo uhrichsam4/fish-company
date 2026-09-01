@@ -1,0 +1,165 @@
+import { Game, setStatus } from './core/Game.js';
+import { bus } from './core/EventBus.js';
+import { Sky } from './world/Sky.js';
+import { Ocean } from './world/Ocean.js';
+import { World } from './world/World.js';
+import { Player } from './player/Player.js';
+import { HUD } from './ui/HUD.js';
+
+const bootEl = document.getElementById('boot');
+const fillEl = document.getElementById('boot-fill');
+const errEl = document.getElementById('boot-error');
+const ctp = document.getElementById('click-to-play');
+
+let progress = 0;
+function setProgress(p) {
+  progress = Math.max(progress, p);
+  if (fillEl) fillEl.style.width = `${Math.round(progress * 100)}%`;
+}
+
+function fatal(err) {
+  console.error(err);
+  if (errEl) {
+    errEl.textContent = `FAILED TO START\n${err?.stack || err?.message || String(err)}`;
+  }
+  setStatus('failed');
+}
+
+window.addEventListener('error', (e) => {
+  if (!bootEl.classList.contains('done')) fatal(e.error || e.message);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[unhandled]', e.reason);
+});
+
+async function boot() {
+  const canvas = document.getElementById('game-canvas');
+  const game = new Game(canvas);
+  window.GAME = game; // debugging handle
+
+  setProgress(0.04);
+  await game.init();
+  setProgress(0.14);
+
+  setStatus('waking the audio engine…');
+  const { AUDIO_MANIFEST } = await import('./data/audioManifest.js').catch(() => ({ AUDIO_MANIFEST: null }));
+  await game.audio.init(AUDIO_MANIFEST);
+  setProgress(0.18);
+
+  // ---- systems ----
+  game.add(new Sky(game));
+  game.add(new Ocean(game, { seaLevel: 0 }));
+  game.add(new World(game));
+  game.add(new Player(game));
+  game.add(new HUD(game));
+
+  // Optional systems load defensively so a single broken module can't brick boot.
+  const optional = [
+    ['./fx/Effects.js', 'Effects'],
+    ['./economy/Economy.js', 'Economy'],
+    ['./economy/Inventory.js', 'Inventory'],
+    ['./world/Weather.js', 'Weather'],
+    ['./fish/FishSystem.js', 'FishSystem'],
+    ['./fish/PhysicalFish.js', 'PhysicalFishManager'],
+    ['./fishing/TrickSystem.js', 'TrickSystem'],
+    ['./fishing/FishingSystem.js', 'FishingSystem'],
+    ['./weapons/WeaponSystem.js', 'WeaponSystem'],
+    ['./player/HeldItems.js', 'HeldItems'],
+    ['./player/Interaction.js', 'Interaction'],
+    ['./quests/QuestSystem.js', 'QuestSystem'],
+    ['./economy/Research.js', 'Research'],
+    ['./economy/Company.js', 'Company'],
+    ['./workers/WorkerSystem.js', 'WorkerSystem'],
+    ['./boats/BoatSystem.js', 'BoatSystem'],
+    ['./boats/FleetSystem.js', 'FleetSystem'],
+    ['./submarines/SubSystem.js', 'SubSystem'],
+    ['./world/Ambience.js', 'Ambience'],
+    ['./ui/UIManager.js', 'UIManager'],
+    ['./ui/DebugMenu.js', 'DebugMenu'],
+  ];
+  for (const [path, name] of optional) {
+    try {
+      const mod = await import(/* @vite-ignore */ path);
+      const Cls = mod[name] || mod.default;
+      if (Cls) game.add(new Cls(game));
+      else console.warn(`[boot] ${path} has no export "${name}"`);
+    } catch (e) {
+      if (!String(e?.message || '').includes('Failed to fetch dynamically imported module')) {
+        console.warn(`[boot] optional system ${name} unavailable:`, e.message);
+      }
+    }
+  }
+  setProgress(0.24);
+
+  setStatus('building the world…');
+  await game.initSystems();
+  setProgress(0.86);
+
+  // Every system exposing save/load participates in the versioned save.
+  for (const s of game.systems) {
+    if (typeof s.save === 'function' && typeof s.load === 'function' && s.name) {
+      game.save.register(s.name, () => s.save(), (d) => s.load(d));
+    }
+  }
+  game.save.register('settings', () => game.settings, (d) => { Object.assign(game.settings, d || {}); game.applySettings(); });
+
+  setStatus('loading sounds…');
+  game.audio.preload((p) => {
+    setProgress(0.86 + p * 0.13);
+    setStatus(`loading sounds… ${Math.round(p * 100)}%`);
+  }).then((res) => {
+    if (res) console.info(`[Audio] ${res.total - res.missing}/${res.total} sounds loaded`);
+  });
+
+  // ---- spawn ----
+  const world = game.get('world');
+  const player = game.get('player');
+  const anchors = world.getAnchors('crash');
+  const spawn = anchors.spawn;
+  const toShore = Math.atan2(anchors.shore.z - spawn.z, anchors.shore.x - spawn.x);
+  player.spawnAt(spawn, -toShore + Math.PI / 2);
+
+  // Try to restore a save.
+  if (game.save.hasSave()) {
+    setStatus('restoring your empire…');
+    try { game.save.load(); } catch (e) { console.error('[boot] load failed', e); }
+  } else {
+    bus.emit('game:newgame');
+  }
+
+  setProgress(1);
+  setStatus('ready');
+  game.start();
+
+  setTimeout(() => {
+    bootEl.classList.add('done');
+    ctp.classList.remove('hidden');
+  }, 260);
+
+  const enter = () => {
+    ctp.classList.add('hidden');
+    game.input.requestLock();
+    if (game.audio.ctx?.state === 'suspended') game.audio.ctx.resume();
+    bus.emit('game:entered');
+  };
+  ctp.addEventListener('click', enter);
+  bus.on('pointer:unlocked', () => {
+    if (!game.get('ui')?.anyOpen?.()) ctp.classList.remove('hidden');
+  });
+  bus.on('pointer:locked', () => ctp.classList.add('hidden'));
+  bus.on('ui:opened', () => ctp.classList.add('hidden'));
+  bus.on('ui:closed', () => { if (!game.input.locked) game.input.requestLock(); });
+
+  if (import.meta.env?.DEV || location.search.includes('test')) {
+    try {
+      const { installTestHarness } = await import('./util/testHarness.js');
+      installTestHarness(game);
+    } catch (e) { console.warn('[boot] test harness unavailable', e.message); }
+  }
+
+  console.info('%c🐟 Fish Company booted', 'color:#2fd4c4;font-weight:bold', {
+    systems: game.systems.map((s) => s.name),
+  });
+}
+
+boot().catch(fatal);

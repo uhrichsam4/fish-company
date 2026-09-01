@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fish Company — mesh preview</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #10161d; color: #cfe0ec;
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; }
+  canvas { display: block; }
+  #hud { position: fixed; top: 10px; left: 10px; z-index: 5; background: rgba(8,14,20,.82);
+    border: 1px solid #2a3a4a; border-radius: 8px; padding: 10px 12px; max-width: 380px;
+    max-height: 92vh; overflow: auto; }
+  #hud h1 { margin: 0 0 6px; font-size: 13px; letter-spacing: .06em; color: #7fd4ff; }
+  #hud label { display: block; margin: 2px 0; cursor: pointer; }
+  #hud .row { margin-top: 8px; border-top: 1px solid #22303d; padding-top: 6px; }
+  #stats { white-space: pre; color: #9fb4c4; }
+  .bad { color: #ff6a7a; }
+  .ok { color: #6ee38a; }
+  #hint { position: fixed; bottom: 10px; left: 10px; z-index: 5; color: #5f7788; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <h1>FISH MESH PREVIEW</h1>
+  <label><input type="checkbox" id="spin" checked> auto-orbit</label>
+  <label><input type="checkbox" id="swim" checked> swim deform</label>
+  <label><input type="checkbox" id="wire"> wireframe</label>
+  <label><input type="checkbox" id="lod"> low-poly LOD</label>
+  <label><input type="checkbox" id="axes"> axis gizmo (+X = nose)</label>
+  <div class="row"><span id="stats">building…</span></div>
+</div>
+<div id="hint">drag = orbit · wheel = zoom · shift+drag = pan</div>
+
+<script type="importmap">
+{ "imports": { "three": "/node_modules/three/build/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { FISH_SPECIES, VARIANT_BY_ID } from '/src/data/fishData.js';
+import { buildFishMesh, disposeFishMesh, countTriangles, BODY_ARCHETYPES } from '/src/fish/FishMesh.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#151d26');
+scene.fog = new THREE.Fog('#151d26', 22, 70);
+
+scene.add(new THREE.HemisphereLight(0xd8ecff, 0x2a3644, 2.0));
+const key = new THREE.DirectionalLight(0xffffff, 2.1); key.position.set(4, 7, 6); scene.add(key);
+const rim = new THREE.DirectionalLight(0x9fd8ff, 0.9); rim.position.set(-5, 2, -6); scene.add(rim);
+const fill = new THREE.DirectionalLight(0xffd9a8, 0.5); fill.position.set(2, -4, 3); scene.add(fill);
+
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 400);
+
+// --- grid -----------------------------------------------------------------
+const params = new URLSearchParams(location.search);
+const only = params.get('fish');
+const variant = VARIANT_BY_ID[params.get('variant') || 'normal'] || VARIANT_BY_ID.normal;
+const list = only ? FISH_SPECIES.filter((s) => s.id === only || s.body === only) : FISH_SPECIES;
+
+const CELL = 2.0, COLS = only ? list.length : 9;
+const DISPLAY_LEN = 1.45;
+const root = new THREE.Group();
+scene.add(root);
+
+function labelSprite(text, sub) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 512, 128);
+  g.font = 'bold 46px ui-monospace, Menlo, monospace';
+  g.fillStyle = '#dceaf5'; g.textAlign = 'center';
+  g.fillText(text, 256, 52);
+  g.font = '32px ui-monospace, Menlo, monospace';
+  g.fillStyle = '#6f93ad';
+  g.fillText(sub, 256, 96);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  spr.scale.set(1.9, 0.475, 1);
+  return spr;
+}
+
+const built = [];
+const problems = [];
+const box = new THREE.Box3();
+let totalTris = 0;
+const seenBodies = new Set();
+
+function build(lowPoly) {
+  for (const b of built) { disposeFishMesh(b.group); root.remove(b.holder); }
+  built.length = 0; problems.length = 0; totalTris = 0; seenBodies.clear();
+  while (root.children.length) root.remove(root.children[0]);
+
+  list.forEach((sp, i) => {
+    const col = i % COLS, row = Math.floor(i / COLS);
+    const holder = new THREE.Group();
+    holder.position.set((col - (COLS - 1) / 2) * CELL, 0, (row - Math.floor((list.length - 1) / COLS) / 2) * CELL);
+    root.add(holder);
+
+    const g = buildFishMesh(sp, variant, { lowPoly });
+    g.scale.setScalar(DISPLAY_LEN);
+    holder.add(g);
+
+    g.updateMatrixWorld(true);
+    box.setFromObject(g);
+    const sx = box.max.x - box.min.x, sy = box.max.y - box.min.y, sz = box.max.z - box.min.z;
+    let nan = false;
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      const a = o.geometry.attributes;
+      for (const k in a) { const arr = a[k].array; for (let j = 0; j < arr.length; j++) if (!Number.isFinite(arr[j])) { nan = true; return; } }
+    });
+    const tris = countTriangles(g);
+    totalTris += tris;
+    if (nan) problems.push(`${sp.id}: NaN in geometry`);
+    if (Math.abs(sx - DISPLAY_LEN) > 0.01) problems.push(`${sp.id}: length ${sx.toFixed(3)} != ${DISPLAY_LEN}`);
+    if (sy < 0.02 || sz < 0.01) problems.push(`${sp.id}: degenerate ${sy.toFixed(3)}x${sz.toFixed(3)}`);
+
+    const lab = labelSprite(sp.short, `${sp.body} · ${tris}t`);
+    lab.position.set(0, -0.72, 0);
+    holder.add(lab);
+
+    const ax = new THREE.AxesHelper(0.5);
+    ax.visible = false; ax.name = 'axes';
+    holder.add(ax);
+
+    built.push({ group: g, holder, sp, sx, sy, sz, tris });
+    seenBodies.add(sp.body);
+  });
+
+  const missing = BODY_ARCHETYPES.filter((b) => !seenBodies.has(b));
+  const stats = document.getElementById('stats');
+  stats.innerHTML =
+    `species: ${list.length}\narchetypes used: ${seenBodies.size}/${BODY_ARCHETYPES.length}` +
+    (missing.length ? `\nunused: ${missing.join(',')}` : '') +
+    `\ntris: avg ${Math.round(totalTris / list.length)}  total ${totalTris}\n` +
+    (problems.length
+      ? `<span class="bad">${problems.length} problem(s):\n  ${problems.join('\n  ')}</span>`
+      : `<span class="ok">no geometry problems</span>`);
+  window.__report = { count: list.length, problems, avgTris: Math.round(totalTris / list.length), missing };
+  console.log('[preview]', window.__report);
+}
+build(false);
+
+// --- camera rig -----------------------------------------------------------
+const target = new THREE.Vector3(0, 0, 0);
+const VIEWS = { side: [0, 0], persp: [0.5, 0.5], top: [0, 1.45], front: [1.5708, 0], quarter: [0.85, 0.28] };
+const v0 = VIEWS[params.get('view') || (only ? 'side' : 'persp')] || VIEWS.persp;
+let dist = Number(params.get('dist')) || (only ? 4.2 : 21);
+let yaw = v0[0], pitch = v0[1];
+if (params.get('view')) document.getElementById('spin').checked = false;
+let dragging = false, panning = false, lx = 0, ly = 0;
+addEventListener('mousedown', (e) => { if (e.target.closest('#hud')) return; dragging = true; panning = e.shiftKey; lx = e.clientX; ly = e.clientY; });
+addEventListener('mouseup', () => { dragging = false; });
+addEventListener('mousemove', (e) => {
+  if (!dragging) return;
+  const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+  if (panning) {
+    const r = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+    const u = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+    target.addScaledVector(r, -dx * dist * 0.0016).addScaledVector(u, dy * dist * 0.0016);
+  } else { yaw -= dx * 0.006; pitch = Math.max(-1.45, Math.min(1.45, pitch - dy * 0.006)); }
+  document.getElementById('spin').checked = false;
+});
+addEventListener('wheel', (e) => { dist = Math.max(1.2, Math.min(90, dist * (1 + Math.sign(e.deltaY) * 0.11))); }, { passive: true });
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const $ = (id) => document.getElementById(id);
+$('wire').onchange = (e) => { root.traverse((o) => { if (o.isMesh) o.material.wireframe = e.target.checked; }); };
+$('axes').onchange = (e) => { root.traverse((o) => { if (o.name === 'axes') o.visible = e.target.checked; }); };
+$('lod').onchange = (e) => { build(e.target.checked); $('wire').checked = false; };
+$('swim').onchange = (e) => { if (!e.target.checked) for (const b of built) b.group.userData.resetDeform?.(); };
+if (params.get('swim') === '0') { $('swim').checked = false; }
+
+window.__cam = (y, p, d) => { yaw = y; pitch = p; if (d) dist = d; document.getElementById('spin').checked = false; };
+let _prev = performance.now(), _t = 0;
+const clock = { getDelta() { const n = performance.now(); const d = (n - _prev) / 1000; _prev = n; _t += d; this.elapsedTime = _t; return d; }, elapsedTime: 0 };
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, clock.getDelta());
+  const t = clock.elapsedTime;
+  if ($('spin').checked) yaw += dt * 0.22;
+
+  if ($('swim').checked) {
+    for (let i = 0; i < built.length; i++) {
+      const b = built[i];
+      b.group.userData.deform?.(t * 5.2 + i * 0.7, 1, 1.5);
+      const p = b.group.userData.parts;
+      if (p?.tail) p.tail.rotation.y = Math.sin(t * 5.2 + i * 0.7 - 1.9) * 0.42;
+      if (p?.pecL) p.pecL.rotation.z = Math.sin(t * 3.4 + i) * 0.30;
+      if (p?.pecR) p.pecR.rotation.z = -Math.sin(t * 3.4 + i) * 0.30;
+      if (p?.tentacles) for (let k = 0; k < p.tentacles.length; k++) {
+        p.tentacles[k].rotation.x = Math.sin(t * 2.6 + k * 0.9 + i) * 0.16;
+      }
+    }
+  }
+
+  window.__camState = { yaw, pitch, dist };
+  camera.position.set(
+    target.x + Math.cos(pitch) * Math.sin(yaw) * dist,
+    target.y + Math.sin(pitch) * dist,
+    target.z + Math.cos(pitch) * Math.cos(yaw) * dist,
+  );
+  camera.lookAt(target);
+  renderer.render(scene, camera);
+}
+frame();
+
+window.__three = { THREE, scene, camera, renderer, built };
+</script>
+</body>
+</html>

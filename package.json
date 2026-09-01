@@ -1,0 +1,21 @@
+{
+  "name": "fish-company",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fish Company - a first-person physics fishing empire game",
+  "scripts": {
+    "dev": "vite --port 5178 --host",
+    "build": "vite build",
+    "preview": "vite preview --port 5179",
+    "test": "node --test tests/",
+    "lint": "node tools/checkImports.mjs"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.20.0",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "vite": "^8.2.2"
+  }
+}

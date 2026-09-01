@@ -1,0 +1,173 @@
+/**
+ * All purchasable equipment. Data-driven: adding a tier requires no code.
+ * `stats` fields are read by FishingSystem / weapons / storage.
+ */
+
+export const ROD_TIERS = [
+  { id: 'rod_stick', name: 'Bent Stick', icon: '🥢', price: 0, tier: 0, shopTier: 1,
+    desc: 'It is a stick. Someone tied string to it. That someone was you.',
+    stats: { castPower: 9, reelSpeed: 0.8, maxWeight: 3, hookChance: 0.62, control: 0.4, bend: 1.0, lureRange: 1.0 } },
+  { id: 'rod_old', name: 'Old Fishing Rod', icon: '🎣', price: 55, tier: 1, shopTier: 1,
+    desc: 'Found in the wreck. Smells like the previous owner.',
+    stats: { castPower: 13, reelSpeed: 1.0, maxWeight: 8, hookChance: 0.7, control: 0.55, bend: 1.0, lureRange: 1.05 } },
+  { id: 'rod_cheap', name: 'Cheap Rod', icon: '🎣', price: 320, tier: 2, shopTier: 1,
+    desc: 'Mass produced, honestly fine, disappointingly unremarkable.',
+    stats: { castPower: 17, reelSpeed: 1.18, maxWeight: 22, hookChance: 0.76, control: 0.66, bend: 0.92, lureRange: 1.12 } },
+  { id: 'rod_carbon', name: 'Carbon Rod', icon: '🎣', price: 1900, tier: 3, shopTier: 2,
+    desc: 'Light, springy, and smug about it.',
+    stats: { castPower: 22, reelSpeed: 1.36, maxWeight: 60, hookChance: 0.82, control: 0.76, bend: 0.82, lureRange: 1.2 } },
+  { id: 'rod_heavy', name: 'Heavy Rod', icon: '🎣', price: 8400, tier: 4, shopTier: 3,
+    desc: 'Built for things that fight back. Your shoulders will complain.',
+    stats: { castPower: 25, reelSpeed: 1.3, maxWeight: 180, hookChance: 0.85, control: 0.84, bend: 0.66, lureRange: 1.28 } },
+  { id: 'rod_ocean', name: 'Ocean Rod', icon: '🎣', price: 32000, tier: 5, shopTier: 4,
+    desc: 'Deep-water rated. Comes with a warning label in six languages.',
+    stats: { castPower: 31, reelSpeed: 1.5, maxWeight: 520, hookChance: 0.88, control: 0.9, bend: 0.58, lureRange: 1.4 } },
+  { id: 'rod_monster', name: 'Monster Rod', icon: '🎣', price: 145000, tier: 6, shopTier: 5,
+    desc: 'The handle is a winch. The rod is a crane. This is not fishing any more.',
+    stats: { castPower: 37, reelSpeed: 1.72, maxWeight: 2200, hookChance: 0.91, control: 0.95, bend: 0.44, lureRange: 1.55 } },
+  { id: 'rod_experimental', name: 'Experimental Rod', icon: '🛸', price: 900000, tier: 7, shopTier: 7,
+    desc: 'Hums. Occasionally answers questions you did not ask out loud.',
+    stats: { castPower: 46, reelSpeed: 2.1, maxWeight: 30000, hookChance: 0.96, control: 1.0, bend: 0.3, lureRange: 1.9 } },
+];
+
+export const LINE_TIERS = [
+  { id: 'line_string', name: 'Old String', icon: '🧵', price: 0, tier: 0, shopTier: 1,
+    desc: 'Technically string. Emotionally, a suggestion.',
+    stats: { strength: 55, elasticity: 0.36, drag: 1.0, length: 34 } },
+  { id: 'line_mono', name: 'Mono Line', icon: '🧵', price: 90, tier: 1, shopTier: 1,
+    desc: 'Actual fishing line. Revolutionary.',
+    stats: { strength: 140, elasticity: 0.3, drag: 0.94, length: 46 } },
+  { id: 'line_braided', name: 'Braided Line', icon: '🪢', price: 700, tier: 2, shopTier: 2,
+    desc: 'Thin, mean, and completely unforgiving of slack.',
+    stats: { strength: 420, elasticity: 0.2, drag: 0.86, length: 62 } },
+  { id: 'line_reinforced', name: 'Reinforced Line', icon: '🪢', price: 4200, tier: 3, shopTier: 3,
+    desc: 'Rated for things with opinions.',
+    stats: { strength: 1400, elasticity: 0.16, drag: 0.8, length: 78 } },
+  { id: 'line_steel', name: 'Steel Fishing Cable', icon: '⛓️', price: 26000, tier: 4, shopTier: 4,
+    desc: 'You could tow a car. People have.',
+    stats: { strength: 6500, elasticity: 0.09, drag: 0.74, length: 95 } },
+  { id: 'line_experimental', name: 'Experimental Cable', icon: '⛓️', price: 420000, tier: 5, shopTier: 6,
+    desc: 'Does not stretch. Does not break. Does not explain itself.',
+    stats: { strength: 90000, elasticity: 0.04, drag: 0.6, length: 130 } },
+];
+
+export const REEL_TIERS = [
+  { id: 'reel_old', name: 'Old Reel', icon: '🌀', price: 0, tier: 0, shopTier: 1,
+    desc: 'Squeaks. Grinds. Occasionally reels.',
+    stats: { reelRate: 1.0, recovery: 1.0, autoReel: 0, dragControl: 0.4 } },
+  { id: 'reel_fast', name: 'Fast Reel', icon: '🌀', price: 240, tier: 1, shopTier: 1,
+    desc: 'Faster. Louder. Still squeaks.',
+    stats: { reelRate: 1.32, recovery: 1.1, autoReel: 0, dragControl: 0.55 } },
+  { id: 'reel_heavy', name: 'Heavy Reel', icon: '⚙️', price: 2600, tier: 2, shopTier: 2,
+    desc: 'Geared for weight, not speed. Your wrist thanks you.',
+    stats: { reelRate: 1.18, recovery: 1.6, autoReel: 0, dragControl: 0.75 } },
+  { id: 'reel_electric', name: 'Electric Reel', icon: '🔌', price: 19000, tier: 3, shopTier: 4,
+    desc: 'Reels itself, slowly, while you consider your choices.',
+    stats: { reelRate: 1.7, recovery: 1.8, autoReel: 0.28, dragControl: 0.88 } },
+  { id: 'reel_industrial', name: 'Industrial Reel', icon: '🏭', price: 210000, tier: 4, shopTier: 6,
+    desc: 'Rated in tonnes. Fishing licence not included.',
+    stats: { reelRate: 2.3, recovery: 2.6, autoReel: 0.6, dragControl: 1.0 } },
+];
+
+export const BAIT_TYPES = [
+  { id: 'bait_none', name: 'Bare Hook', icon: '🪝', price: 0, tier: 0, shopTier: 1, consumable: false,
+    desc: 'Optimism as a strategy.',
+    stats: { attract: 0.55, rareBonus: 1.0, bigBonus: 1.0 } },
+  { id: 'bait_worm', name: 'Worms', icon: '🪱', price: 8, tier: 1, shopTier: 1, consumable: true, stack: 25,
+    desc: 'Universally appetising. Universally unpleasant.',
+    stats: { attract: 1.25, rareBonus: 1.0, bigBonus: 1.0 } },
+  { id: 'bait_shrimp', name: 'Shrimp', icon: '🦐', price: 26, tier: 2, shopTier: 1, consumable: true, stack: 25,
+    desc: 'Works on almost everything with a mouth.',
+    stats: { attract: 1.5, rareBonus: 1.15, bigBonus: 1.1 } },
+  { id: 'bait_squid', name: 'Squid Strips', icon: '🦑', price: 70, tier: 3, shopTier: 2, consumable: true, stack: 25,
+    desc: 'Tough, oily, and irresistible to large idiots.',
+    stats: { attract: 1.7, rareBonus: 1.25, bigBonus: 1.45 } },
+  { id: 'bait_lure', name: 'Flash Lure', icon: '✨', price: 260, tier: 4, shopTier: 2, consumable: false,
+    desc: 'Reusable. Spins. Deeply annoying to fish.',
+    stats: { attract: 1.55, rareBonus: 1.6, bigBonus: 1.2 } },
+  { id: 'bait_glow', name: 'Glow Bait', icon: '💡', price: 900, tier: 5, shopTier: 4, consumable: true, stack: 40,
+    desc: 'For the dark places. Slightly radioactive, allegedly.',
+    stats: { attract: 1.9, rareBonus: 2.0, bigBonus: 1.3, deepBonus: 2.2 } },
+  { id: 'bait_chum', name: 'Chum Bucket', icon: '🪣', price: 2400, tier: 6, shopTier: 5, consumable: true, stack: 15,
+    desc: 'Attracts everything nearby, including the things you were avoiding.',
+    stats: { attract: 3.2, rareBonus: 1.4, bigBonus: 2.1, danger: 1.8 } },
+  { id: 'bait_legendary', name: 'Abyssal Pheromone', icon: '🧪', price: 34000, tier: 7, shopTier: 7, consumable: true, stack: 10,
+    desc: 'The label just says DO NOT INHALE and a small drawing of a scream.',
+    stats: { attract: 2.4, rareBonus: 6.0, bigBonus: 2.4, deepBonus: 3.0, danger: 2.5 } },
+];
+
+export const TOOLS = [
+  { id: 'tool_hands', name: 'Bare Hands', icon: '🖐️', price: 0, tier: 0, shopTier: 1, slot: 'tool',
+    desc: 'Free. Ineffective. Character building.',
+    stats: { damage: 4, range: 2.2, rate: 0.55, knockback: 2 } },
+  { id: 'tool_net', name: 'Landing Net', icon: '🥅', price: 180, tier: 1, shopTier: 1, slot: 'tool',
+    desc: 'Scoop fish out of the water without the drama.',
+    stats: { damage: 0, range: 3.2, rate: 0.9, scoop: true, scoopWeight: 25 } },
+  { id: 'tool_club', name: 'Fish Club', icon: '🏏', price: 320, tier: 1, shopTier: 1, slot: 'tool',
+    desc: 'Ends arguments. Increases the value of a fresh catch.',
+    stats: { damage: 26, range: 2.6, rate: 0.75, knockback: 9, freshness: 1.12 } },
+  { id: 'tool_gaff', name: 'Gaff Hook', icon: '🪝', price: 1200, tier: 2, shopTier: 2, slot: 'tool',
+    desc: 'Drag heavy things closer without getting in the water.',
+    stats: { damage: 34, range: 4.0, rate: 0.7, pull: 14, knockback: 6 } },
+  { id: 'tool_knife', name: 'Filleting Knife', icon: '🔪', price: 850, tier: 2, shopTier: 2, slot: 'tool',
+    desc: 'Turns raw fish into cleaned fish, on the spot, for more money.',
+    stats: { damage: 18, range: 2.2, rate: 1.2, process: 1 } },
+  { id: 'tool_spear', name: 'Spear', icon: '🔱', price: 900, tier: 2, shopTier: 2, slot: 'weapon',
+    desc: 'Throw it. Go get it. Repeat.',
+    stats: { damage: 45, range: 30, rate: 0.6, projectile: 'spear', speed: 26, gravity: 12, ammo: -1 } },
+  { id: 'tool_harpoon', name: 'Harpoon', icon: '🗡️', price: 4600, tier: 3, shopTier: 3, slot: 'weapon',
+    desc: 'Rope attached. Pull the fish in. Or get pulled.',
+    stats: { damage: 120, range: 45, rate: 0.45, projectile: 'harpoon', speed: 34, gravity: 9, tethered: true, ammo: -1 } },
+  { id: 'tool_harpoon_gun', name: 'Harpoon Gun', icon: '🔫', price: 24000, tier: 4, shopTier: 4, slot: 'weapon',
+    desc: 'Compressed air. Significant recoil. Genuinely irresponsible.',
+    stats: { damage: 320, range: 80, rate: 1.1, projectile: 'harpoon', speed: 62, gravity: 5, tethered: true, recoil: 6, reload: 1.6, magazine: 3, ammo: -1 } },
+  { id: 'tool_heavy_harpoon', name: 'Heavy Harpoon', icon: '💥', price: 130000, tier: 5, shopTier: 5, slot: 'weapon',
+    desc: 'Fires a harpoon roughly the size of a fence post.',
+    stats: { damage: 1400, range: 110, rate: 0.5, projectile: 'heavy_harpoon', speed: 78, gravity: 6, tethered: true, recoil: 14, reload: 2.4, magazine: 2, ammo: -1, explosive: 0 } },
+  { id: 'tool_deck_launcher', name: 'Deck Launcher', icon: '🚀', price: 620000, tier: 6, shopTier: 6, slot: 'weapon',
+    desc: 'Deck-mounted. Fires a net the size of a tennis court.',
+    stats: { damage: 900, range: 140, rate: 0.4, projectile: 'net', speed: 48, gravity: 8, netRadius: 7, reload: 3.2, magazine: 1, ammo: -1 } },
+  { id: 'tool_pneumatic', name: 'Pneumatic Fishing Device', icon: '🌪️', price: 1800000, tier: 7, shopTier: 7, slot: 'weapon',
+    desc: 'Technically a vacuum. Legally, nobody has decided yet.',
+    stats: { damage: 220, range: 26, rate: 8, projectile: 'suction', suction: 34, continuous: true, ammo: -1 } },
+  { id: 'tool_experimental', name: 'Experimental Fishing Device', icon: '⚡', price: 9000000, tier: 8, shopTier: 8, slot: 'weapon',
+    desc: 'The manual is one page and it is a diagram of a shrug.',
+    stats: { damage: 9000, range: 200, rate: 1.4, projectile: 'beam', speed: 400, gravity: 0, explosive: 6, reload: 1.0, magazine: 4, ammo: -1 } },
+];
+
+export const STORAGE_TIERS = [
+  { id: 'store_basket', name: 'Starter Basket', icon: '🧺', price: 0, tier: 0, shopTier: 1, stats: { capacity: 15 },
+    desc: 'Holds about one respectable fish.' },
+  { id: 'store_backpack', name: 'Fishing Backpack', icon: '🎒', price: 190, tier: 1, shopTier: 1, stats: { capacity: 45 },
+    desc: 'Straps. Pockets. Ambition.' },
+  { id: 'store_crate', name: 'Fish Crate', icon: '📦', price: 1100, tier: 2, shopTier: 2, stats: { capacity: 120 },
+    desc: 'You drag it behind you. It is not elegant.' },
+  { id: 'store_cooler', name: 'Insulated Cooler', icon: '🧊', price: 7500, tier: 3, shopTier: 3, stats: { capacity: 320, freshness: 1.1 },
+    desc: 'Keeps the catch fresh, which keeps the price high.' },
+  { id: 'store_hauler', name: 'Powered Hauler', icon: '🛻', price: 46000, tier: 4, shopTier: 4, stats: { capacity: 1100, freshness: 1.18 },
+    desc: 'A motorised trolley that follows you around judging your posture.' },
+  { id: 'store_exo', name: 'Cargo Exoframe', icon: '🦾', price: 380000, tier: 5, shopTier: 6, stats: { capacity: 6000, freshness: 1.3 },
+    desc: 'You are now, functionally, a forklift.' },
+];
+
+export const CATEGORY = {
+  rod: { name: 'Rods', icon: '🎣', list: ROD_TIERS, slot: 'rod' },
+  line: { name: 'Lines', icon: '🧵', list: LINE_TIERS, slot: 'line' },
+  reel: { name: 'Reels', icon: '🌀', list: REEL_TIERS, slot: 'reel' },
+  bait: { name: 'Bait', icon: '🪱', list: BAIT_TYPES, slot: 'bait' },
+  tool: { name: 'Tools & Weapons', icon: '🔱', list: TOOLS, slot: 'tool' },
+  storage: { name: 'Storage', icon: '🧺', list: STORAGE_TIERS, slot: 'storage' },
+};
+
+const ALL = [...ROD_TIERS, ...LINE_TIERS, ...REEL_TIERS, ...BAIT_TYPES, ...TOOLS, ...STORAGE_TIERS];
+export const ITEM_BY_ID = Object.fromEntries(ALL.map((i) => [i.id, i]));
+export function getItem(id) { return ITEM_BY_ID[id] || null; }
+export function itemsForShop(shopTier) { return ALL.filter((i) => (i.shopTier ?? 1) <= shopTier); }
+export function categoryOf(id) {
+  for (const [k, c] of Object.entries(CATEGORY)) if (c.list.some((i) => i.id === id)) return k;
+  return null;
+}
+export const STARTING_LOADOUT = {
+  rod: 'rod_stick', line: 'line_string', reel: 'reel_old',
+  bait: 'bait_none', tool: 'tool_hands', storage: 'store_basket',
+};

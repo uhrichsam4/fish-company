@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<base href="/" />
+<title>FX Preview — Fish Company</title>
+<!--
+  Standalone VFX bench for src/fx/*.
+  Serve with the project's dev server:  http://localhost:5178/tools/fxPreview.html
+
+  The import map below is the no-bundler fallback (open the file through any
+  static server and it still runs). Under Vite the bare "three" specifier is
+  rewritten server-side to the pre-bundled dep, which is exactly what
+  /src/fx/*.js gets too — so both sides always share ONE THREE instance.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "three": "/node_modules/three/build/three.module.js",
+    "three/": "/node_modules/three/"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1620;
+    font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e6f2f8; }
+  #cv { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #ui-root { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  #panel {
+    position: fixed; left: 10px; top: 10px; z-index: 40; width: 330px;
+    max-height: calc(100vh - 20px); overflow-y: auto;
+    background: rgba(7,18,28,.82); border: 1px solid #1e3a4d; border-radius: 8px;
+    padding: 8px 9px 11px; backdrop-filter: blur(7px);
+  }
+  h1 { font-size: 12px; margin: 0 0 6px; letter-spacing: .12em; color: #45e0d0; text-transform: uppercase; }
+  h2 { font-size: 10px; margin: 9px 0 4px; letter-spacing: .14em; color: #6d90a5; text-transform: uppercase; }
+  .row { display: flex; flex-wrap: wrap; gap: 4px; }
+  button {
+    background: #14293a; color: #d7ecf7; border: 1px solid #27506b; border-radius: 5px;
+    padding: 4px 7px; cursor: pointer; font: inherit; transition: background .1s, border-color .1s;
+  }
+  button:hover { background: #1d3b53; border-color: #3d7fa5; }
+  button.on { background: #1c6a5f; border-color: #45e0d0; color: #ccfff8; }
+  button.hero { background: #1e4d6b; border-color: #47a3d8; font-weight: 700; }
+  #stats { position: fixed; right: 10px; top: 10px; z-index: 40; text-align: right;
+    background: rgba(7,18,28,.8); border: 1px solid #1e3a4d; border-radius: 8px; padding: 7px 10px; }
+  #stats b { color: #45e0d0; font-weight: 700; }
+  .hint { color: #66869a; margin-top: 7px; font-size: 10px; line-height: 1.5; }
+  #err { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 60;
+    max-width: 80vw; color: #ff9b8a; background: rgba(40,8,8,.9); border: 1px solid #7a2a2a;
+    border-radius: 6px; padding: 6px 10px; white-space: pre-wrap; display: none; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="ui-root"></div>
+<div id="stats">
+  <div>fps <b id="fps">–</b></div>
+  <div>draws <span id="draws">–</span> · tris <span id="tris">–</span></div>
+  <div>spawns/s <span id="sps">–</span> · live <span id="live">–</span></div>
+</div>
+<div id="panel">
+  <h1>FX Preview</h1>
+  <h2>Water</h2>
+  <div class="row" id="g-water"></div>
+  <h2>Combat / World</h2>
+  <div class="row" id="g-combat"></div>
+  <h2>Reward &amp; Feel</h2>
+  <div class="row" id="g-feel"></div>
+  <h2>Persistent</h2>
+  <div class="row" id="g-persist"></div>
+  <h2>Weather / Ambience</h2>
+  <div class="row" id="g-weather"></div>
+  <h2>Bench</h2>
+  <div class="row" id="g-bench"></div>
+  <div class="hint">drag = orbit · wheel = zoom · right-drag = pan<br>keys 1-9 fire the first nine effects</div>
+</div>
+<div id="err"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { Effects } from '/src/fx/Effects.js';
+import { GERSTNER_GLSL, waveState, waterHeightAt } from '/src/world/waves.js';
+import { bus } from '/src/core/EventBus.js';
+
+const errEl = document.getElementById('err');
+const fail = (e) => {
+  console.error(e);
+  errEl.style.display = 'block';
+  errEl.textContent = String(e?.stack || e?.message || e).slice(0, 600);
+};
+window.addEventListener('error', (e) => fail(e.error || e.message));
+window.addEventListener('unhandledrejection', (e) => fail(e.reason));
+
+// ---------------------------------------------------------------- renderer
+const canvas = document.getElementById('cv');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.info.autoReset = false;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x89c6e8);
+scene.fog = new THREE.FogExp2(0x9fd0e8, 0.0038);
+
+const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.08, 900);
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight, false);
+});
+
+// ---------------------------------------------------------------- lighting
+scene.add(new THREE.HemisphereLight(0xbfe4ff, 0x2c4a52, 1.15));
+const sun = new THREE.DirectionalLight(0xfff2d6, 2.1);
+sun.position.set(9, 14, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.setScalar(1024);
+sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18;
+sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
+scene.add(sun);
+
+// ---------------------------------------------------------------- water
+waveState.amplitude = 0.65;
+waveState.seaLevel = 0;
+
+const waterUniforms = {
+  uTime: { value: 0 },
+  uAmplitude: { value: 1 },
+  uWaves: { value: waveState.waves.map((w) => new THREE.Vector4(w[0], w[1], w[2], w[3])) },
+  uShallow: { value: new THREE.Color(0x1f9f95) },
+  uDeep: { value: new THREE.Color(0x0d4f7d) },
+  uSun: { value: new THREE.Vector3(0.45, 0.72, 0.3).normalize() },
+  uFogColor: { value: new THREE.Color(0x9fd0e8) },
+  uFogDensity: { value: 0.0038 },
+};
+const water = new THREE.Mesh(
+  new THREE.PlaneGeometry(300, 300, 220, 220).rotateX(-Math.PI / 2),
+  new THREE.ShaderMaterial({
+    uniforms: waterUniforms,
+    vertexShader: `
+      ${GERSTNER_GLSL}
+      uniform float uFogDensity;
+      varying vec3 vN; varying vec3 vW; varying float vFog;
+      void main() {
+        vec3 t, b;
+        vec3 d = gerstner(position.xz, t, b);
+        vec3 p = position + d;
+        vN = normalize(cross(b, t));
+        vW = p;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        float fd = uFogDensity * -mv.z; vFog = 1.0 - exp(-fd * fd);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform vec3 uShallow, uDeep, uSun, uFogColor;
+      varying vec3 vN; varying vec3 vW; varying float vFog;
+      void main() {
+        vec3 n = normalize(vN);
+        vec3 v = normalize(cameraPosition - vW);
+        float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+        float d = clamp(length(vW.xz) / 55.0, 0.0, 1.0);
+        vec3 col = mix(uShallow, uDeep, d * 0.85);
+        col = mix(col, vec3(0.62, 0.82, 0.95), fres * 0.75);
+        float spec = pow(max(dot(reflect(-uSun, n), v), 0.0), 90.0);
+        col += vec3(1.0, 0.96, 0.85) * spec * 1.6;
+        col = mix(col, uFogColor, vFog);
+        gl_FragColor = vec4(col, 1.0);
+        #include <colorspace_fragment>
+      }`,
+    side: THREE.DoubleSide,
+  }),
+);
+water.receiveShadow = false;
+scene.add(water);
+
+// seabed so the world reads as a place, and so debris has something under it
+const seabed = new THREE.Mesh(
+  new THREE.PlaneGeometry(300, 300).rotateX(-Math.PI / 2),
+  new THREE.MeshLambertMaterial({ color: 0x2a5f63 }),
+);
+seabed.position.y = -6;
+scene.add(seabed);
+
+// a dock to bounce impact debris off
+const dock = new THREE.Mesh(
+  new THREE.BoxGeometry(7, 1.0, 5),
+  new THREE.MeshLambertMaterial({ color: 0x9a7248 }),
+);
+dock.position.set(-6.5, 0.5, 0);
+dock.castShadow = dock.receiveShadow = true;
+scene.add(dock);
+const DOCK_TOP = 1.0;
+
+// moving props for the persistent emitters
+const boat = new THREE.Mesh(
+  new THREE.BoxGeometry(1.5, 0.55, 3.2),
+  new THREE.MeshLambertMaterial({ color: 0xd8452f }),
+);
+boat.castShadow = true;
+scene.add(boat);
+
+const fish = new THREE.Mesh(
+  new THREE.SphereGeometry(0.3, 16, 12),
+  new THREE.MeshLambertMaterial({ color: 0xffd23c }),
+);
+scene.add(fish);
+
+// ---------------------------------------------------------------- camera rig
+const orbit = { target: new THREE.Vector3(-1.5, 0.9, 0), dist: 15, yaw: 0.62, pitch: 0.24, dragging: 0 };
+function applyCam() {
+  const cp = Math.cos(orbit.pitch), sp = Math.sin(orbit.pitch);
+  camera.position.set(
+    orbit.target.x + Math.sin(orbit.yaw) * cp * orbit.dist,
+    orbit.target.y + sp * orbit.dist,
+    orbit.target.z + Math.cos(orbit.yaw) * cp * orbit.dist,
+  );
+  camera.lookAt(orbit.target);
+}
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('pointerdown', (e) => { orbit.dragging = e.button === 2 ? 2 : 1; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointerup', (e) => { orbit.dragging = 0; canvas.releasePointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', (e) => {
+  if (!orbit.dragging) return;
+  if (orbit.dragging === 1) {
+    orbit.yaw -= e.movementX * 0.005;
+    orbit.pitch = Math.max(-1.45, Math.min(1.45, orbit.pitch + e.movementY * 0.005));
+  } else {
+    const s = orbit.dist * 0.0016;
+    orbit.target.x -= (Math.cos(orbit.yaw) * e.movementX - Math.sin(orbit.yaw) * e.movementY * 0.4) * s;
+    orbit.target.z += (Math.sin(orbit.yaw) * e.movementX + Math.cos(orbit.yaw) * e.movementY * 0.4) * s;
+    orbit.target.y += e.movementY * s * 0.6;
+  }
+  applyCam();
+});
+canvas.addEventListener('wheel', (e) => {
+  orbit.dist = Math.max(1.2, Math.min(90, orbit.dist * (1 + Math.sign(e.deltaY) * 0.12)));
+  applyCam();
+}, { passive: true });
+applyCam();
+/** Console helper: FOCUS(x, y, z, dist) — frame an effect for close inspection. */
+window.FOCUS = (x = 0, y = 0.3, z = 0, dist = 4.5, yaw, pitch) => {
+  orbit.target.set(x, y, z);
+  orbit.dist = dist;
+  if (yaw !== undefined) orbit.yaw = yaw;
+  if (pitch !== undefined) orbit.pitch = pitch;
+  applyCam();
+};
+window.ORBIT = orbit;
+
+// ---------------------------------------------------------------- fake game
+const game = {
+  scene, camera, renderer,
+  quality: 'high',
+  timeScale: 1,
+  dt: 1 / 60, rawDt: 1 / 60,
+  settings: { particles: 1 },
+};
+window.GAME = game;
+
+const fx = new Effects(game);
+await fx.init(game);
+window.FX = fx;
+bus.on('player:shake', (a) => { shakeAmt = Math.max(shakeAmt, a); });
+
+// ---------------------------------------------------------------- buttons
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+let wakeHandle = null, trailHandle = null, auraHandle = null;
+let rainLvl = 0, snowLvl = 0, motesOn = false, raysOn = false, stress = false;
+let shakeAmt = 0;
+
+let lastFire = null, repeatOn = false, repeatAcc = 0;
+
+function btn(group, label, fn, opts = {}) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  if (opts.hero) b.classList.add('hero');
+  b.onclick = () => {
+    try { fn(b); } catch (e) { fail(e); }
+    if (!opts.toggle) lastFire = () => { try { fn(b); } catch (e) { fail(e); } };
+  };
+  document.getElementById(group).appendChild(b);
+  return b;
+}
+
+const surf = (x, z) => V(x, waterHeightAt(x, z), z);
+
+btn('g-water', 'splash', () => bus.emit('fx:splash', { position: surf(0, 0), scale: 1 }), { hero: true });
+btn('g-water', 'splash ×0.4', () => fx.splash(surf(2, 1.5), { scale: 0.4 }));
+btn('g-water', 'splash ×2', () => fx.splash(surf(-2, 1.5), { scale: 2 }));
+btn('g-water', 'bigSplash', () => bus.emit('fx:bigSplash', { position: surf(0, -2), scale: 2.4 }), { hero: true });
+btn('g-water', 'ripple', () => bus.emit('fx:ripple', { position: surf(3, -3), radius: 3 }));
+btn('g-water', 'bubbles', () => bus.emit('fx:bubbles', { position: V(1.5, -2.2, 2), count: 24 }));
+btn('g-water', 'spray', () => fx.spray(surf(4, 0), V(1, 0.35, 0), { amount: 1.4 }));
+btn('g-water', 'steam', () => bus.emit('fx:steam', { position: V(-3, -4.5, 3) }));
+
+btn('g-combat', 'wood', () => fx.impact(V(-6.5, DOCK_TOP, 0), V(0, 1, 0), { kind: 'wood' }));
+btn('g-combat', 'metal', () => fx.impact(V(-5.5, DOCK_TOP, 1), V(0, 1, 0), { kind: 'metal' }));
+btn('g-combat', 'stone', () => fx.impact(V(-7.5, DOCK_TOP, 1), V(0, 1, 0), { kind: 'stone' }));
+btn('g-combat', 'flesh', () => fx.impact(V(-6.5, DOCK_TOP, -1.4), V(0, 1, 0), { kind: 'flesh' }));
+btn('g-combat', 'ice', () => fx.impact(V(-5.2, DOCK_TOP, -1), V(0, 1, 0), { kind: 'ice' }));
+btn('g-combat', 'water', () => fx.impact(surf(-3, -1), V(0, 1, 0), { kind: 'water' }));
+btn('g-combat', 'muzzle', () => bus.emit('fx:muzzle', { position: V(-4, 1.6, 2), direction: V(1, 0.12, -0.35) }));
+btn('g-combat', 'explosion', () => bus.emit('fx:explosion', { position: V(2, 1.2, -4), scale: 1.2 }), { hero: true });
+btn('g-combat', 'lightning', () => bus.emit('fx:lightning', { from: V(4, 16, -6), to: surf(4, -6) }), { hero: true });
+btn('g-combat', 'hitMarker', () => bus.emit('fx:hitMarker', { position: V(0, 2.2, 0) }));
+
+btn('g-feel', 'moneyBurst', () => bus.emit('fx:moneyBurst', { position: V(-6.5, DOCK_TOP + 0.4, 0), amount: 4200 }), { hero: true });
+btn('g-feel', 'sparkle', () => bus.emit('fx:sparkle', { position: V(3, 1.4, 2), count: 20, radius: 0.8 }));
+btn('g-feel', 'dustPuff', () => bus.emit('fx:dustPuff', { position: V(-6.5, DOCK_TOP, 1.8), scale: 1.2 }));
+btn('g-feel', 'leafBurst', () => bus.emit('fx:leafBurst', { position: V(6, 3, 3) }));
+btn('g-feel', 'screenFlash', () => bus.emit('fx:screenFlash', { color: 'rgba(255,255,255,.55)', duration: 0.3 }));
+btn('g-feel', 'shake', () => fx.shake(0.6, 0.4));
+btn('g-feel', 'hitStop', () => fx.hitStop(0.1));
+
+btn('g-persist', 'wake', (b) => {
+  if (wakeHandle) { wakeHandle.stop(); wakeHandle = null; b.classList.remove('on'); }
+  else { wakeHandle = fx.wake(boat, { width: 1.7, spread: 1.1, sprayRate: 12 }); b.classList.add('on'); }
+});
+btn('g-persist', 'bubbleTrail', (b) => {
+  if (trailHandle) { trailHandle.stop(); trailHandle = null; b.classList.remove('on'); }
+  else { trailHandle = fx.bubbleTrail(fish, { rate: 26, spread: 0.18 }); b.classList.add('on'); }
+});
+btn('g-persist', 'rareAura', (b) => {
+  if (auraHandle) { auraHandle.stop(); auraHandle = null; b.classList.remove('on'); }
+  else { auraHandle = fx.rareAura(fish, { color: 0xc48cff, intensity: 1.3 }); b.classList.add('on'); }
+});
+
+btn('g-weather', 'rain', (b) => {
+  rainLvl = rainLvl >= 1 ? 0 : (rainLvl ? 1 : 0.55);
+  fx.weatherRain(rainLvl);
+  b.classList.toggle('on', rainLvl > 0);
+  b.textContent = rainLvl ? `rain ${rainLvl}` : 'rain';
+});
+btn('g-weather', 'snow', (b) => {
+  snowLvl = snowLvl >= 1 ? 0 : (snowLvl ? 1 : 0.6);
+  fx.weatherSnow(snowLvl);
+  b.classList.toggle('on', snowLvl > 0);
+  b.textContent = snowLvl ? `snow ${snowLvl}` : 'snow';
+});
+btn('g-weather', 'motes', (b) => { motesOn = !motesOn; fx.underwaterMotes(motesOn, 0.8); b.classList.toggle('on', motesOn); });
+btn('g-weather', 'godRays', (b) => { raysOn = !raysOn; fx.godRays(raysOn); b.classList.toggle('on', raysOn); });
+btn('g-weather', 'dive', (b) => {
+  const under = camera.position.y > 0;
+  orbit.target.set(0, under ? -3.2 : 0.4, 0);
+  orbit.pitch = under ? 0.12 : 0.32;
+  orbit.dist = under ? 5 : 12;
+  applyCam();
+  b.classList.toggle('on', under);
+});
+
+btn('g-bench', 'FIRE ALL', () => fireAll(), { hero: true });
+btn('g-bench', 'repeat', (b) => { repeatOn = !repeatOn; b.classList.toggle('on', repeatOn); }, { toggle: true });
+btn('g-bench', 'slow-mo', (b) => {
+  game.timeScale = game.timeScale === 1 ? 0.25 : game.timeScale === 0.25 ? 0.08 : 1;
+  b.textContent = game.timeScale === 1 ? 'slow-mo' : `slow ${game.timeScale}`;
+  b.classList.toggle('on', game.timeScale !== 1);
+}, { toggle: true });
+btn('g-bench', 'stress', (b) => { stress = !stress; b.classList.toggle('on', stress); });
+btn('g-bench', 'clear', () => fx.clear());
+btn('g-bench', 'quality', (b) => {
+  game.quality = game.quality === 'high' ? 'medium' : game.quality === 'medium' ? 'low' : 'high';
+  bus.emit('quality:changed', game.quality);
+  b.textContent = `q:${game.quality}`;
+});
+
+function fireAll() {
+  const t = performance.now() * 0.001;
+  fx.splash(surf(0, 0), { scale: 1.2 });
+  fx.bigSplash(surf(-3.5, -3), { scale: 2 });
+  fx.spray(surf(4, 1), V(1, 0.4, 0.2), { amount: 1.5 });
+  fx.bubbles(V(1.5, -2.4, 2), 22);
+  fx.impact(V(-6.5, DOCK_TOP, 0), V(0, 1, 0), { kind: 'wood' });
+  fx.impact(V(-5.5, DOCK_TOP, 1.4), V(0, 1, 0), { kind: 'metal' });
+  fx.impact(V(-7.4, DOCK_TOP, -1.2), V(0, 1, 0), { kind: 'stone' });
+  fx.impact(V(-6.2, DOCK_TOP, -2), V(0, 1, 0), { kind: 'ice' });
+  fx.muzzle(V(-4, 1.6, 2.4), V(1, 0.1, -0.3));
+  fx.explosion(V(3, 1.4, -4), { scale: 1.3 });
+  fx.moneyBurst(V(-6.5, DOCK_TOP + 0.5, 0), { amount: 9000 });
+  fx.sparkle(V(3, 1.5, 2), { count: 22 });
+  fx.dustPuff(V(-6.5, DOCK_TOP, 1.9), { scale: 1.3 });
+  fx.leafBurst(V(6, 3, 3));
+  fx.steam(V(-2, -4.4, 3.5));
+  fx.hitMarker(V(0, 2.4, 0));
+  fx.ripple(surf(2 + Math.sin(t) * 2, -3), 3);
+  fx.lightning(V(5, 16, -7), surf(5, -7));
+}
+
+addEventListener('keydown', (e) => {
+  const i = '123456789'.indexOf(e.key);
+  if (i >= 0) document.querySelectorAll('#panel button')[i]?.click();
+});
+
+// ---------------------------------------------------------------- loop
+const clock = new THREE.Clock();
+let acc = 0, frames = 0, spawnPrev = 0, stressAcc = 0;
+const fpsEl = document.getElementById('fps');
+const drawsEl = document.getElementById('draws');
+const trisEl = document.getElementById('tris');
+const spsEl = document.getElementById('sps');
+const liveEl = document.getElementById('live');
+const baseCam = new THREE.Vector3();
+
+function tick() {
+  requestAnimationFrame(tick);
+  const raw = Math.min(clock.getDelta(), 0.1);
+  const dt = raw * game.timeScale;
+  game.rawDt = raw; game.dt = dt;
+
+  waveState.time += dt;
+  waterUniforms.uTime.value = waveState.time;
+  waterUniforms.uAmplitude.value = waveState.amplitude;
+  for (let i = 0; i < 4; i++) {
+    const w = waveState.waves[i];
+    waterUniforms.uWaves.value[i].set(w[0], w[1], w[2], w[3]);
+  }
+
+  const t = clock.getElapsedTime();
+  // boat circles so the wake has something to draw
+  const R = 9;
+  boat.position.set(Math.cos(t * 0.42) * R, 0, Math.sin(t * 0.42) * R);
+  boat.position.y = waterHeightAt(boat.position.x, boat.position.z) + 0.18;
+  boat.rotation.y = -t * 0.42;
+  fish.position.set(Math.sin(t * 0.9) * 2.2, -1.6 + Math.sin(t * 1.7) * 0.5, 2 + Math.cos(t * 0.7) * 1.4);
+
+  if (stress) {
+    stressAcc += raw;
+    if (stressAcc > 0.10) { stressAcc = 0; fireAll(); }
+  }
+  if (repeatOn && lastFire) {
+    repeatAcc += raw;
+    if (repeatAcc > 0.55) { repeatAcc = 0; lastFire(); }
+  }
+
+  fx.update(dt, game);
+
+  // camera shake so `shake()` is actually visible
+  baseCam.copy(camera.position);
+  if (shakeAmt > 0.0005) {
+    camera.position.x += (Math.random() - 0.5) * shakeAmt * 0.5;
+    camera.position.y += (Math.random() - 0.5) * shakeAmt * 0.5;
+    shakeAmt *= Math.pow(0.02, raw);
+  }
+
+  renderer.info.reset();
+  renderer.render(scene, camera);
+  camera.position.copy(baseCam);
+
+  frames++; acc += raw;
+  if (acc >= 0.4) {
+    fpsEl.textContent = (frames / acc).toFixed(0);
+    drawsEl.textContent = renderer.info.render.calls;
+    trisEl.textContent = renderer.info.render.triangles.toLocaleString();
+    spsEl.textContent = Math.round((fx.stats.spawns - spawnPrev) / acc);
+    liveEl.textContent = `${fx.add.spawned + fx.alpha.spawned} tot / ${fx.debris.live} deb`;
+    spawnPrev = fx.stats.spawns;
+    frames = 0; acc = 0;
+  }
+}
+tick();
+console.info('[fxPreview] ready — THREE r' + THREE.REVISION);
+</script>
+</body>
+</html>
