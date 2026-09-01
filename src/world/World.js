@@ -227,7 +227,16 @@ export class World {
       tree.rotation.y = sp.rot;
       tree.scale.setScalar(sp.scale);
       setShadows(tree);
+      // Kept out of the static batch so it can be felled, tilted and regrown.
+      // A batched tree is geometry inside a shared mesh and cannot be touched
+      // individually.
+      tree.userData.noBatch = true;
       treeGroup.add(tree);
+      this.game.get('trees')?.register({
+        object: tree, x: sp.x, z: sp.z, region: def.id,
+        species: biome === 'arctic' || biome === 'rocky' ? 'pine' : 'palm',
+        scale: sp.scale,
+      });
     }
     group.add(treeGroup);
 

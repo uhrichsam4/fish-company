@@ -173,6 +173,29 @@ export class Player {
     }
     game.audio.setUnderwater(this.underwater ? 1 : 0);
 
+    // Wading. Every other water impact in the game already rings the ocean --
+    // hooks, bites, bullets, spears, boats, fish -- but walking through the
+    // shallows left the surface glassy, which reads as running on top of it.
+    // Rate-limited by distance travelled rather than time so it does not
+    // machine-gun ripples while standing still.
+    if (!this.swimming && feetDepth > 0.06 && feetDepth < 1.15) {
+      const moved = Math.hypot(this.position.x - (this._wadeX ?? this.position.x),
+        this.position.z - (this._wadeZ ?? this.position.z));
+      this._wadeDist = (this._wadeDist || 0) + moved;
+      this._wadeX = this.position.x; this._wadeZ = this.position.z;
+      if (this._wadeDist > 0.85) {
+        this._wadeDist = 0;
+        const s = clamp01(feetDepth / 1.15);
+        bus.emit('ocean:ripple', { x: this.position.x, z: this.position.z, strength: 0.14 + s * 0.3 });
+        game.audio.play('splash_small', {
+          volume: 0.12 + s * 0.22, rate: 1.15 + Math.random() * 0.2,
+          position: this.position.clone(), throttle: 120,
+        });
+      }
+    } else {
+      this._wadeX = this.position.x; this._wadeZ = this.position.z; this._wadeDist = 0;
+    }
+
     if (this.underwater) {
       this.oxygen = Math.max(0, this.oxygen - dt * 6.5);
       if (this.oxygen <= 0) this.damage(dt * 9, 'drowning');

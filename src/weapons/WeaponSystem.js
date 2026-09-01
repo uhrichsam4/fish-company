@@ -1236,6 +1236,21 @@ export class WeaponSystem {
 
     _eye.copy(player.eyePosition);
     player.forward(_fwd);
+
+    // Axes fell trees. Checked before the fish sweep so a swing at a trunk is
+    // never eaten by a fish that happens to be behind it.
+    if (stats.chop) {
+      const trees = game.get('trees');
+      const target = trees?.targetAt(player.position, _fwd, (stats.range ?? 3) + 0.6);
+      if (target) {
+        trees.chop(target, stats.chop, game);
+        bus.emit('fx:impact', {
+          position: new THREE.Vector3(target.x, player.eyePosition.y - 0.4, target.z),
+          normal: _fwd.clone().negate(), kind: 'wood', scale: 0.9,
+        });
+        return;
+      }
+    }
     const range = (stats.range ?? 2.4) + 0.4;
     _centre.copy(_eye).addScaledVector(_fwd, range * 0.55);
     const hitR = range * 0.62;
