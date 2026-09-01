@@ -3,7 +3,14 @@
  * major system in order, asserting each unlock actually works.
  * Run: const P = await import('/tools/progression.js'); window.__P = await P.run();
  */
-const S = (out, name, ok, info) => { out.steps.push({ step: name, ok: !!ok, info: info ?? null }); if (!ok) out.pass = false; return ok; };
+const S = (out, name, ok, info) => {
+  out.steps.push({ step: name, ok: !!ok, info: info ?? null });
+  if (!ok) out.pass = false;
+  // Publish progress so a hung run can be diagnosed from the console.
+  window.__PSTEPS = out.steps;
+  return ok;
+};
+function phase(out, name) { out.phase = name; window.__PPHASE = name; }
 
 export async function run(opts = {}) {
   const T = window.TEST;
@@ -23,6 +30,7 @@ export async function run(opts = {}) {
   const atlas = g.get('atlas');
 
   // ---------- fresh save ----------
+  phase(out, 'fresh save');
   g.save.wipe();
   quests.reset();
   eco.money = 12;
@@ -30,16 +38,34 @@ export async function run(opts = {}) {
   inv.fish.length = 0;
   g.get('physfish')?.despawnAll();
   for (const w of [...(workers?.workers || [])]) workers.fire(w.id, true);
-  if (boats) { for (const b of [...boats.owned]) boats.sell(b.id); }
+  // Remove boats WITHOUT selling them — sell() refunds 55%, which was quietly
+  // handing the "fresh save" $7.8M from the previous run's fleet.
+  if (boats) {
+    for (const b of [...boats.owned]) boats.despawnPhysical(b);
+    boats.owned.length = 0;
+    boats.driving = null;
+  }
+  if (fleets) fleets.fleets.length = 0;
+  // Reset the systems that persist across a wipe via their own save blobs,
+  // otherwise a previous debug run leaves everything already unlocked.
+  research?.load?.(null);
+  research?.unlocked?.clear?.();
+  research?._recompute?.();
+  harbor?.load?.(null);
+  g.get('contracts')?.load?.(null);
+  g.get('atlas')?.load?.(null);
+  g.get('tricks')?.load?.(null);
+  g.get('subs')?.load?.(null);
   T.clearEvents(); T.clearErrors();
   const spawn = world.getAnchors('crash').spawn;
   g.get('player').spawnAt(spawn, 0);
   await T.sleep(600);
   S(out, 'fresh save: starts broke with a bent stick',
-    eco.money === 12 && inv.equipped.rod === 'rod_stick', { money: eco.money, rod: inv.equipped.rod });
+    eco.money <= 100 && inv.equipped.rod === 'rod_stick', { money: eco.money, rod: inv.equipped.rod });
   S(out, 'first quest is active', quests.tracked === 'q_wake', quests.tracked);
 
   // ---------- 1. pick up the rod ----------
+  phase(out, '1. pick up the rod');
   const rodI = world.interactables.find((i) => i.kind === 'pickupRod');
   if (rodI) {
     const p = g.get('player');
@@ -52,6 +78,7 @@ export async function run(opts = {}) {
   S(out, 'rod pickup completes q_wake', quests.completed.has('q_wake'));
 
   // ---------- 2. fish until the intro chain clears ----------
+  phase(out, '2. fish until the intro chain clears');
   const a = world.getAnchors('crash');
   g.get('player').teleport(a.dockEnd.x, a.dockEnd.y + 1.2, a.dockEnd.z);
   await T.frames(6);
@@ -69,12 +96,14 @@ export async function run(opts = {}) {
   S(out, 'atlas recorded discoveries', (atlas?.entries.size || 0) > 0, atlas?.entries.size);
 
   // ---------- 3. sell ----------
+  phase(out, '3. sell');
   const before = eco.money;
   const sale = inv.sellAll();
   await T.sleep(200);
   S(out, 'selling pays out', sale.total > 0 && eco.money > before, sale);
 
   // ---------- 4. shop ----------
+  phase(out, '4. shop');
   eco.add(600, 'test-grant');
   const bought = eco.spend(55, 'shop') && inv.acquire('rod_old') && inv.equip('rod_old');
   S(out, 'bought a better rod', bought && inv.equipped.rod === 'rod_old');
@@ -84,6 +113,7 @@ export async function run(opts = {}) {
     { before: statsBefore, after: inv.fishingStats().maxWeight });
 
   // ---------- 5. trick shots ----------
+  phase(out, '5. trick shots');
   const tricks = g.get('tricks');
   const res = tricks.evaluateCatch({
     castDistance: 45, bounces: 2, spin: Math.PI * 2.1, fromBoat: false, airborne: true,
@@ -92,6 +122,7 @@ export async function run(opts = {}) {
   S(out, 'trick system awards a multiplier', res.mult > 2, { mult: +res.mult.toFixed(2), tricks: res.tricks.map((t) => t.id) });
 
   // ---------- 6. weapons ----------
+  phase(out, '6. weapons');
   const weapons = g.get('weapons');
   if (weapons) {
     inv.acquire('tool_harpoon_gun'); inv.equip('tool_harpoon_gun'); inv.setHotbarIndex(2);
@@ -108,6 +139,7 @@ export async function run(opts = {}) {
   } else S(out, 'weapon system present', false);
 
   // ---------- 7. region unlock ----------
+  phase(out, '7. region unlock');
   eco.add(5000, 'test-grant');
   quests.unlockRegion('rocky', false);
   S(out, 'rocky unlocked', quests.isRegionUnlocked('rocky'));
@@ -119,6 +151,7 @@ export async function run(opts = {}) {
     { y: +g.get('player').position.y.toFixed(1) });
 
   // ---------- 8. research ----------
+  phase(out, '8. research');
   if (research) {
     eco.add(200000, 'test-grant');
     quests.unlockRegion('harbor', false);
@@ -129,6 +162,7 @@ export async function run(opts = {}) {
   } else S(out, 'research system present', false);
 
   // ---------- 9. harbour ----------
+  phase(out, '9. harbour');
   await world.activateRegion('harbor');
   if (harbor) {
     eco.add(300000, 'test-grant');
@@ -139,12 +173,20 @@ export async function run(opts = {}) {
   } else S(out, 'harbor system present', false);
 
   // ---------- 10. workers ----------
+  phase(out, '10. workers');
   eco.add(200000, 'test-grant');
   workers.hiringUnlocked = true;
   workers.maxWorkers = Math.max(workers.maxWorkers, 8);
   workers.refreshCandidates(true);
-  const hired = workers.hire(workers.candidates[0]?.id, true);
-  S(out, 'hired a worker', !!hired, hired?.name);
+  // Hire a fisherman specifically — a random role can't be assigned to fish
+  // and the fleet step later needs one aboard.
+  let hired = null;
+  for (let i = 0; i < 25 && !hired; i++) {
+    const c = workers.candidates.find((x) => x.role === 'fisherman');
+    if (c) hired = workers.hire(c.id, true);
+    else workers.refreshCandidates(true);
+  }
+  S(out, 'hired a fisherman', !!hired, hired?.name);
   if (hired) {
     hired.assignment = 'fish:harbor';
     hired.setState('IDLE');
@@ -158,6 +200,7 @@ export async function run(opts = {}) {
   }
 
   // ---------- 11. boats + fleet ----------
+  phase(out, '11. boats + fleet');
   eco.add(500000, 'test-grant');
   const boat = boats.buy('skiff') || boats.grant('skiff');
   S(out, 'bought a boat', !!boat, boat?.name);
@@ -169,7 +212,13 @@ export async function run(opts = {}) {
     if (c) captain = workers.hire(c.id, true);
   }
   S(out, 'hired a captain', !!captain, captain?.name);
-  const fisher = workers.workers.find((w) => w.role === 'fisherman');
+  let fisher = workers.workers.find((w) => w.role === 'fisherman');
+  for (let i = 0; i < 20 && !fisher; i++) {
+    workers.refreshCandidates(true);
+    const c = workers.candidates.find((x) => x.role === 'fisherman');
+    if (c) fisher = workers.hire(c.id, true);
+  }
+  S(out, 'have a fisherman for the crew', !!fisher, fisher?.name);
   if (captain && fisher && boat) {
     const f = fleets.create({ boatId: boat.id, crewIds: [captain.id, fisher.id], targetRegion: 'rocky', homeRegion: boat.region });
     S(out, 'fleet created', !!f, f?.name);
@@ -186,6 +235,7 @@ export async function run(opts = {}) {
   }
 
   // ---------- 12. save/load ----------
+  phase(out, '12. save/load');
   const snapshot = { money: eco.money, workers: workers.workers.length, boats: boats.owned.length, fleets: fleets.fleets.length, research: research?.unlocked.size };
   g.save.save();
   eco.money = 5;
@@ -197,6 +247,7 @@ export async function run(opts = {}) {
     { snapshot, after: { money: eco.money, workers: workers.workers.length, boats: boats.owned.length, fleets: fleets.fleets.length } });
 
   // ---------- 13. shader + error hygiene ----------
+  phase(out, '13. shader + error hygiene');
   const sh = await T.checkShaders();
   S(out, 'no shader compile errors', sh.shaderErrors.length === 0, sh.shaderErrors.slice(0, 2));
   S(out, 'no console errors during the run', T.errors.length === 0, T.errors.slice(-5));

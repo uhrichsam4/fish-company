@@ -107,24 +107,8 @@ export class GamblingPanel extends Panel {
     this.setHeadRight(`<span style="font-family:var(--mono);font-weight:800;color:var(--gold);font-size:17px">${formatMoneyExact(eco.money)}</span>`);
     this.setSubtitle(`house edge ${(HOUSE_EDGE * 100).toFixed(0)}% · in-game money only`);
 
-    const capPct = clamp01(g.lostToday / Math.max(1, g.lossCap));
     const capBar = `
-      <div class="card" style="margin-bottom:14px">
-        <div class="card-row" style="margin-top:0">
-          <div>
-            <div class="card-title" style="margin-bottom:2px">🛟 Daily loss cap</div>
-            <div class="card-desc">The table closes for the day once you are down this much. It is not a suggestion.</div>
-          </div>
-          <div style="text-align:right;font-family:var(--mono)">
-            <div style="font-weight:800;color:${capPct > 0.75 ? 'var(--danger)' : 'var(--ink)'}">
-              ${formatMoneyExact(g.lostToday)} / ${formatMoneyExact(g.lossCap)}</div>
-            <div style="font-size:11px;color:var(--ink-faint)">${formatMoneyExact(g.remainingToday)} left today</div>
-          </div>
-        </div>
-        <div class="progress ${capPct > 0.75 ? 'gold' : ''}" style="margin-top:8px">
-          <i style="width:${(capPct * 100).toFixed(1)}%;background:${capPct > 0.75 ? 'var(--danger)' : 'var(--warn)'}"></i>
-        </div>
-      </div>`;
+      <div class="card" id="gb-cap" style="margin-bottom:14px">${this._capInner(g)}</div>`;
 
     let body = '';
     if (this.activeTab === 'roulette') body = this._roulette(g);
@@ -143,6 +127,27 @@ export class GamblingPanel extends Panel {
       (advertised ${Math.round(r.advertisedRTP * 100)}%)</span>`);
 
     this.onAction((act, ds) => this._action(act, ds));
+  }
+
+  /** Inner markup of the daily-loss-cap card, refreshed after every bet. */
+  _capInner(g) {
+    const pct = clamp01(g.lostToday / Math.max(1, g.lossCap));
+    const hot = pct > 0.75;
+    return `
+      <div class="card-row" style="margin-top:0">
+        <div>
+          <div class="card-title" style="margin-bottom:2px">🛟 Daily loss cap</div>
+          <div class="card-desc">The table closes for the day once you are down this much. It is not a suggestion.</div>
+        </div>
+        <div style="text-align:right;font-family:var(--mono)">
+          <div style="font-weight:800;color:${hot ? 'var(--danger)' : 'var(--ink)'}">
+            ${formatMoneyExact(g.lostToday)} / ${formatMoneyExact(g.lossCap)}</div>
+          <div style="font-size:11px;color:var(--ink-faint)">${formatMoneyExact(g.remainingToday)} left today</div>
+        </div>
+      </div>
+      <div class="progress" style="margin-top:8px">
+        <i style="width:${(pct * 100).toFixed(1)}%;background:${hot ? 'var(--danger)' : 'var(--warn)'}"></i>
+      </div>`;
   }
 
   /** Stake widget shared by the money games. */
@@ -548,6 +553,8 @@ export class GamblingPanel extends Panel {
     const eco = this.game.get('economy');
     const g = this.sys;
     if (!eco || !g) return;
+    const cap = this.bodyEl?.querySelector('#gb-cap');
+    if (cap) cap.innerHTML = this._capInner(g);
     this.setHeadRight(`<span style="font-family:var(--mono);font-weight:800;color:var(--gold);font-size:17px">${formatMoneyExact(eco.money)}</span>`);
     const r = g.report();
     this.setFoot(`<span style="color:var(--ink-faint);font-size:12.5px;font-family:var(--mono)">

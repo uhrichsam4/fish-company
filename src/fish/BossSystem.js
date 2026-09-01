@@ -124,6 +124,15 @@ export class BossSystem {
     this._offs.push(bus.on('fishing:hooked', ({ fish }) => {
       if (this.boss && fish === this.boss.fish) this._onHooked();
     }));
+    // WeaponSystem's net/melee paths and FishingSystem's landFish call
+    // `killFish` without going through the boss HP pool. Both announce the
+    // catch before despawning the entry, which is our only chance to tell a
+    // real kill apart from a routine out-of-range recycle.
+    const outsideKill = (d) => {
+      if (this.boss && d?.instance === this.boss.instance) this.boss.killedByWeapon = true;
+    };
+    this._offs.push(bus.on('weapon:caught', outsideKill));
+    this._offs.push(bus.on('fishing:caught', outsideKill));
     this._offs.push(bus.on('game:newgame', () => { this.defeated.clear(); this.despawn('reset'); }));
     return this;
   }
@@ -205,7 +214,7 @@ export class BossSystem {
       fightTime: 0, damageDealt: 0,
       graceT: 0, playerDownT: 99,
       submergedT: 0,
-      hooked: false, rodDamage: 0,
+      hooked: false, rodDamage: 0, killedByWeapon: false,
       musicRefs: 1 + (opts.fromEvent ? 1 : 0),
       adds: 0,
       dead: false,
@@ -364,15 +373,29 @@ export class BossSystem {
     b.fish = null;
   }
 
-  /** Re-insert if something despawned the boss out from under us. */
+  /**
+   * Re-insert if something removed the boss from the fish list.
+   *
+   * Two very different things land here and they must not be confused:
+   * a weapon actually killed it (WeaponSystem's net/melee paths call
+   * `killFish` without consulting our HP pool), or FishSystem simply recycled
+   * the entry because the player moved out of range. The second must never
+   * pay out a kill — that is a free `boss:defeated` for walking away.
+   */
   _ensureRegistered(b) {
     const fishSys = this.game.get('fish');
     if (!fishSys || !b.fish) return true;
     if (b.targetable === false) return true;      // submerged on purpose
     if (fishSys.active.includes(b.fish)) return true;
     if (b.dead) return false;
-    // Something else killed it (the net path calls killFish unconditionally).
-    if (!b.fish.species || !b.fish.instance) { this._die(true); return false; }
+
+    if (b.killedByWeapon) { this._die(true); return false; }
+
+    // Recycled, not killed: put it back and let the grace-period escape logic
+    // decide whether the fight is over.
+    b.fish.species = b.species;
+    b.fish.instance = b.instance;
+    b.fish.state = FISH_STATE.ROAM;
     b.fish.active = true;
     fishSys.active.push(b.fish);
     if (!b.fish.group.parent) fishSys.root.add(b.fish.group);
@@ -772,10 +795,14 @@ export class BossSystem {
           const hitR = Math.max(3.5, b.instance.length * 0.42);
           if (d < hitR) this._ramImpact(b, game, player);
         }
-        // Ramming into shallow water or a dock ends the charge just as hard.
-        const bed = worldHeight(b.fish.position.x, b.fish.position.z);
-        if (b.fish.position.y - bed < b.instance.length * 0.10 + 0.6) {
-          this._ramImpact(b, game, player, true);
+        // Ramming into shallow water or a dock ends the charge just as hard —
+        // but only once it is actually moving, or a boss that starts the
+        // charge in the shallows detonates before it has gone anywhere.
+        if (b.attackT > 0.4) {
+          const bed = worldHeight(b.fish.position.x, b.fish.position.z);
+          if (b.fish.position.y - bed < b.instance.length * 0.10 + 0.6) {
+            this._ramImpact(b, game, player, true);
+          }
         }
         break;
       }
@@ -832,6 +859,8 @@ export class BossSystem {
     const tier = b.species.tier || 2;
     const dmg = 8 + tier * 2.2;
     const radius = Math.max(6, b.instance.length * 0.85);
+    // Everything loose in the water goes flying; boats rock much further out.
+    const envR = Math.max(16, b.instance.length * 2.2);
 
     game.audio?.play('boss_slam', { volume: 1.0, position: p });
     game.audio?.play('splash_big', { volume: 0.85, position: p });
@@ -842,9 +871,9 @@ export class BossSystem {
     bus.emit('player:shake', 0.95);
 
     // Environment: crates, barrels, caught fish, anything dynamic goes flying.
-    try { game.physics?.explode(p.x, p.y, p.z, radius * 1.5, 130 + tier * 40); }
+    try { game.physics?.explode(p.x, p.y, p.z, envR, 130 + tier * 40); }
     catch (e) { console.warn('[Boss] explode failed', e); }
-    game.get('fish')?.scare(p, radius * 2.4, 2.4);
+    game.get('fish')?.scare(p, envR * 1.6, 2.4);
 
     if (player) {
       const d = player.position.distanceTo(p);
@@ -858,7 +887,7 @@ export class BossSystem {
         bus.emit('toast', { text: `${b.species.name} rams you!`, kind: 'error', duration: 1800 });
       }
     }
-    this._damageBoats(b, game, p, radius * 1.4, 14 + tier * 3);
+    this._damageBoats(b, game, p, envR, 14 + tier * 3);
     if (terrain) bus.emit('fx:impact', { position: p, normal: UP.clone(), kind: 'wood', scale: 3 });
     bus.emit('boss:attack', { id: b.id, kind: 'ram', position: p });
     this._endStrike(b);
@@ -879,7 +908,8 @@ export class BossSystem {
     bus.emit('fx:hitStop', 0.09);
     bus.emit('player:shake', 1.0);
     bus.emit('ocean:ripple', { x: p.x, z: p.z, strength: 2.2 });
-    try { game.physics?.explode(p.x, surf.y, p.z, radius * 1.6, 150 + tier * 45); } catch { /* physics optional */ }
+    const envR = Math.max(16, b.instance.length * 2.0);
+    try { game.physics?.explode(p.x, surf.y, p.z, envR, 150 + tier * 45); } catch { /* physics optional */ }
 
     if (player) {
       const d = player.position.distanceTo(p);
@@ -892,7 +922,7 @@ export class BossSystem {
         player.damage(dmg * k, `${b.species.name}`);
       }
     }
-    this._damageBoats(b, game, p, radius * 1.5, 12 + tier * 3);
+    this._damageBoats(b, game, p, envR, 12 + tier * 3);
     bus.emit('boss:attack', { id: b.id, kind: 'dive', position: p });
   }
 
@@ -933,7 +963,7 @@ export class BossSystem {
         player.damage(dmg * k, `${b.species.name}`);
       }
     }
-    this._damageBoats(b, game, p, radius, 9 + tier * 2);
+    this._damageBoats(b, game, p, Math.max(radius, b.instance.length * 1.8), 9 + tier * 2);
     bus.emit('boss:attack', { id: b.id, kind: 'shockwave', position: p, radius });
   }
 
