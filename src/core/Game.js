@@ -148,18 +148,21 @@ export class Game {
   start() {
     this.running = true;
     this._lastTime = performance.now();
+    this._lastRaf = performance.now();
     const loop = (t) => {
       this._raf = requestAnimationFrame(loop);
       if (!this.running) return;
+      this._lastRaf = performance.now();
       this.tick(t);
     };
     this._raf = requestAnimationFrame(loop);
 
-    // rAF is throttled to zero in a backgrounded tab. Automated sessions set
-    // `allowHiddenTick` so the simulation keeps advancing off-screen.
+    // rAF stops in a backgrounded tab AND in an off-screen embedded pane that
+    // still reports document.hidden === false. Automated sessions set
+    // `allowHiddenTick`; drive the loop from a timer whenever rAF has stalled.
     this._hiddenTimer = setInterval(() => {
       if (!this.running || !this.allowHiddenTick) return;
-      if (!document.hidden) return;
+      if (performance.now() - this._lastRaf < 150) return;
       this.tick(performance.now());
     }, 16);
   }

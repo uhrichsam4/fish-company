@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { bus } from '../core/EventBus.js';
-import { clamp, clamp01, lerp, smoothstep, damp, rrange, rchance } from '../util/math.js';
+import { clamp01, lerp, smoothstep, damp, rrange, rchance } from '../util/math.js';
 import { waterHeightAt } from './waves.js';
 
 /**
@@ -78,10 +78,13 @@ export class Ambience {
     this._surfTarget = new THREE.Vector3();
     this._surfHandle = null;
     this._surfValid = false;
+    this._surfRate = 1;
 
+    this._rain = 0;
     this._underwaterTarget = 0;
     this._reverbTarget = 0;
     this._reverbSent = -1;
+    this._revPulse = 0;
 
     // One-shot schedulers (seconds until the next attempt).
     this._t = {
@@ -106,6 +109,9 @@ export class Ambience {
     on('game:paused', (p) => { if (!p) this._forceMix = true; });
     on('game:entered', () => { this._forceMix = true; });
     on('weather:changed', () => { this._forceMix = true; });
+    // Weather.current only flips once a 24 s crossfade completes; the per-frame
+    // `weather:rain` event carries the *blended* amount, which is what we want.
+    on('weather:rain', (v) => { this._rain = +v || 0; });
     on('region:entered', () => { this._forceMix = true; });
     on('settings:applied', () => { this._forceMix = true; });
 
@@ -129,9 +135,10 @@ export class Ambience {
       });
     });
 
-    // A close strike briefly opens up the space.
+    // A close strike blooms the space open for the length of the thunder tail.
     on('weather:lightning', ({ distance } = {}) => {
-      if (distance != null && distance < 160) this._reverbSent = -1;
+      if (distance == null || distance > 220) return;
+      this._revPulse = Math.max(this._revPulse, 0.3 * (1 - distance / 220));
     });
 
     return this;
@@ -142,7 +149,7 @@ export class Ambience {
   update(dt, game) {
     const audio = this.audio;
     if (!audio?.ready || dt <= 0) return;
-    this._boot += dt;
+    this._boot += game.rawDt;
 
     this._mixT += dt;
     if (this._mixT >= MIX_INTERVAL) {
@@ -150,12 +157,30 @@ export class Ambience {
       this._sample(game);
       this._buildMix();
       this._applyMix();
-      this._applyFilters();
     }
 
     this._updateSurf(dt);
     this._oneShots(dt, game);
     if (this._creakCd > 0) this._creakCd -= dt;
+  }
+
+  /**
+   * Filters run after every other system so we always have the last word --
+   * Player.update() also pokes setUnderwater() with a hard 0/1 each frame.
+   * setUnderwater ramps over 0.35 s, so re-issuing it per frame behaves as a
+   * smooth exponential approach rather than a snap.
+   */
+  lateUpdate(dt, game) {
+    const audio = this.audio;
+    if (!audio?.ready) return;
+    audio.setUnderwater(this._underwaterTarget);
+    if (this._revPulse > 0.002) this._revPulse = damp(this._revPulse, 0, 0.06, Math.max(dt, 1e-3));
+    else this._revPulse = 0;
+    const rev = clamp01(this._reverbTarget + this._revPulse);
+    if (Math.abs(rev - this._reverbSent) > 0.02) {
+      this._reverbSent = rev;
+      audio.setReverb(rev, this._revPulse > 0.01 ? 0.4 : 1.4);
+    }
   }
 
   // ---------------------------------------------------------------- sampling
@@ -195,10 +220,14 @@ export class Ambience {
     c.day = sky ? sky.dayFactor : 1;
     c.night = 1 - c.day;
 
-    const w = weather?.current;
-    c.rain = w?.rain ?? 0;
-    c.storm = weather ? clamp01(weather.intensity) : 0;
-    c.wind = w?.wind ?? 0.4;
+    // Blend wind the same way Weather.apply() does so gusts ramp with the front.
+    if (weather) {
+      const wa = weather.prev || weather.current;
+      const wb = weather.target || weather.current;
+      c.wind = lerp(wa?.wind ?? 0.4, wb?.wind ?? 0.4, weather.blend ?? 1);
+      c.storm = clamp01(weather.intensity);
+    } else { c.wind = 0.4; c.storm = 0; }
+    c.rain = clamp01(this._rain);
 
     // "Inside" ~= something solid directly overhead within 6 m.
     c.inside = false;
@@ -369,14 +398,6 @@ export class Ambience {
     this.audio.setAmbience(m, 2.0);
   }
 
-  _applyFilters() {
-    this.audio.setUnderwater(this._underwaterTarget);
-    if (Math.abs(this._reverbTarget - this._reverbSent) > 0.02) {
-      this._reverbSent = this._reverbTarget;
-      this.audio.setReverb(this._reverbTarget, 1.4);
-    }
-  }
-
   /** Slide the surf source toward the waterline so it pans as you turn/walk. */
   _updateSurf(dt) {
     if (!this._surfValid) return;
@@ -388,8 +409,12 @@ export class Ambience {
     this._surfPos.y = damp(this._surfPos.y, this._surfTarget.y, 0.02, dt);
     this._surfPos.z = damp(this._surfPos.z, this._surfTarget.z, 0.02, dt);
     this._surfHandle.setPosition(this._surfPos);
-    // Steeper water = faster, brighter surf.
-    this._surfHandle.setRate(0.92 + this.ctx.chop * 0.16 + this.ctx.storm * 0.1, 0.5);
+    // Steeper water = faster, brighter surf. Only re-scheduled when it moves.
+    const rate = 0.92 + this.ctx.chop * 0.16 + this.ctx.storm * 0.1;
+    if (Math.abs(rate - this._surfRate) > 0.02) {
+      this._surfRate = rate;
+      this._surfHandle.setRate(rate, 0.6);
+    }
   }
 
   // ---------------------------------------------------------------- one-shots

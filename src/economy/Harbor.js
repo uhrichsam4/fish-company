@@ -3,9 +3,12 @@ import * as Props from '../world/props/index.js';
 import { bus } from '../core/EventBus.js';
 import { HARBOR_BUILDINGS, HARBOR_BY_ID } from '../data/harbor.js';
 import { REGION_BY_ID } from '../data/regions.js';
+import { findFlatSpot } from '../world/Terrain.js';
 import { formatMoneyExact, formatWeight, makeRNG, clamp } from '../util/math.js';
 
 const HARBOR_REGION = 'harbor';
+/** Terrain must be at least this high for a land building to sit on it. */
+const MIN_LAND_H = 1.0;
 
 /** Deterministic per-part seed so a rebuilt harbour is identical. */
 function partSeed(buildingId, i) {
@@ -253,6 +256,60 @@ export class Harbor {
     if (world) world.interactables = world.interactables.filter((i) => !i.harborBuilding);
   }
 
+  /**
+   * Sample the four footprint corners plus the centre of a candidate site.
+   * @returns {{mean:number, min:number, max:number}}
+   */
+  _sampleFootprint(world, a, b, x, z) {
+    const hw = b.size[0] / 2, hd = b.size[1] / 2;
+    let sum = world.heightAt(x, z);
+    let min = sum, max = sum;
+    for (let i = 0; i < 4; i++) {
+      const sx = i < 2 ? -1 : 1;
+      const sz = i % 2 ? -1 : 1;
+      const h = world.heightAt(
+        x + a.side.x * sx * hw + a.inward.x * sz * hd,
+        z + a.side.z * sx * hw + a.inward.z * sz * hd,
+      );
+      sum += h;
+      if (h < min) min = h;
+      if (h > max) max = h;
+    }
+    return { mean: sum / 5, min, max };
+  }
+
+  /**
+   * Nudge a nominal slot onto the flattest nearby ground that is above water
+   * and clear of everything already built. Buildings on a 4 m fall look wrong,
+   * so the search minimises corner spread rather than raw slope.
+   */
+  _findSite(world, a, b, nx, nz) {
+    const clearR = Math.max(b.size[0], b.size[1]) / 2 + 1.5;
+    let best = null;
+    for (let du = -10; du <= 10; du += 2.5) {
+      for (let dv = -10; dv <= 12; dv += 2.5) {
+        const x = nx + a.side.x * du + a.inward.x * dv;
+        const z = nz + a.side.z * du + a.inward.z * dv;
+        const f = this._sampleFootprint(world, a, b, x, z);
+        if (f.min < MIN_LAND_H) continue;
+        let blocked = false;
+        for (const rec of this.spawned.values()) {
+          const fp = rec.footprint;
+          if (!fp) continue;
+          if (Math.hypot(fp.x - x, fp.z - z) < clearR + fp.r) { blocked = true; break; }
+        }
+        if (blocked) continue;
+        const score = (f.max - f.min) + Math.hypot(du, dv) * 0.06;
+        if (!best || score < best.score) best = { score, x, z, ...siteHeight(f), r: clearR };
+      }
+    }
+    if (best) return best;
+    // Nothing clean nearby: fall back to the terrain's own flat-spot finder.
+    const spot = findFlatSpot(nx, nz, 24, { targetH: 3, minH: MIN_LAND_H + 0.2 });
+    const f = this._sampleFootprint(world, a, b, spot.x, spot.z);
+    return { x: spot.x, z: spot.z, ...siteHeight(f), r: clearR };
+  }
+
   /** Build the mesh + collider for one building. Safe to call before the region exists. */
   _spawn(b) {
     if (!b || this.spawned.has(b.id)) return false;
@@ -266,14 +323,49 @@ export class Harbor {
     const ang = a.dock?.angle ?? 0;
     const yaw = -(ang + Math.PI / 2);
     const [ox, oz] = b.offset;
-    const wx = a.dockStart.x + a.side.x * ox + a.inward.x * oz;
-    const wz = a.dockStart.z + a.side.z * ox + a.inward.z * oz;
-    const wy = b.water ? (a.dock?.y ?? 1.8) : world.heightAt(wx, wz) - 0.12;
+    // Lateral slot: `side` metres along the quay from the dock's landward end.
+    const bx = a.dockStart.x + a.side.x * ox;
+    const bz = a.dockStart.z + a.side.z * ox;
+    const deckY = a.dock?.y ?? 1.8;
+    let wx; let wz; let wy;
+    let plinthDrop = 0;
+
+    if (b.water) {
+      // Water structures are authored from sea level and from `dockStart`, so
+      // their deck lands exactly on the harbour dock's walking height.
+      wx = bx + a.inward.x * oz;
+      wz = bz + a.inward.z * oz;
+      wy = 0;
+    } else {
+      // The shoreline curves away from the dock axis, so land offsets are
+      // measured inland from the waterline *on this lateral slot*. That keeps
+      // rows parallel to the coast instead of marching into each other.
+      let shore = 0;
+      for (let t = -40; t <= 140; t += 2) {
+        if (world.heightAt(bx + a.inward.x * t, bz + a.inward.z * t) >= MIN_LAND_H) { shore = t; break; }
+      }
+      const t = shore + oz;
+      const site = this._findSite(world, a, b, bx + a.inward.x * t, bz + a.inward.z * t);
+      wx = site.x; wz = site.z; wy = site.y;
+      plinthDrop = site.drop;
+    }
 
     const group = new THREE.Group();
     group.name = `harbor:${b.id}`;
     group.position.set(wx, wy, wz);
     group.rotation.y = yaw;
+
+    // Levelling pad: fills the gap under the downhill side of a sloped site.
+    if (!b.water && plinthDrop > 0.15) {
+      const ph = plinthDrop + 0.9;
+      const pad = new THREE.Mesh(
+        new THREE.BoxGeometry(b.size[0] + 1.4, ph, b.size[1] + 1.4),
+        padMaterial(),
+      );
+      pad.position.set(0, 0.12 - ph / 2, 0);
+      pad.castShadow = true; pad.receiveShadow = true;
+      group.add(pad);
+    }
 
     b.parts.forEach((p, i) => {
       const fn = Props.PROP_BUILDERS?.[p.prop];
@@ -301,7 +393,7 @@ export class Harbor {
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
     const wallH = b.wallH ?? 4.0;
     const boxes = [{
-      at: [0, b.water ? -wallH / 2 : wallH / 2, 0],
+      at: [0, b.water ? deckY - wallH / 2 : wallH / 2, 0],
       hx: b.size[0] / 2, hy: wallH / 2, hz: b.size[1] / 2,
       friction: b.water ? 0.98 : 0.7,
     }, ...(b.extraColliders || [])];
@@ -332,7 +424,10 @@ export class Harbor {
       });
     }
 
-    this.spawned.set(b.id, { group, bodies });
+    this.spawned.set(b.id, {
+      group, bodies,
+      footprint: { x: wx, z: wz, r: Math.max(b.size[0], b.size[1]) / 2 + 1.5 },
+    });
     return true;
   }
 
@@ -354,9 +449,9 @@ export class Harbor {
 function effectLines(e = {}) {
   const out = [];
   const pct = (v) => `${v >= 1 ? '+' : '-'}${Math.round(Math.abs(v - 1) * 100)}%`;
-  if (e.workerSlots) out.push(`+${e.workerSlots} worker slots`);
-  if (e.boatSlots) out.push(`+${e.boatSlots} boat berths`);
-  if (e.contractSlots) out.push(`+${e.contractSlots} contract slot`);
+  if (e.workerSlots) out.push(`+${e.workerSlots} worker slot${e.workerSlots > 1 ? 's' : ''}`);
+  if (e.boatSlots) out.push(`+${e.boatSlots} boat berth${e.boatSlots > 1 ? 's' : ''}`);
+  if (e.contractSlots) out.push(`+${e.contractSlots} contract slot${e.contractSlots > 1 ? 's' : ''}`);
   if (e.storageBonus) out.push(`+${formatWeight(e.storageBonus)} storage`);
   if (e.freshness) out.push(`${pct(e.freshness)} freshness value`);
   if (e.repairSpeed) out.push(`${pct(e.repairSpeed)} repair speed`);
@@ -369,6 +464,25 @@ function effectLines(e = {}) {
   if (e.researchDiscount) out.push(`-${Math.round(e.researchDiscount * 100)}% research cost`);
   if (e.unlock) out.push(`Unlocks <b>${e.unlock.replace(/_/g, ' ')}</b>`);
   return out;
+}
+
+/**
+ * Sit the floor near the uphill corner so walls are barely buried, and report
+ * the drop to the downhill corner — the levelling pad fills that in.
+ */
+function siteHeight(f) {
+  const y = f.min + (f.max - f.min) * 0.75 - 0.1;
+  return { y, drop: Math.max(0, y - f.min) };
+}
+
+let _padMat = null;
+/** One shared concrete material for every levelling pad. */
+function padMaterial() {
+  if (!_padMat) {
+    _padMat = new THREE.MeshStandardMaterial({ color: 0x9a9790, roughness: 0.95, metalness: 0 });
+    _padMat.name = 'harborPad';
+  }
+  return _padMat;
 }
 
 function disposeGroup(g) {

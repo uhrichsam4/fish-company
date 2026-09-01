@@ -221,6 +221,7 @@ export class Effects {
     this._flashEl?.remove();
     this._flashEl = null;
     this.enabled = false;
+    this._disposed = true;
   }
 
   // -------------------------------------------------------------------------
@@ -228,6 +229,7 @@ export class Effects {
   // -------------------------------------------------------------------------
 
   update(dt, game) {
+    if (this._disposed) return;
     // Hit-stop restore happens FIRST so a throw further down can never strand
     // game.timeScale at 0.12.
     this.rt += game.rawDt ?? dt;

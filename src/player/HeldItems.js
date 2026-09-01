@@ -9,6 +9,18 @@ import { clamp, clamp01, lerp, damp, smoothstep, rrange } from '../util/math.js'
  * (at z=-0.3 with a ~61 deg FOV the visible half-height is only ~0.18).
  */
 const VM_OFFSET = new THREE.Vector3(0, 0.125, 0);
+
+/**
+ * Viewmodel depth scale.
+ *
+ * Everything is authored close to the camera because that's easy to reason
+ * about, then the whole rig is pushed away by POS_K while each mesh is
+ * counter-scaled by 1/POS_K. Positions scale, sizes don't — so the on-screen
+ * composition is unchanged but the apparent size drops by 1/POS_K. Raising
+ * this is the single knob for "the gun/arms are too big".
+ */
+const POS_K = 1.18;
+const INV_K = 1 / POS_K;
 const _restR = new THREE.Vector3(0.30, -0.30, -0.32);
 const _restL = new THREE.Vector3(-0.30, -0.30, -0.32);
 const SKIN = 0xd9a273;
@@ -36,9 +48,13 @@ export class HeldItems {
   async init(game) {
     // Dedicated overlay scene so the viewmodel is never clipped by the world.
     this.vmScene = new THREE.Scene();
-    this.vmCamera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.01, 12);
+    this.vmCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 12);
     this.root = new THREE.Group();
     this.vmScene.add(this.root);
+    // Everything visible lives under `rig`; see POS_K.
+    this.rig = new THREE.Group();
+    this.rig.scale.setScalar(POS_K);
+    this.root.add(this.rig);
 
     const key = new THREE.DirectionalLight(0xffffff, 2.1);
     key.position.set(0.6, 1.2, 0.9);
@@ -48,7 +64,7 @@ export class HeldItems {
     this.vmKey = key; this.vmFill = fill;
 
     this.hands = buildHands();
-    this.root.add(this.hands);
+    this.rig.add(this.hands);
 
     bus.on('resize', () => {
       this.vmCamera.aspect = window.innerWidth / window.innerHeight;
@@ -64,13 +80,25 @@ export class HeldItems {
   setItem(id) {
     if (this.currentId === id) return;
     this.currentId = id;
-    if (this.current) { this.root.remove(this.current); disposeDeep(this.current); }
+    if (this.current) { this.rig.remove(this.current); disposeDeep(this.current); }
     this.current = null;
     if (!id) return;
     const item = getItem(id);
     const builder = BUILDERS[id] || BUILDERS[item?.slot] || null;
     this.current = builder ? builder(item) : buildGenericTool(item);
-    if (this.current) this.root.add(this.current);
+    if (this.current) {
+      // Counter-scale so POS_K only affects distance, not apparent size.
+      this.current.scale.multiplyScalar(INV_K);
+      this.current.userData.baseScale = this.current.scale.x;
+      // Per-item extra depth for bulky props (same trick, item-local).
+      const dk = this.current.userData.depthK || 1;
+      if (dk !== 1) {
+        this.current.position.multiplyScalar(dk);
+        const gr = this.current.userData.grips;
+        if (gr) { gr.R?.multiplyScalar(dk); gr.L?.multiplyScalar(dk); }
+      }
+      this.rig.add(this.current);
+    }
   }
 
   update(dt, game) {
@@ -165,8 +193,6 @@ export class HeldItems {
     if (!tipObj) return null;
     this.vmScene.updateMatrixWorld();
     tipObj.getWorldPosition(out);
-    // Scale camera-space offsets outward so the tip sits where it looks.
-    out.multiplyScalar(1.9);
     out.applyMatrix4(this.game.camera.matrixWorld);
     return out;
   }
@@ -177,7 +203,7 @@ export class HeldItems {
     const r = game.renderer;
     r.autoClear = false;
     r.clearDepth();
-    this.vmCamera.fov = clamp(game.settings.fov * 0.82, 40, 78);
+    this.vmCamera.fov = clamp(game.settings.fov * 0.66, 34, 62);
     this.vmCamera.updateProjectionMatrix();
     r.render(this.vmScene, this.vmCamera);
     r.autoClear = true;
@@ -203,8 +229,12 @@ function mat(color, rough = 0.7, metal = 0.05, extra = {}) {
  * boxes). Each frame the upper arm and forearm are fitted as capsules between
  * shoulder → elbow → hand.
  */
-const UPPER_LEN = 0.24;
-const FORE_LEN = 0.23;
+// Short upper arm: in first person the shoulder sits just off the bottom
+// corner of the frame, so most of what's visible is forearm + hand. A shoulder
+// placed BEHIND the near plane makes the limb pass through the camera and fill
+// the screen — keep z negative.
+const UPPER_LEN = 0.17;
+const FORE_LEN = 0.22;
 
 function buildHands() {
   const g = new THREE.Group();
@@ -217,12 +247,12 @@ function buildHands() {
   for (const side of ['L', 'R']) {
     const sgn = side === 'L' ? -1 : 1;
 
-    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.049, UPPER_LEN - 0.098, 3, 8), sleeve);
-    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.042, FORE_LEN - 0.084, 3, 8), sleeve);
-    const cuffRing = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.043, 0.038, 8), cuff);
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.036, Math.max(0.02, UPPER_LEN - 0.072), 3, 8), sleeve);
+    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.031, Math.max(0.02, FORE_LEN - 0.062), 3, 8), sleeve);
+    const cuffRing = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.033, 0.034, 8), cuff);
 
     const hand = new THREE.Group();
-    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.03, 0.068), skin);
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.026, 0.058), skin);
     palm.geometry.translate(0, 0, 0.004);
     hand.add(palm);
     for (let i = 0; i < 4; i++) {
@@ -235,11 +265,12 @@ function buildHands() {
     thumb.position.set(sgn * 0.026, -0.004, 0.014);
     thumb.rotation.set(1.0, 0, sgn * -0.75);
     hand.add(thumb);
+    hand.scale.setScalar(INV_K);
 
     g.add(upper, fore, cuffRing, hand);
     arms[side] = {
       upper, fore, cuff: cuffRing, hand,
-      shoulder: new THREE.Vector3(sgn * 0.30, -0.34, 0.22),
+      shoulder: new THREE.Vector3(side === 'R' ? 0.32 : -0.045, -0.45, -0.235),
       bendOut: sgn,
       visible: true,
     };
@@ -267,7 +298,7 @@ function fitLimb(mesh, a, b, baseLen) {
   _mid.copy(a).addScaledVector(_seg, 0.5);
   mesh.position.copy(_mid);
   mesh.quaternion.setFromUnitVectors(_yAxis, _seg.divideScalar(len));
-  mesh.scale.set(1, len / baseLen, 1);
+  mesh.scale.set(INV_K, len / baseLen, INV_K);
 }
 
 /**
@@ -288,7 +319,7 @@ function poseArm(arm, target, opts = {}) {
   const along = a * cos;
   const off = a * Math.sqrt(Math.max(0, 1 - cos * cos));
   // Bend direction: outward from the body and slightly down.
-  _perp.set(arm.bendOut * 0.72, -0.62, 0.30).normalize();
+  _perp.set(arm.bendOut * 0.82, -0.52, 0.22).normalize();
   _perp.addScaledVector(_seg, -_perp.dot(_seg));
   if (_perp.lengthSq() < 1e-6) _perp.set(arm.bendOut, 0, 0);
   _perp.normalize();
@@ -299,6 +330,7 @@ function poseArm(arm, target, opts = {}) {
   fitLimb(arm.fore, _elbow, target, FORE_LEN);
   arm.cuff.position.copy(target).addScaledVector(_seg, -0.045);
   arm.cuff.quaternion.copy(arm.fore.quaternion);
+  arm.cuff.scale.setScalar(INV_K);
   arm.hand.position.copy(target);
   arm.hand.quaternion.copy(arm.fore.quaternion);
   if (opts.roll) arm.hand.rotateY(opts.roll);
@@ -429,6 +461,7 @@ function buildNet(item) {
   g.scale.setScalar(0.9);
   g.position.set(0.215, -0.20, -0.27);
   g.rotation.set(0.1, -0.26, 0.1);
+  g.userData.depthK = 1.35;
   g.userData.grips = {
     R: new THREE.Vector3(0.222, -0.215, -0.25),
     L: new THREE.Vector3(0.205, -0.235, -0.52),
@@ -486,6 +519,7 @@ function buildHarpoonGun(item) {
   g.scale.setScalar(0.78);
   g.position.set(0.17, -0.235, -0.46);
   g.rotation.set(0.02, -0.05, 0);
+  g.userData.depthK = 1.85;   // bulky: push it away rather than shrink it
   g.userData.grips = {
     R: new THREE.Vector3(0.172, -0.30, -0.42),   // pistol grip
     L: new THREE.Vector3(0.168, -0.245, -0.66),  // support hand on the barrel
@@ -520,6 +554,7 @@ function buildSpear(item) {
   g.scale.setScalar(0.85);
   g.position.set(0.245, -0.185, -0.24);
   g.rotation.set(0.08, -0.12, 0.05);
+  g.userData.depthK = 1.5;
   g.userData.grips = {
     R: new THREE.Vector3(0.248, -0.205, -0.22),
     L: new THREE.Vector3(0.243, -0.215, -0.52),

@@ -319,6 +319,9 @@ export function applyBuoyancy(phys, entry, samplePoints, opts) {
     waterHeightAt, volume = 1, dragLinear = 1.2, dragAngular = 0.9,
     density = 1000, submergedOut = null, waveVelAt = null,
   } = opts;
+  // Archimedes must use the SAME gravity the solver does, or a world with
+  // non-Earth gravity floats or sinks everything.
+  const G = opts.gravity ?? Math.abs(phys.gravity?.y ?? phys.world.gravity.y) ?? 9.81;
   const body = entry.body;
   const t = body.translation();
   const rot = body.rotation();
@@ -338,7 +341,7 @@ export function applyBuoyancy(phys, entry, samplePoints, opts) {
     const sub = clamp(depth / (opts.sampleHeight || 0.6), 0, 1);
     submergedTotal += sub / n;
     // Archimedes: rho * g * displaced volume, opposing gravity.
-    const f = density * 9.81 * perSampleVolume * sub;
+    const f = density * G * perSampleVolume * sub;
     body.applyImpulseAtPoint(
       { x: 0, y: f * (opts.dt || 1 / 60), z: 0 },
       { x: px, y: py, z: pz }, true,

@@ -40,7 +40,7 @@ export class MusicDirector {
     this._entered = false;
 
     this._calmPhase = 'rest';   // 'play' | 'rest'
-    this._calmT = rrange(8, 24);
+    this._calmT = rrange(6, 18);
 
     this._offs = [];
   }
@@ -50,7 +50,13 @@ export class MusicDirector {
     this.audio = game.audio;
     const on = (e, fn) => this._offs.push(bus.on(e, fn));
 
-    on('game:entered', () => { this._entered = true; this._evalT = 99; });
+    // Open the world with a track, then let the cycle breathe. `game:entered`
+    // re-fires on every pointer re-lock, so only the first one restarts it.
+    on('game:entered', () => {
+      const first = !this._entered;
+      this._entered = true;
+      if (first) this.restartCalm(); else this._evalT = 99;
+    });
 
     // Debug menu emits `boss:spawn`; gameplay emits `boss:spawned`.
     const spawned = () => { this._bossActive++; this._bossT = 0; this._evalT = 99; };

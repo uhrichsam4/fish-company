@@ -106,7 +106,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.info.autoReset = false;
 
 const scene = new THREE.Scene();
@@ -441,7 +441,12 @@ addEventListener('keydown', (e) => {
 });
 
 // ---------------------------------------------------------------- loop
-const clock = new THREE.Clock();
+// plain wall clock — THREE.Clock is deprecated in r185
+let _prev = performance.now() * 0.001, _elapsed = 0;
+const clock = {
+  getDelta() { const t = performance.now() * 0.001; const d = t - _prev; _prev = t; _elapsed += Math.min(d, 0.1); return d; },
+  getElapsedTime() { return _elapsed; },
+};
 let acc = 0, frames = 0, spawnPrev = 0, stressAcc = 0;
 const fpsEl = document.getElementById('fps');
 const drawsEl = document.getElementById('draws');

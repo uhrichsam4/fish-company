@@ -59,7 +59,7 @@ export const HARBOR_BUILDINGS = [
     desc: 'Minus thirty, day and night. Catch keeps 35% of its value longer.',
     cost: 22000, requires: ['warehouse'], reqResearch: null, reqRegion: 'harbor',
     effects: { freshness: 1.35, storageBonus: 25, unlock: 'freezer' },
-    size: [12, 10], wallH: 5.2, offset: [30, 48],
+    size: [17, 10], wallH: 5.2, offset: [30, 48],
     parts: [
       { prop: 'warehouse', opts: { width: 11, depth: 8.6, height: 4.8, color: 0xd6e4ea, trim: 0x2f7fa8 }, at: [0, 0, 0] },
       { prop: 'container', opts: { color: 0x2f6f9e, length: 6.06 }, at: [-7.4, 0, 1.2], ry: 1.5708 },
@@ -83,7 +83,7 @@ export const HARBOR_BUILDINGS = [
     desc: 'Gutting line, chiller and a loading bay. Unlocks on-site processing to tier 2.',
     cost: 45000, requires: ['warehouse'], reqResearch: 'gutting_line', reqRegion: 'harbor',
     effects: { processLevels: 2, unlock: 'processing', storageBonus: 30 },
-    size: [18, 13], wallH: 6.0, offset: [0, 50],
+    size: [24, 13], wallH: 6.0, offset: [0, 50],
     interact: { kind: 'processing', label: 'Processing Floor', at: [0, 1.5, -7] },
     parts: [
       { prop: 'warehouse', opts: { width: 16, depth: 11, height: 5.8, color: 0xa8b4b8, trim: 0x3f8a5c }, at: [0, 0, 0] },
@@ -113,7 +113,7 @@ export const HARBOR_BUILDINGS = [
     effects: { boatSlots: 1 },
     size: [5, 22], wallH: 0.4, water: true, offset: [-18, -10],
     parts: [
-      { prop: 'pier', opts: { length: 22, width: 5, height: 1.8 }, at: [0, 0, 0], ry: 1.5708 },
+      { prop: 'pier', opts: { length: 22, width: 5, height: 1.8 }, at: [0, 0, 0] },
       { prop: 'lampPost', opts: { height: 3.4 }, at: [1.8, 0, -9.0] },
     ],
   },
@@ -124,7 +124,7 @@ export const HARBOR_BUILDINGS = [
     effects: { boatSlots: 3, unlock: 'fleets' },
     size: [8, 30], wallH: 0.4, water: true, offset: [-36, -16],
     parts: [
-      { prop: 'pier', opts: { length: 30, width: 8, height: 1.8 }, at: [0, 0, 0], ry: 1.5708 },
+      { prop: 'pier', opts: { length: 30, width: 8, height: 1.8 }, at: [0, 0, 0] },
       { prop: 'crane', opts: { height: 11, reach: 9, color: 0xd4552f }, at: [0, 1.8, -5.0] },
       { prop: 'container', opts: { color: 0xc4483c }, at: [0, 1.8, 7.5], ry: 1.5708 },
       { prop: 'lampPost', opts: { height: 3.8 }, at: [3.0, 1.8, 12.0] },
@@ -135,10 +135,10 @@ export const HARBOR_BUILDINGS = [
     desc: 'Covered dock with cradles and a charging loop. Submarines can be berthed here.',
     cost: 250000, requires: ['commercial_pier'], reqResearch: 'deep_hull', reqRegion: 'harbor',
     effects: { boatSlots: 2, unlock: 'submarines' },
-    size: [13, 18], wallH: 0.4, water: true, offset: [26, -13],
+    size: [13, 18], wallH: 0.4, water: true, offset: [26, -10],
     extraColliders: [{ at: [0, 4.5, 3.4], hx: 5.6, hy: 2.7, hz: 4.6 }],
     parts: [
-      { prop: 'pier', opts: { length: 18, width: 13, height: 1.8 }, at: [0, 0, 0], ry: 1.5708 },
+      { prop: 'pier', opts: { length: 18, width: 13, height: 1.8 }, at: [0, 0, 0] },
       { prop: 'warehouse', opts: { width: 11, depth: 9, height: 5.4, color: 0x8fa0aa, trim: 0x2f6f9e }, at: [0, 1.8, 3.4] },
       { prop: 'crane', opts: { height: 9, reach: 7, color: 0x3f7fa8 }, at: [4.4, 1.8, -6.0] },
       { prop: 'antenna', opts: { height: 6 }, at: [-4.8, 1.8, -6.4] },
@@ -175,7 +175,7 @@ export const HARBOR_BUILDINGS = [
     desc: 'Sell straight to the restaurants instead of the wholesaler. +10% on every fish.',
     cost: 70000, requires: ['warehouse'], reqResearch: null, reqRegion: 'harbor',
     effects: { priceMult: 1.1 },
-    size: [13, 10], wallH: 4.0, offset: [14, 66],
+    size: [13, 10], wallH: 4.0, offset: [24, 70],
     parts: [
       { prop: 'shack', opts: { width: 9.5, depth: 6.5, height: 3.4, roof: 'corrugated', accent: 0x2fd4c4 }, at: [0, 0, 0] },
       { prop: 'fishCrate', opts: {}, at: [-4.0, 0, -4.2] },

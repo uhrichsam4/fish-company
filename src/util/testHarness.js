@@ -211,12 +211,39 @@ export function installTestHarness(game) {
     /** Run a named debug-menu action. */
     debug(action) { game.get('debug')?.run(action); },
 
-    /** Screenshot-friendly: park the camera at a survey pose. */
+    /**
+     * Park the camera at a survey pose and HOLD it there. Gravity and the
+     * world-floor safety net pull a frozen player back down within a frame,
+     * so re-apply the pose every frame until `survey(null)` releases it.
+     */
     survey(x, y, z, yaw, pitch) {
       const p = game.get('player');
-      p.teleport(x, y, z); p.yaw = yaw; p.pitch = pitch;
+      if (x == null) {
+        T._surveyPose = null;
+        p.canMove = true; p.mode = 'walk';
+        if (T._surveyOff) { T._surveyOff(); T._surveyOff = null; }
+        return 'released';
+      }
+      T._surveyPose = { x, y, z, yaw, pitch };
       p.canMove = false;
-      p.updateCamera(0.016, game);
+      p.mode = 'frozen';
+      const hold = () => {
+        const pose = T._surveyPose;
+        if (!pose) return;
+        p.position.set(pose.x, pose.y, pose.z);
+        p.velocity.set(0, 0, 0);
+        p.yaw = pose.yaw; p.pitch = pose.pitch;
+        p.entry.body.setNextKinematicTranslation(p.position);
+        p.updateCamera(0.016, game);
+      };
+      hold();
+      if (!T._surveyOff) T._surveyOff = bus.on('perf', hold);
+      // Also hold every frame via a lightweight system.
+      if (!T._surveySystem) {
+        T._surveySystem = { name: 'testSurvey', order: 999, lateUpdate: hold };
+        game.add(T._surveySystem);
+      } else T._surveySystem.lateUpdate = hold;
+      return 'held';
     },
     freeCam(on = true) {
       const p = game.get('player');
