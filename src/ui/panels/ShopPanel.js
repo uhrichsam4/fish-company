@@ -2,6 +2,7 @@ import { Panel } from '../Panel.js';
 import { bus } from '../../core/EventBus.js';
 import { CATEGORY, getItem, itemsForShop } from '../../data/equipment.js';
 import { formatMoneyExact, formatWeight } from '../../util/math.js';
+import { TRAPS } from '../../world/TrapSystem.js';
 
 const STAT_LABELS = {
   castPower: 'Cast Power', reelSpeed: 'Reel Speed', maxWeight: 'Max Fish', hookChance: 'Hook Chance',
@@ -22,7 +23,10 @@ export class ShopPanel extends Panel {
   constructor(game) {
     super(game, {
       id: 'shop', title: '🏪 Shop', subtitle: '',
-      tabs: Object.entries(CATEGORY).map(([id, c]) => ({ id, name: c.name, icon: c.icon })),
+      tabs: [
+        ...Object.entries(CATEGORY).map(([id, c]) => ({ id, name: c.name, icon: c.icon })),
+        { id: 'traps', name: 'Traps', icon: '🪤' },
+      ],
       width: '',
     });
     this.live = true;
@@ -34,11 +38,42 @@ export class ShopPanel extends Panel {
     super.show();
   }
 
+  /** Traps are world gear rather than equipment, so they get their own tab. */
+  _renderTraps(g, eco) {
+    const traps = g.get('traps');
+    this.setSubtitle(`Tier ${this.shopTier}`);
+    this.setHeadRight(`<span style="font-family:var(--mono);font-weight:800;color:var(--gold);font-size:17px">${formatMoneyExact(eco.money)}</span>`);
+    const carrying = traps?.inventory.length || 0;
+    const placed = traps?.traps.size || 0;
+
+    this.bodyEl.innerHTML = `
+      <div class="grid auto">${TRAPS.map((t) => {
+        const afford = eco.money >= t.price;
+        const held = (traps?.inventory || []).filter((x) => x === t.id).length;
+        return `<div class="card ${held ? 'owned' : ''}">
+          <div class="card-title">${t.icon} ${t.name}${held ? `<span class="chip good">x${held}</span>` : ''}</div>
+          <div class="card-desc">${t.desc}</div>
+          <div class="card-stats">
+            Holds: <b>${t.capacity} fish</b><br>
+            Rate: <b>${t.ratePerMin.toFixed(2)}/min</b><br>
+            Max depth: <b>${t.maxDepth} m</b><br>
+            Size bias: <b>${t.sizeBias.toFixed(2)}</b> · Luck: <b>${t.luck.toFixed(1)}x</b>
+          </div>
+          <div class="card-row">
+            <span class="card-price ${afford ? '' : 'cant'}">${formatMoneyExact(t.price)}</span>
+            <button class="btn sm ${afford ? 'gold' : ''}" data-action="buytrap" data-id="${t.id}" ${afford ? '' : 'disabled'}>Buy</button>
+          </div>
+        </div>`;
+      }).join('')}</div>`;
+    this.setFoot(`<span style="color:var(--ink-faint)">Carrying ${carrying} · ${placed} in the water · aim at open water and press <b>G</b> to set one, <b>E</b> to check, <b>F</b> to retrieve</span>`);
+  }
+
   render() {
     if (!this.el) return;
     const g = this.game;
     const eco = g.get('economy');
     const inv = g.get('inventory');
+    if (this.activeTab === 'traps') { this._renderTraps(g, eco); return; }
     const cat = CATEGORY[this.activeTab];
     if (!cat) return;
 
@@ -106,6 +141,9 @@ export class ShopPanel extends Panel {
       } else if (act === 'equip' && item) {
         inv.equip(item.id);
         g.audio.play('ui_click', { volume: 0.5 });
+        this.render();
+      } else if (act === 'buytrap') {
+        g.get('traps')?.buy(ds.id);
         this.render();
       } else if (act === 'sellall') {
         // Route through the bucket so the seller-proximity rule applies: the

@@ -72,6 +72,34 @@ export class Interaction {
       }
     }
 
+    // ---- fish traps and repairable build pieces ----
+    // Checked before the generic hover so a trap you are standing over always
+    // wins against a distant world interactable behind it.
+    const traps = game.get('traps');
+    const trap = traps?.nearest(player.position, 3.5);
+    if (trap && !best) {
+      const held = traps.catchesFor(trap).length;
+      hud.setInteract(`Check ${trap.def.name}${held ? ` — ${held} fish` : ' — empty'}  ·  [F] retrieve`, 'E');
+      hud.setCrosshair('interact');
+      if (input.justPressed('KeyE')) traps.collect(trap);
+      if (input.justPressed('KeyF')) traps.retrieve(trap);
+      this.hovered = null;
+      return;
+    }
+
+    const build = game.get('build');
+    if (build && !build.mode && !best) {
+      const piece = build.targetPiece(player, 4);
+      if (piece && piece.health < piece.maxHealth) {
+        const pct = Math.round((piece.health / piece.maxHealth) * 100);
+        hud.setInteract(`${piece.def.name}  ${Math.round(piece.health)}/${piece.maxHealth} HP  ·  Repair (3 wood)`, 'E');
+        hud.setCrosshair('interact');
+        if (input.justPressed('KeyE')) build.repair(piece, 3);
+        this.hovered = null;
+        return;
+      }
+    }
+
     this.hovered = best;
     if (best) {
       const label = best.kind === 'world' ? best.target.label : best.label;

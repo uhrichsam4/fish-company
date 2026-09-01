@@ -175,6 +175,7 @@ export class UIManager {
       if (input.rawPressed('KeyC')) { /* reserved for crouch */ }
       if (input.rawPressed('KeyO')) this.toggle('company');
       if (input.rawPressed('KeyJ')) this.toggle('quests');
+      if (input.rawPressed('KeyG')) bus.emit('traps:place', {});
       if (input.rawPressed('KeyK')) this.toggle('contracts');
       if (input.rawPressed('KeyP')) this.toggle('processing');
     }
