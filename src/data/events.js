@@ -322,7 +322,9 @@ export const WORLD_EVENTS = [
       const eco = game.get('economy');
       const tier = REGION_BY_ID[ev.regionId]?.tier ?? 1;
       const base = 220 * Math.pow(2.35, tier - 1);
-      const wealth = Math.max(0, eco?.lifetimeRevenue || 0) * 0.012;
+      // A treasure should feel like a good day, not like skipping the game:
+      // the wealth term is capped relative to the region it was found in.
+      const wealth = Math.min(Math.max(0, eco?.lifetimeRevenue || 0) * 0.008, base * 40);
       ev.data.x = spot.x; ev.data.y = spot.y; ev.data.z = spot.z;
       ev.data.reward = Math.round((base + wealth) * (0.75 + ev.rng() * 0.7));
       ev.data.claimed = false;
@@ -513,8 +515,9 @@ export const WORLD_EVENTS = [
       const crew = workers?.workers || [];
       if (!list.length && !crew.length) { ev.abort = true; return; }
 
-      const tier = 1 + Math.max(0, (eco?.day || 1) * 0.05);
-      const bonus = Math.round((320 + (eco?.lifetimeRevenue || 0) * 0.02) * (0.6 + ev.rng() * 1.1) * tier);
+      const age = clamp(1 + (eco?.day || 1) * 0.05, 1, 3);
+      const wealth = Math.min(Math.max(0, eco?.lifetimeRevenue || 0) * 0.008, 120000);
+      const bonus = Math.round((320 + wealth) * (0.6 + ev.rng() * 1.1) * age);
       let who = 'A crew';
 
       if (list.length) {

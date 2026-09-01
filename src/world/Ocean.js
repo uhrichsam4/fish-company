@@ -340,18 +340,6 @@ uniform float uSeaLevel;
 
 vec3 unpackNormal(vec4 c) { return c.rgb * 2.0 - 1.0; }
 
-float hash21(vec2 p) {
-  p = fract(p * vec2(123.34, 456.21));
-  p += dot(p, p + 45.32);
-  return fract(p.x * p.y);
-}
-float vnoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash21(i), hash21(i + vec2(1, 0)), u.x),
-             mix(hash21(i + vec2(0, 1)), hash21(i + vec2(1, 1)), u.x), u.y);
-}
-
 // Per-fragment water depth. Interpolating this from the vertex stage produced
 // hard triangle edges in the shoreline foam.
 float depthAt(vec2 wp) {
@@ -369,7 +357,7 @@ void main() {
   float waterCol_t;
   // Fragment-accurate depth near the shore; the interpolated value is fine
   // further out and much cheaper.
-  float fragDepth = vDist < 300.0 ? depthAt(vWorldPos.xz) : vDepth;
+  float fragDepth = vDist < 180.0 ? depthAt(vWorldPos.xz) : vDepth;
   vec3 viewDir = normalize(uCameraPos - vWorldPos);
   vec3 N = normalize(vNormal);
 
@@ -409,24 +397,29 @@ void main() {
   // swell instead of sitting at a fixed contour.
   float surge = sin(uTime * 0.55 + vWorldPos.x * 0.045 + vWorldPos.z * 0.037) * 0.42
               + sin(uTime * 0.31 - vWorldPos.x * 0.021 + vWorldPos.z * 0.029) * 0.28;
-  // Break the depth up with noise before thresholding: the heightmap is only
-  // ~2 m/texel, and a hard threshold on it produced a visibly stair-stepped
-  // foam line along the beach.
-  float foamNoise = vnoise(vWorldPos.xz * 0.55 + uTime * 0.03) * 0.62
-                  + vnoise(vWorldPos.xz * 1.9 - uTime * 0.05) * 0.3
-                  + vnoise(vWorldPos.xz * 6.0) * 0.14;
-  float noisyDepth = fragDepth + (foamNoise - 0.53) * 1.15;
-  float edge = 1.35 + surge * uAmplitude;
-  float shoreFoam = smoothstep(edge, edge - 0.85, noisyDepth) * 0.9;
-  shoreFoam += smoothstep(edge + 1.4, edge, noisyDepth) * 0.18;
+  // The depth lookup is only ~2 m/texel, so thresholding it directly gave a
+  // stair-stepped foam line. Break it up with the foam texture (already bound)
+  // rather than procedural noise -- three octaves of value noise per fragment
+  // over the whole ocean cost about 40 fps.
+  float shoreFoam = 0.0;
+  if (fragDepth < 5.0) {
+    float fn = texture2D(uFoamTex, vWorldPos.xz * 0.035 + vec2(uTime * 0.004, uTime * 0.003)).r * 0.66
+             + texture2D(uFoamTex, vWorldPos.xz * 0.14 - vec2(uTime * 0.011, uTime * 0.008)).r * 0.34;
+    float noisyDepth = fragDepth + (fn - 0.5) * 0.9;
+    // A narrow, wave-driven swash band -- not a shelf-wide white sheet.
+    float edge = 0.78 + surge * 0.55 * uAmplitude;
+    shoreFoam = smoothstep(edge, edge - 0.6, noisyDepth) * 0.92;
+    shoreFoam += smoothstep(edge + 0.9, edge, noisyDepth) * 0.16;
+  }
   float crestFoam = smoothstep(0.45, 0.95, vCrest) * clamp(uAmplitude, 0.0, 1.6);
   float rippleFoam = clamp(vRipple * 3.0, 0.0, 1.0);
   float foamAmt = clamp(shoreFoam + crestFoam * 0.85 + rippleFoam * 0.6, 0.0, 1.0);
   if (foamAmt > 0.01) {
-    float ft = texture2D(uFoamTex, vUv * 9.0 + vec2(uTime * 0.02, uTime * 0.013)).r;
-    float ft2 = texture2D(uFoamTex, vUv * 21.0 - vec2(uTime * 0.03, uTime * 0.019)).r;
-    float mask = smoothstep(0.34, 0.75, ft * 0.6 + ft2 * 0.4 + foamAmt * 0.55);
-    col = mix(col, uFoamColor, mask * foamAmt);
+    float ft = texture2D(uFoamTex, vUv * 14.0 + vec2(uTime * 0.02, uTime * 0.013)).r;
+    // Let the texture shape the foam rather than drowning it in a constant
+    // term -- the band was rendering as flat white.
+    float mask = smoothstep(0.62 - foamAmt * 0.55, 1.0 - foamAmt * 0.4, ft);
+    col = mix(col, uFoamColor, mask * foamAmt * 0.92);
   }
 
   // Alpha: opaque offshore, translucent at the water's edge.

@@ -133,9 +133,12 @@ export class DialoguePanel extends Panel {
     this.respEl.innerHTML = '';
     this.skipEl.textContent = 'click to skip';
     this.textEl.textContent = '';
-    // Two characters per tick at 60 Hz reads at a comfortable speaking pace.
+    // Time-based rather than tick-based: a throttled timer in a background
+    // tab would otherwise stretch a two-line remark into ten seconds.
+    const CPS = 78;
+    const t0 = performance.now();
     this._timer = setInterval(() => {
-      this._shown = Math.min(this._full.length, this._shown + 2);
+      this._shown = Math.min(this._full.length, Math.ceil((performance.now() - t0) / 1000 * CPS));
       this.textEl.innerHTML = this._full.slice(0, this._shown);
       if (this._shown >= this._full.length) this._completeReveal();
     }, 16);
@@ -161,12 +164,18 @@ export class DialoguePanel extends Panel {
     const ctx = this._ctx();
     const list = npcResponses(this.npc, ctx, this.node);
 
-    // "Continue" appears while the current bucket still has unheard lines.
+    // At most four buttons, so they are picked by priority rather than by
+    // whatever order the data happened to produce: the things that DO
+    // something (take a job, open the shop, sit at the table) outrank chat.
     const more = this.lineIdx + 1 < this._linesInNode();
-    const rows = more
-      ? [{ id: 'more', text: 'Go on…', action: 'continue' }, ...list.filter((r) => r.id !== 'leave')].slice(0, 3)
-        .concat(list.filter((r) => r.id === 'leave'))
-      : list;
+    const RANK = ['accept', 'remind', 'shop', 'gamble', 'gossip', 'about', 'back'];
+    const ranked = [...list].filter((r) => r.id !== 'leave')
+      .sort((a, b) => RANK.indexOf(a.id) - RANK.indexOf(b.id));
+    const rows = [];
+    if (more) rows.push({ id: 'more', text: 'Go on…', action: 'continue' });
+    for (const r of ranked) { if (rows.length < 3) rows.push(r); }
+    const leave = list.find((r) => r.id === 'leave');
+    if (leave) rows.push(leave);
 
     this._responses = rows;
     this.respEl.innerHTML = rows.map((r, i) =>

@@ -3,9 +3,9 @@ import { bus } from '../core/EventBus.js';
 import { waterHeightAt } from '../world/waves.js';
 import { worldHeight } from '../world/Terrain.js';
 import { regionAt } from '../data/regions.js';
-import { getSpecies } from '../data/fishData.js';
+import { getSpecies, speciesForHabitat } from '../data/fishData.js';
 import {
-  clamp, clamp01, lerp, damp, hash2, rrange, rpick, rchance, makeRNG, TAU,
+  clamp, clamp01, lerp, damp, hash2, rrange, rpick, rchance, makeRNG, weightedPick, TAU,
 } from '../util/math.js';
 
 const _v = new THREE.Vector3();
@@ -26,6 +26,9 @@ const DEPTH_STOPS = [
   { d: 1200, fog: 0x01070d, density: 0.088, light: 0.012, water: { shallow: 0x021420, deep: 0x000203, horizon: 0x02090f }, tint: 'rgba(0,5,11,0.86)' },
   { d: 3000, fog: 0x000305, density: 0.10,  light: 0.0,   water: { shallow: 0x010a10, deep: 0x000000, horizon: 0x010508 }, tint: 'rgba(0,2,5,0.92)' },
 ];
+
+/** Deep-water habitat tags the seeded fauna is drawn from. */
+const DEEP_HABITATS = ['deep', 'abyss', 'trench', 'vent', 'wreck'];
 
 const CELL = 115;              // metres per dressing cell
 const CELL_RADIUS = 1;         // 3x3 cells around the player
@@ -69,6 +72,9 @@ export class DeepSea {
     this._ambTimer = rrange(6, 14);
     this._ghostTimer = 20;
     this._tintTimer = 0;
+    this._fishTimer = 2;
+    /** @type {object[]} live deep-species fish this system asked FishSystem for */
+    this._deepFish = [];
     this._budget = { ms: 0 };
     this.rng = makeRNG(31415);
   }
@@ -392,6 +398,7 @@ export class DeepSea {
     if (this.root.visible !== active) this.root.visible = active;
     if (active) {
       this.updateDressing(dt, game);
+      this.updateDeepFish(dt, game);
       this.updatePlankton(dt, game);
       this.updateHalos(dt, game);
       this.updateAmbience(dt, game);
@@ -566,10 +573,11 @@ export class DeepSea {
       const surf = waterHeightAt(x, z);
       if (surf - bed < DRESSING_DEPTH * 0.7) continue;
 
-      // Steep ground gets a trench wall; flat deep mud gets everything else.
+      // Genuinely steep ground can carry a trench wall, but only sometimes —
+      // a bare slope test turns the whole trench into cliff faces.
       const slope = Math.abs(worldHeight(x + 26, z) - worldHeight(x - 26, z))
         + Math.abs(worldHeight(x, z + 26) - worldHeight(x, z - 26));
-      const type = slope > 34 ? 'wall'
+      const type = (slope > 120 && r3 < 0.34) ? 'wall'
         : r3 < 0.20 ? 'vent'
           : r3 < 0.30 ? 'wreck'
             : r3 < 0.50 ? 'spire'
@@ -641,6 +649,59 @@ export class DeepSea {
     return { name: best.name, value: best.value, position: best.position };
   }
 
+  // ------------------------------------------------------------ deep fauna
+  /**
+   * FishSystem only ever spawns within 140 m of the surface, so below that the
+   * ocean is completely empty. Seed the real deep species around the camera
+   * through its public `spawnSpecific` API and let its own AI take over.
+   */
+  updateDeepFish(dt, game) {
+    if (this.depth < 120) { this._deepFish.length = 0; return; }
+    this._fishTimer -= dt;
+    if (this._fishTimer > 0) return;
+    this._fishTimer = 1.1;
+
+    const fishSys = game.get('fish');
+    if (!fishSys || !fishSys.spawnSpecific) return;
+    const cam = game.camera;
+
+    // Drop anything that wandered off or was collected.
+    for (let i = this._deepFish.length - 1; i >= 0; i--) {
+      const f = this._deepFish[i];
+      if (!f.active || f.position.distanceToSquared(cam.position) > 190 * 190) this._deepFish.splice(i, 1);
+    }
+    const target = game.quality === 'low' ? 6 : game.quality === 'medium' ? 10 : 15;
+    if (this._deepFish.length >= target) return;
+
+    const region = regionAt(cam.position.x, cam.position.z)?.id || null;
+    const pool = speciesForHabitat(DEEP_HABITATS, this.depth, { region, junk: false, bosses: false });
+    if (!pool.length) return;
+    const sky = game.get('sky');
+    const night = sky?.isNight;
+    const cands = pool.map((sp) => {
+      let w = sp.spawnWeight;
+      if (sp.time === 'night' && !night) w *= 0.45;
+      if (sp.time === 'day' && night) w *= 0.45;
+      return { sp, weight: Math.max(0.01, w) };
+    });
+
+    const batch = Math.min(3, target - this._deepFish.length);
+    for (let i = 0; i < batch; i++) {
+      const pick = weightedPick(cands, this.rng)?.sp;
+      if (!pick) break;
+      const a = this.rng() * TAU;
+      const r = lerp(26, 72, this.rng());
+      const x = cam.position.x + Math.cos(a) * r;
+      const z = cam.position.z + Math.sin(a) * r;
+      const bed = worldHeight(x, z);
+      const surf = waterHeightAt(x, z);
+      const y = clamp(cam.position.y + rrange(-18, 18), bed + 2.5, surf - 2);
+      if (surf - y < 60) continue;
+      const made = fishSys.spawnSpecific({ speciesId: pick.id, x, y, z, count: 1 });
+      for (const f of made) this._deepFish.push(f);
+    }
+  }
+
   // ------------------------------------------------------------- particles
   updatePlankton(dt, game) {
     if (!this.plankton) return;
@@ -653,8 +714,8 @@ export class DeepSea {
       Math.round(cam.position.z / snap) * snap,
     );
     const vis = clamp01((this.depth - 60) / 220) * this.blend;
-    this.plankton.material.opacity = vis * 0.55;
-    this.plankton.visible = vis > 0.01 && this.game.quality !== 'low';
+    this.plankton.material.opacity = vis * (this.game.quality === 'low' ? 0.28 : 0.55);
+    this.plankton.visible = vis > 0.01;
   }
 
   updateHalos(dt, game) {

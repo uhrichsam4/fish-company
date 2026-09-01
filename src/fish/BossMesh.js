@@ -272,26 +272,42 @@ function addWeakPoint(parent, x, y, z, radius, colorHex, list, hp = 1) {
   const g = new THREE.Group();
   g.position.set(x, y, z);
   const m = weakMat(colorHex);
-  const core = put(g, sphere(), m, [0, 0, 0], [0, 0, 0], radius * 3.0);
-  // Dark socket ring around the core, facing outward from the body.
-  const socket = put(g, ring(), mat(0x0f1114, { rough: 0.95 }), [0, 0, 0],
-    [Math.abs(z) > 0.01 ? 0 : Math.PI / 2, 0, 0], radius * 4.4);
+
+  // Glowing core.
+  const core = put(g, sphere(), m, [0, 0, 0], [0, 0, 0], radius * 2.6);
+
+  // Broken plating around it — chips, not a black ring. A flat dark torus
+  // reads as a hole punched through the animal at any distance.
+  const chip = mat(0x171a1e, { rough: 0.95 });
+  const outward = new THREE.Vector3(x, y, z);
+  outward.setLength(1);
+  const chips = new THREE.Group();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU + 0.3;
+    const r = radius * (1.5 + (i % 2) * 0.3);
+    put(chips, cone4(), chip,
+      [Math.cos(a) * r * 0.25, Math.sin(a) * r, Math.cos(a) * r],
+      [0, a, Math.PI * 0.5 + Math.sin(a) * 0.4],
+      [radius * 0.9, radius * 1.5, radius * 0.5]);
+  }
+  g.add(chips);
+
   // Billboard halo: always faces the camera, so a weak point reads from
   // every angle and at range. That is the whole point of a weak point.
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({
     map: haloTexture(), color: new THREE.Color(colorHex),
-    transparent: true, opacity: 0.55, depthWrite: false,
+    transparent: true, opacity: 0.5, depthWrite: false,
     blending: THREE.AdditiveBlending,
   }));
-  halo.scale.setScalar(radius * 6);
+  halo.scale.setScalar(radius * 5);
   halo.userData.isHalo = true;
-  halo.userData.base = radius * 6;
+  halo.userData.base = radius * 5;
   g.add(halo);
   parent.add(dyn(g));
   const wp = {
     object3d: g, localPos: new THREE.Vector3(x, y, z), radius,
     broken: false, hp, maxHp: hp,
-    _mat: m, _core: core, _halo: halo, _socket: socket, _color: colorHex,
+    _mat: m, _core: core, _halo: halo, _socket: chips, _color: colorHex,
   };
   list.push(wp);
   return wp;
@@ -306,7 +322,6 @@ function darkenWeakPoint(wp) {
   wp._mat.needsUpdate = true;
   wp._halo.visible = false;
   wp._core.scale.multiplyScalar(0.55);
-  wp._socket.material = mat(0x2a1c14, { rough: 1 });
 }
 
 function relightWeakPoint(wp) {
@@ -337,10 +352,10 @@ function relightWeakPoint(wp) {
 const BOSS_PALETTE = {
   'dock-eater':     { main: '#2c332b', belly: '#5c684a', fin: '#171b16', accent: '#5d8a3a', eye: '#c8ff3a' },
   'king-crab-boss': { main: '#6d2f22', belly: '#a88361', fin: '#3d160f', accent: '#b06a3a', eye: '#f2e05a' },
-  'the-hammer':     { main: '#3c464e', belly: '#c3c6bd', fin: '#191e23', accent: '#8a4136', eye: '#ffd23a' },
+  'the-hammer':     { main: '#414d57', belly: '#c8ccc3', fin: '#171c21', accent: '#2b343b', eye: '#ffd23a' },
   'stormfin':       { main: '#1c2f5c', belly: '#9fb2c8', fin: '#3b2878', accent: '#4c8fb8', eye: '#ffe14a' },
   'frostjaw':       { main: '#41586e', belly: '#b9cddb', fin: '#25384c', accent: '#6ea8c4', eye: '#e8f8ff' },
-  'abyss-mouth':    { main: '#120a1a', belly: '#241428', fin: '#07040c', accent: '#8c2440', eye: '#ffd0dc' },
+  'abyss-mouth':    { main: '#0f0916', belly: '#1c1226', fin: '#07040c', accent: '#3a1020', eye: '#ffd0dc' },
 };
 
 /** A species clone whose colours suit a 20 m animal. */
@@ -466,24 +481,33 @@ function buildIronshell(host, species, rng, wps, B) {
   host.add(detail);
 
   // --- riveted armour plating over the carapace ---------------------------
-  addPlates(detail, mPlate, 8, (t, i) => {
-    const x = lerp(0.22, -0.30, t);
-    return {
-      x, y: B.top(x) + 0.012,
-      z: (i % 3 - 1) * B.side(x) * 0.42,
-      rz: 0.1 + (i % 3 - 1) * 0.18,
-      rx: (i % 2 ? 0.2 : -0.2),
-    };
-  }, (t) => 0.17 - t * 0.04, 0.05);
+  // Two staggered rows across the shell — not a stack, a carapace.
+  for (let row = 0; row < 2; row++) {
+    addPlates(detail, mPlate, 5, (t, i) => {
+      const x = lerp(0.20, -0.28, t);
+      const zo = (row ? 1 : -1) * B.side(x) * 0.34 + (i % 2 - 0.5) * 0.03;
+      return {
+        x, y: B.top(x) - 0.004 - Math.abs(zo) * 0.10,
+        z: zo,
+        rz: 0.08 * (row ? 1 : -1),
+        rx: (row ? 1 : -1) * 0.34,
+      };
+    }, (t) => 0.115 - t * 0.03, 0.04);
+  }
+  // a keel plate along the spine
+  addPlates(detail, mPlate, 4, (t) => {
+    const x = lerp(0.16, -0.24, t);
+    return { x, y: B.top(x) + 0.006, z: 0, rz: 0.05 };
+  }, (t) => 0.10 - t * 0.02, 0.02);
   // rivets
   for (let i = 0; i < 16; i++) {
     const x = lerp(0.22, -0.30, rng());
-    put(detail, blob(), mMetal, [x, B.top(x) + 0.02, (rng() - 0.5) * B.side(x) * 1.1], [0, 0, 0], 0.013);
+    put(detail, blob(), mMetal, [x, B.top(x) + 0.008, (rng() - 0.5) * B.side(x) * 1.2], [0, 0, 0], 0.012);
   }
 
   // --- snagged crab-pot cage riding the shell -----------------------------
   const cage = new THREE.Group();
-  cage.position.set(-0.14, B.top(-0.14) + 0.03, 0.02);
+  cage.position.set(-0.16, B.top(-0.16) + 0.02, B.side(-0.16) * 0.45);
   cage.rotation.set(0.25, 0.4, 0.15);
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * TAU;
@@ -658,6 +682,7 @@ function buildStormfin(host, species, rng, wps, B) {
     put(detail, ring(), mMetal, [B.nose - 0.05 + i * 0.045, B.mid(B.nose) + 0.004, 0], [0, 0, Math.PI / 2], [r, r, r]);
   }
   const tip = dyn(put(detail, cone6(), mVolt, [billTip, B.mid(B.nose) + 0.004, 0], [0, 0, -Math.PI / 2], [0.018, 0.06, 0.018]));
+  const tipBase = tip.scale.clone();
 
   // --- arc nodes: little floating electrodes that spark ------------------
   const arcs = [];
@@ -691,7 +716,7 @@ function buildStormfin(host, species, rng, wps, B) {
         a.scale.setScalar(k);
       }
       sail.rotation.z = Math.sin(t * 2.2) * 0.05;
-      tip.scale.setScalar(1 + pulse * 0.25);
+      tip.scale.copy(tipBase).multiplyScalar(1 + pulse * 0.25);
       if (parts.pecL) parts.pecL.rotation.x = Math.sin(t * 2.4) * 0.2;
       if (parts.pecR) parts.pecR.rotation.x = -Math.sin(t * 2.4) * 0.2;
     },
@@ -816,6 +841,7 @@ function buildAbyssMouth(host, species, rng, wps, B) {
   const mouthX = 0.30;
   const gullet = dyn(put(detail, sphere(), mGullet, [mouthX - 0.03, B.mid(mouthX), 0], [0, 0, 0],
     [B.side(mouthX) * 1.0, B.at(mouthX).ry * 1.0, B.side(mouthX) * 1.1]));
+  const gulletBase = gullet.scale.clone();
 
   // --- ring of enormous teeth --------------------------------------------
   const toothRing = new THREE.Group();
@@ -879,8 +905,8 @@ function buildAbyssMouth(host, species, rng, wps, B) {
       mGullet.emissiveIntensity = 0.9 + pulse * 0.8 + s.mouth * 1.6;
       mSpot.emissiveIntensity = 1.2 + Math.sin(t * 2.2) * 0.6;
       stalk.rotation.z = Math.sin(t * 0.8) * 0.16;
-      bulb.scale.setScalar(0.085 * (1 + pulse * 0.12));
-      gullet.scale.setScalar(1 + s.mouth * 0.28);
+      bulb.scale.setScalar(0.085 * (1 + pulse * 0.12));   // bulb is uniform
+      gullet.scale.copy(gulletBase).multiplyScalar(1 + s.mouth * 0.28);
       toothRing.position.x = s.mouth * 0.035;
       toothRing.scale.setScalar(1 + s.mouth * 0.22);
       for (let i = 0; i < tendrils.length; i++) {

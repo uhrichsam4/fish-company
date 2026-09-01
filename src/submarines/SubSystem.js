@@ -667,7 +667,7 @@ export class SubSystem {
       ud.helm.getWorldPosition(_v);
       cam.position.copy(_v);
       cam.rotation.set(player.pitch + s.pitch * 0.8, player.yaw, s.roll * 0.75);
-      if (ud.canopy) ud.canopy.visible = false;
+      for (const o of ud.fpHide) o.visible = false;
       if (s.interior) {
         s.interior.visible = true;
         s.interior.position.copy(_v);
@@ -683,7 +683,7 @@ export class SubSystem {
       if (_v2.y < bed) _v2.y = bed;
       cam.position.lerp(_v2, 1 - Math.pow(0.0006, dt));
       cam.lookAt(s.position.x, s.position.y, s.position.z);
-      if (ud.canopy) ud.canopy.visible = true;
+      for (const o of ud.fpHide) o.visible = true;
       if (s.interior) s.interior.visible = false;
     }
 

@@ -85,6 +85,11 @@ export function createTerrainMaterial(assets, opts = {}) {
           vec3 macro = texture2D(t, uv * 0.16 + 0.37).rgb;
           return mix(fine, macro, 0.38);
         }
+        // Skip a layer entirely when its weight is negligible. Fragments in a
+        // given area share a biome, so this branch is coherent and cheap.
+        vec3 layer(sampler2D t, vec2 uv, float w) {
+          return w > 0.012 ? dualSample(t, uv) * w : vec3(0.0);
+        }
       `)
       .replace('#include <map_fragment>', `
         {
@@ -99,14 +104,11 @@ export function createTerrainMaterial(assets, opts = {}) {
           float sum = max(0.0001, wGrass + wRock + wSand + wWet);
           wGrass /= sum; wRock /= sum; wSand /= sum; wWet /= sum;
 
-          vec3 det = dualSample(uSandMap, uvT) * wSand
-                   + dualSample(uGrassMap, uvT * 1.35) * wGrass
-                   + dualSample(uRockMap, uvT * 0.75) * wRock
-                   + dualSample(uWetMap, uvT * 1.1) * wWet;
-
-          // Large-scale variation so big flat areas aren't uniform.
-          float macro = texture2D(uSandMap, vTerrWorld.xz * uMacroScale).r;
-          det *= 0.86 + macro * 0.3;
+          // Wet sand is the dry set darkened, which saves a texture unit.
+          vec3 det = layer(uSandMap, uvT, wSand + wWet)
+                   + layer(uGrassMap, uvT * 1.35, wGrass)
+                   + layer(uRockMap, uvT * 0.75, wRock);
+          det *= 1.0 - wWet * 0.32;
 
           // Normalise the detail around mid-grey so it modulates the vertex
           // colour rather than replacing it.
@@ -127,16 +129,20 @@ export function createTerrainMaterial(assets, opts = {}) {
           float wGrass = smoothstep(uGrassStart, uGrassEnd, h) * (1.0 - smoothstep(uRockSlope, uRockSlope + 0.22, slope));
           float wRock  = smoothstep(uRockSlope, uRockSlope + 0.26, slope);
           float wSand  = max(0.0, 1.0 - wGrass - wRock);
-          vec3 n = texture2D(uSandNrm, uvT).xyz * wSand
-                 + texture2D(uGrassNrm, uvT * 1.35).xyz * wGrass
-                 + texture2D(uRockNrm, uvT * 0.75).xyz * wRock;
+          // One normal fetch: pick the dominant layer rather than blending
+          // three, which is visually indistinguishable at this scale.
+          vec3 n = (wRock > wGrass && wRock > wSand) ? texture2D(uRockNrm, uvT * 0.75).xyz
+                 : (wGrass > wSand) ? texture2D(uGrassNrm, uvT * 1.35).xyz
+                 : texture2D(uSandNrm, uvT).xyz;
           n = n * 2.0 - 1.0;
           float fade = 1.0 - smoothstep(uFarFade * 0.4, uFarFade, length(vViewPosition));
+          if (fade < 0.02) { /* far terrain keeps the geometric normal */ } else {
           // Perturb the geometric normal in world space; terrain has no tangents.
           vec3 up = abs(normal.y) > 0.99 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
           vec3 t = normalize(cross(up, normal));
           vec3 b = cross(normal, t);
           normal = normalize(normal + (t * n.x + b * n.y) * uNormalStrength * fade);
+          }
         }
       `);
 

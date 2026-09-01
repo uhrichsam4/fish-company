@@ -73,6 +73,20 @@ export class Tutorial {
   _wire() {
     const on = (e, fn) => this._offs.push(bus.on(e, fn));
 
+    // Retirement first, deliberately: the event that proves a lesson learned is
+    // usually the same event that triggers the next one. Clearing the old hint
+    // before the new one is offered stops a high-priority hint (the hook-set
+    // bar) from blocking its own successor (the reel prompt).
+    for (const [id, spec] of Object.entries(HINTS)) {
+      if (!spec.until) continue;
+      for (const evt of spec.until) on(evt, () => {
+        // Only retire a lesson the player was actually taught — landing a first
+        // fish without ever seeing the tension warning shouldn't bury it.
+        if (this._lastShown.has(id)) this.retire(id);
+        this.dismiss(id);
+      });
+    }
+
     on('fishing:landedInWater', () => this.show('cast_wait',
       'Now wait. When the bobber <b>dips and twitches</b>, the fish is testing the bait.'));
 
@@ -93,12 +107,8 @@ export class Tutorial {
     on('fishing:caught', () => this.show('pickup',
       'It landed on the ground. <b>E</b> picks it up — <b>E</b> again stores it in your basket.'));
 
-    on('inventory:fishStored', () => { this.retire('pickup'); this.dismiss('pickup'); });
-
-    on('sell:completed', () => {
-      this.retire('sell'); this.dismiss('sell');
-      this.show('keys', 'Money. <b>Tab</b> inventory · <b>J</b> quests · <b>K</b> contracts · <b>M</b> map · <b>O</b> company.');
-    });
+    on('sell:completed', () => this.show('keys',
+      'Money. <b>Tab</b> inventory · <b>J</b> quests · <b>K</b> contracts · <b>M</b> map · <b>O</b> company.'));
 
     on('workers:changed', ({ count }) => {
       if (count > 0) this.show('crew', 'You have crew. <b>O</b> opens the company — assign them, or fit them out from the Workers tab.');

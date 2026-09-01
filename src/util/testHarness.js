@@ -208,6 +208,29 @@ export function installTestHarness(game) {
       return true;
     },
 
+    /**
+     * Force every material to relink and report any shader compile errors.
+     * A failed ShaderMaterial renders as nothing, which is easy to miss in a
+     * screenshot and impossible to miss here.
+     */
+    async checkShaders() {
+      const before = errors.length;
+      const seen = new Set();
+      game.scene.traverse((o) => {
+        const m = o.material;
+        if (!m) return;
+        for (const mm of Array.isArray(m) ? m : [m]) {
+          if (seen.has(mm.uuid)) continue;
+          seen.add(mm.uuid);
+          mm.needsUpdate = true;
+        }
+      });
+      game.renderer.render(game.scene, game.camera);
+      await sleep(120);
+      const shaderErrors = errors.slice(before).filter((e) => /Shader Error|not compiled|ERROR: 0:/.test(e));
+      return { materials: seen.size, shaderErrors };
+    },
+
     /** Run a named debug-menu action. */
     debug(action) { game.get('debug')?.run(action); },
 

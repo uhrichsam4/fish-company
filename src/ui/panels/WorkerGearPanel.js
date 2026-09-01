@@ -102,8 +102,10 @@ export class WorkerGearPanel extends Panel {
       </div>
       <div class="wg-detail">
         ${this.detailHead(w)}
-        ${this.gearSection(w, eco)}
         ${this.treeSection(w, eco)}
+      </div>
+      <div class="wg-detail">
+        ${this.gearSection(w, eco)}
       </div>
     </div>`;
 
@@ -209,7 +211,7 @@ export class WorkerGearPanel extends Panel {
     const fittedId = w.equipment?.[slot.key] || null;
     const fitted = getItem(fittedId);
 
-    return `<div class="card" style="margin-top:11px">
+    return `<div class="card">
       <div class="card-title">🧰 Equipment</div>
       <div class="wg-slots">${SLOTS.map((s) => {
         const it = getItem(w.equipment?.[s.key]);

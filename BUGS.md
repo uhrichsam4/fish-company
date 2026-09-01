@@ -4,13 +4,15 @@
 | # | Severity | Area | Issue | Notes |
 |---|---|---|---|---|
 | B-12 | med | Economy | `computeFishValue` multiplies rarity mult × mass, so a Golden Abyssal Leviathan prices at ~$34 B — the late game overflows into meaninglessness. | Needs a soft cap / logarithmic tail above ~$10 M. |
-| B-13 | med | Render | 679 draw calls and 458 k tris under stress. Props are individual meshes; the ocean clipmap alone is ~100 k tris. | Instance/merge static props per region; drop ocean ring levels by distance. |
+| B-17 | low | Testing | FPS readings taken while the automation pane isn't compositing are meaningless — the fallback ticker is throttled. Measure `perf.renderMs` / per-system update cost instead. Current real cost: **~1 ms/frame CPU, ~1 ms render at 2880x1620**. | Documented; don't chase it again. |
 | B-14 | low | Workers | Crew occasionally pick fishing spots close together despite the 6.5 m dedup, when few spots pass the water test. | Generate more shoreline candidates per region. |
 | B-15 | low | UI | Company panel has no Contracts or Processing tab; those systems are only reachable over the event bus. | Add tabs. |
 | B-16 | low | Boats | Hull takes a little damage from wave-driven contacts even in open water. | Filter contacts by relative normal velocity rather than body speed. |
 
 ## Fixed
 | # | Area | Issue | Fix |
+| B-13 | Render | 921 draw calls; every prop was its own mesh. | Static batching by material signature + fish LOD + worker mesh merging → ~210 draws. |
+| B-18 | Ocean | The whole ocean vanished — a partial edit left a call to a helper I'd deleted, so the fragment shader failed to compile and the material silently rendered nothing. | Rewrote the block; added `TEST.checkShaders()` which relinks every material and surfaces compile errors, so this can't pass a screenshot review again. |
 |---|---|---|---|
 | B-01 | Terrain | Points outside an island clamped to sea level, so no water existed offshore. | `land` initialises to `-1e9`, not `0`. |
 | B-02 | Ocean | Waves were 5.8 m peak-to-trough on a starter beach. | Gerstner amplitude is `steepness/k`, not `steepness` — retuned all four wave sets. |

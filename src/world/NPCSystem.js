@@ -151,8 +151,10 @@ export class NPCSystem {
         kind: 'talk',
         label: `Talk to ${n.def.name}`,
         key: 'E',
-        position: new THREE.Vector3(n.position.x, n.position.y + 1.3, n.position.z),
-        radius: 3.2,
+        // Chest height, and a little more reach than the shop shack behind them
+        // so walking up to the person wins over walking up to the building.
+        position: new THREE.Vector3(n.position.x, n.position.y + 1.2, n.position.z),
+        radius: 4.4,
         data: { npcId: n.id },
       });
       n.registered = true;
@@ -176,6 +178,10 @@ export class NPCSystem {
     this.root.add(n.object);
     if (n.def.prop) {
       n.tool = buildWorkerTool(n.def.prop);
+      // Worker props are sized for a rig that is swinging them about; on a
+      // character standing still and being talked to, a full-size crate hides
+      // the whole torso.
+      n.tool.scale.setScalar(n.def.propScale ?? 0.62);
       n.rig.itemSocket.add(n.tool);
     }
     n.physical = true;
@@ -272,6 +278,9 @@ export class NPCSystem {
           if (n.placed && !n.registered) this._register(n.region);
         }
         if (!n.placed) continue;
+        // A region teardown drops our interactable with it; put it back as soon
+        // as the player is near enough for the NPC to matter again.
+        if (!n.registered && regionDist < rdef.reach + 320) this._register(n.region);
         const d = Math.hypot(px - n.position.x, pz - n.position.z);
         if (!n.physical && d < SPAWN_RADIUS) this._spawn(n);
         else if (n.physical && d > DESPAWN_RADIUS) this._despawn(n);

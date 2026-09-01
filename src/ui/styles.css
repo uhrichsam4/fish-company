@@ -640,3 +640,9 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
    ~18px in the Company and Quest logs. Pin them; `.panel-body` already has
    flex: 1 and its own scroll to absorb the remainder. */
 .panel > .panel-head, .panel > .tabs, .panel > .panel-foot { flex: none; }
+
+/* crew equipment: worker list | identity + specialisation | gear */
+.wg-cols { grid-template-columns: 244px 1.05fr 1fr; }
+.wg-catalogue { max-height: 34vh; }
+@media (max-width: 1260px) { .wg-cols { grid-template-columns: 220px 1fr 1fr; } }
+@media (max-width: 980px) { .wg-cols { grid-template-columns: 1fr; } }

@@ -309,6 +309,8 @@ export function buildSubMesh(def, opts = {}) {
 
   // ---- floodlights on gimbals -----------------------------------------
   const lightAnchors = [];
+  /** Meshes that sit in the pilot's eyeline and are hidden in first person. */
+  const fpHide = [];
   for (const s of [-1, 1]) {
     const gimbal = new THREE.Group();
     const yoke = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.05, R * 0.05, R * 0.3, 6), steelMat);
@@ -325,6 +327,7 @@ export function buildSubMesh(def, opts = {}) {
     gimbal.name = `sub-light-${s < 0 ? 'port' : 'stbd'}`;
     g.add(gimbal);
     lightAnchors.push(gimbal);
+    fpHide.push(yoke, housing, lens);
   }
 
   // ---- manipulator arm (tier 2+) --------------------------------------
@@ -415,9 +418,10 @@ export function buildSubMesh(def, opts = {}) {
 
   g.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
 
+  fpHide.push(canopy, canopyRing);
   g.userData = {
     def, lightAnchors, propAnchor, canopy, helm, cargoBasket, armPivot,
-    runningLights, sail, hullMesh: hull, bubbleVent,
+    runningLights, sail, hullMesh: hull, bubbleVent, fpHide,
     tris: 0,
   };
   g.userData.tris = countTris(g);
@@ -471,18 +475,18 @@ export function buildSubInterior(def) {
   g.add(cabin);
 
   // ---- viewport frame --------------------------------------------------
-  const frame = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.055, 5, 16), trim);
-  frame.position.set(0, -0.02, 1.22);
+  const frame = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.055, 5, 18), trim);
+  frame.position.set(0, 0.02, 1.75);
   g.add(frame);
-  const frameInner = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.028, 4, 14), m('#0f1519', 0.9, 0.2));
-  frameInner.position.set(0, -0.02, 1.26);
+  const frameInner = new THREE.Mesh(new THREE.TorusGeometry(0.88, 0.028, 4, 14), m('#0f1519', 0.9, 0.2));
+  frameInner.position.set(0, 0.02, 1.79);
   g.add(frameInner);
   // Bolt heads around the port.
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * TAU;
-    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.05, 4), trim);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU + 0.5;
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.05, 4), trim);
     bolt.rotation.x = Math.PI / 2;
-    bolt.position.set(Math.cos(a) * 0.80, -0.02 + Math.sin(a) * 0.80, 1.20);
+    bolt.position.set(Math.cos(a) * 1.06, 0.02 + Math.sin(a) * 1.06, 1.72);
     g.add(bolt);
   }
 
