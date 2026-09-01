@@ -277,6 +277,7 @@ export class TrapSystem {
       trap.condition = Math.max(0.35, trap.condition - WEAR_PER_HOUR * (this.soakMinutes(trap) / 60));
       this.game.audio?.play('fish_into_bucket', { volume: 0.75 });
       this.game.audio?.play('splash_small', { volume: 0.4 });
+      bus.emit('traps:collected', { trap, count: taken });
       bus.emit('toast', {
         text: `${trap.def.icon} +${taken} fish${left ? ' — bucket full, rest left in the trap' : ''}`,
         kind: 'success', duration: 3400,

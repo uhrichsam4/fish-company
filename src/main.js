@@ -79,6 +79,7 @@ async function boot() {
     ['./player/HeldItems.js', 'HeldItems'],
     ['./player/Interaction.js', 'Interaction'],
     ['./quests/QuestSystem.js', 'QuestSystem'],
+    ['./quests/DailyChallenges.js', 'DailyChallenges'],
     ['./economy/Research.js', 'Research'],
     ['./economy/Harbor.js', 'Harbor'],
     ['./economy/Company.js', 'Company'],
