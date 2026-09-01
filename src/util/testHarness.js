@@ -392,6 +392,11 @@ export function installTestHarness(game) {
       // canvas by one factor of dpr on every capture.
       const dpr = r.getPixelRatio();
       const prev = { w: r.domElement.width / dpr, h: r.domElement.height / dpr };
+      // A hidden pane reports a 0x0 canvas, which renders to a handful of
+      // garbage bytes rather than failing. WebGL draws offscreen perfectly
+      // well, so fall back to a sane frame instead of writing a corrupt file.
+      const blind = !(prev.w > 0 && prev.h > 0);
+      if (blind) { prev.w = 1280; prev.h = 720; }
       // These are for eyeballing, and a full-res retina grab is a ~3.5MB PNG.
       // Cap the long edge and drop to 1x unless a caller asks for a size.
       let w = opts.width, h = opts.height;
@@ -412,9 +417,13 @@ export function installTestHarness(game) {
       for (const s of game.systems) { try { s.postRender?.(game); } catch { /* */ } }
       const url = r.domElement.toDataURL('image/png');
       r.setPixelRatio(dpr);
-      r.setSize(prev.w, prev.h, false);
-      game.camera.aspect = prev.w / prev.h;
-      game.camera.updateProjectionMatrix();
+      // Restoring a hidden pane to a fabricated size would fight the resize
+      // handler when it comes back, so leave the canvas alone in that case.
+      if (!blind) {
+        r.setSize(prev.w, prev.h, false);
+        game.camera.aspect = prev.w / prev.h;
+        game.camera.updateProjectionMatrix();
+      }
       try {
         const res = await fetch('http://localhost:5181/', {
           method: 'POST', headers: { 'content-type': 'application/json' },
