@@ -637,9 +637,7 @@ export class SubSystem {
 
     s.depth = Math.max(0, wy - s.position.y);
     this.depth = s.depth;
-    if (s.depth > s.deepest) s.deepest = s.depth;
-    const eco = game.get('economy');
-    if (eco?.stats && s.depth > (eco.stats.deepestDive || 0)) eco.stats.deepestDive = Math.round(s.depth);
+    this._recordDepth(s, s.depth);
     s.region = regionAt(s.position.x, s.position.z)?.id || s.region;
     s.locationLabel = regionAt(s.position.x, s.position.z)?.short || 'Open water';
     s.docked = s.depth < 3 && this.nearBay(s);
@@ -1451,7 +1449,21 @@ export class SubSystem {
     e.state = state;
     e.stateLabel = EXP_LABEL[state] || state;
     e.stateTime = 0;
+    // Reaching station is the only point an expedition is genuinely at the
+    // band depth. The piloted path records this off s.position, which an
+    // expedition never touches -- without this a player who only ever sends
+    // expeditions keeps a deepest of 0, and the dive-depth dialogue gates in
+    // npcs.js can never open.
+    if (state === EXP_STATE.SURVEY) this._recordDepth(e.sub, e.band?.depth || 0);
     bus.emit('sub:expeditionState', { expedition: e, state });
+  }
+
+  /** Shared by the piloted sub and by expeditions, which have no position. */
+  _recordDepth(sub, depth) {
+    if (!(depth > 0)) return;
+    if (sub && depth > sub.deepest) sub.deepest = depth;
+    const eco = this.game.get('economy');
+    if (eco?.stats && depth > (eco.stats.deepestDive || 0)) eco.stats.deepestDive = Math.round(depth);
   }
 
   updateExpeditions(dt, game) {
