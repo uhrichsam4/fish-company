@@ -274,12 +274,23 @@ export class World {
       });
       setShadows(r, !r.userData.noCast);
       group.add(r);
-      // Only genuinely large rocks block movement.
-      const worldSize = sp.scale * size;
-      if (worldSize > 1.1) {
+      // Anything that stands proud of the ground blocks movement. This used
+      // to gate on sp.scale * size -- the *input* to the builder rather than
+      // what it actually produced -- which let a 2.1 m shard and a 1 m boulder
+      // through as walk-through scenery. userData.bounds is the real rendered
+      // extent, so use that. Flat slabs stay walkable on purpose.
+      const b = r.userData?.bounds;
+      const wr = (b ? b.radius : size * 0.6) * sp.scale;
+      const wh = (b ? b.height : size) * sp.scale;
+      if (wh >= 0.5) {
+        // A cylinder, not a ball: a ball sized to the width leaves the base of
+        // a tall rock uncovered, and one sized to the height floats an
+        // invisible bump over a wide flat one.
         s.bodies.push(this.game.physics.addBody({
-          type: 'fixed', position: { x: sp.x, y: sp.y + worldSize * 0.35, z: sp.z },
-          shape: { kind: 'ball', r: worldSize * 0.85 }, tag: 'rock', events: false,
+          type: 'fixed',
+          position: { x: sp.x, y: r.position.y + wh * 0.5, z: sp.z },
+          shape: { kind: 'cylinder', hh: wh * 0.5, r: Math.max(0.2, wr * 0.8) },
+          tag: 'rock', events: false,
         }));
       }
     }
