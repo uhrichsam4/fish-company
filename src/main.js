@@ -67,6 +67,7 @@ async function boot() {
     ['./economy/Resources.js', 'ResourceSystem'],
     ['./world/TreeSystem.js', 'TreeSystem'],
     ['./world/TrapSystem.js', 'TrapSystem'],
+    ['./world/FloodSystem.js', 'FloodSystem'],
     ['./build/BuildSystem.js', 'BuildSystem'],
     ['./world/Weather.js', 'Weather'],
     ['./world/StormSystem.js', 'StormSystem'],

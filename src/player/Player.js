@@ -39,6 +39,8 @@ export class Player {
     this._ridingOffset = new THREE.Vector3();
 
     this.walkSpeed = 4.6;
+    this.floodDrag = 0;
+    this.floodDepth = 0;
     this.sprintSpeed = 7.6;
     this.crouchSpeed = 2.2;
     this.swimSpeed = 3.4;
@@ -232,6 +234,12 @@ export class Player {
     let speed = this.crouching ? this.crouchSpeed : this.sprinting ? this.sprintSpeed : this.walkSpeed;
     if (this.groundSurface === 'wood') speed *= 1.0;
     if (this.submergence > 0.05) speed *= lerp(1, 0.55, this.submergence);
+    // Standing floodwater. Separate from submergence, which is the sea:
+    // rain can pool knee-deep on ground that is nowhere near the ocean.
+    if (this.floodDrag > 0) speed *= (1 - this.floodDrag);
+    // Carrying a full bucket is felt rather than announced.
+    const carry = this.game?.get?.('bucket')?.carryPenalty || 0;
+    if (carry > 0) speed *= (1 - carry);
 
     const targetX = wishDir.x * speed * wishLen;
     const targetZ = wishDir.z * speed * wishLen;

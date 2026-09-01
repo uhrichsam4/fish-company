@@ -65,6 +65,7 @@ export class DebugMenu {
       ${sec('Disasters', `
         ${btn('🌊 Rogue Wave', 'storm:rogue')}${btn('🌀 Tsunami', 'storm:tsunami')}
         ${btn('🛑 Calm Sea', 'storm:clear')}
+        <br>${btn('🌧 Heavy Rain', 'weather:rain')}${btn('💧 Flash Flood', 'flood:burst')}${btn('🏜 Dry Out', 'flood:dry')}
         <br>${btn('Surge +1m', 'storm:surge1')}${btn('Surge +3m', 'storm:surge3')}${btn('Surge 0', 'storm:surge0')}
         <div data-storm-readout style="margin-top:6px;font-family:var(--mono);font-size:10.5px;opacity:.75"></div>`)}
       ${sec('Company', `
@@ -169,6 +170,18 @@ export class DebugMenu {
           else if (arg === 'surge1') { st.surge = 1; toast('Surge 1 m'); }
           else if (arg === 'surge3') { st.surge = 3; toast('Surge 3 m'); }
           else if (arg === 'surge0') { st.surge = 0; toast('Surge 0'); }
+          break;
+        }
+        case 'flood': {
+          const fl = g.get('flood');
+          const p = g.get('player');
+          if (!fl || !p) { toast('Flood system not loaded'); break; }
+          if (arg === 'burst') {
+            // Dump upslope of the player so it actually runs past them.
+            fl.addWater(p.position.x, p.position.z - 14, 2.6, 7);
+            fl.addWater(p.position.x, p.position.z - 22, 2.2, 6);
+            toast('Flash flood released uphill');
+          } else if (arg === 'dry') { fl.depth.fill(0); toast('Dried out'); }
           break;
         }
         case 'time': g.get('sky')?.setTimeOfDay(+arg); break;
