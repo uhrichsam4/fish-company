@@ -12,8 +12,10 @@ import {
   formatMoneyExact, dist2DSq,
 } from '../util/math.js';
 
-const NEAR_RADIUS = 110;     // full physical simulation inside this
-const FAR_RADIUS = 150;      // despawn the mesh beyond this
+// A physical worker is ~22 draw calls, so keep the meshed set tight. Beyond
+// FAR_RADIUS the same FSM keeps running without a mesh.
+const NEAR_RADIUS = 72;
+const FAR_RADIUS = 96;
 let _nextId = 1;
 
 /**
@@ -90,11 +92,7 @@ export class WorkerSystem {
     const rng = this.rng;
     const research = this.game.get('research');
     const quests = this.game.get('quests');
-    const availableRoles = ROLE_LIST.filter((r) => {
-      if (!r.unlock) return true;
-      if (r.unlock === 'harbor') return quests?.isRegionUnlocked('harbor');
-      return quests?.unlockedFeatures.has(r.unlock) || research?.features?.has(r.unlock);
-    });
+    const availableRoles = ROLE_LIST.filter((r) => this.roleAvailable(r, quests, research));
     const role = rpick(availableRoles.length ? availableRoles : [ROLES.fisherman]);
 
     const skills = {};
@@ -130,6 +128,23 @@ export class WorkerSystem {
       level, xp: 0, skills, traits, morale: 0.85, wage,
       hireCost: Math.round(wage * role.hireMult * (0.85 + rng() * 0.4)),
     };
+  }
+
+  /**
+   * A role becomes hireable when the quest feature unlocks it OR when the
+   * player already owns the thing it operates — otherwise buying a boat
+   * outside the quest chain leaves you unable to hire anyone to crew it.
+   */
+  roleAvailable(r, quests, research) {
+    if (!r.unlock) return true;
+    if (quests?.unlockedFeatures.has(r.unlock) || research?.features?.has(r.unlock)) return true;
+    switch (r.unlock) {
+      case 'harbor': return !!quests?.isRegionUnlocked('harbor');
+      case 'boats': return (this.game.get('boats')?.owned.length || 0) > 0;
+      case 'submarines': return (this.game.get('subs')?.owned.length || 0) > 0;
+      case 'processing': return !!this.game.get('harbor')?.has?.('processing_plant');
+      default: return false;
+    }
   }
 
   refreshCandidates(force = false) {

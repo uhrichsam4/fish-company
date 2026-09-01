@@ -20,7 +20,9 @@ export class Ocean {
 
   async init(game) {
     const g = game;
-    const geo = makeClipmap(96, 96, 6);
+    // 80x80 inner + 6 rings covers +/-2560 m (the skirt starts at 2400 m) for
+    // ~70k tris instead of ~101k.
+    const geo = makeClipmap(80, 80, 6);
     this.geometry = geo;
 
     const normal1 = g.assets.texture('assets/textures/water_normal1.jpg', { linear: true, fallback: 'normal', repeat: [1, 1] });

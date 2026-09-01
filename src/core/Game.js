@@ -189,7 +189,15 @@ export class Game {
     for (const s of this.systems) {
       if (!s.update || s.disabled) continue;
       try { s.update(dt, this); }
-      catch (e) { console.error(`[Game] "${s.name}" update threw:`, e); s.errorCount = (s.errorCount || 0) + 1; if (s.errorCount > 30) { s.disabled = true; console.error(`[Game] disabling "${s.name}" after repeated errors`); } }
+      catch (e) {
+        console.error(`[Game] "${s.name}" update threw:`, e);
+        s.errorCount = (s.errorCount || 0) + 1;
+        s.lastError = this.frame;
+        if (s.errorCount > 240) {
+          s.disabled = true;
+          console.error(`[Game] disabling "${s.name}" after ${s.errorCount} errors`);
+        }
+      }
     }
 
     const tp = performance.now();
@@ -212,6 +220,11 @@ export class Game {
     this.perf.renderMs = damp(this.perf.renderMs, performance.now() - tr, 0.02, raw);
     this.perf.drawCalls = this.renderer.info.render.calls;
     this.perf.tris = this.renderer.info.render.triangles;
+
+    // Decay error counts so a transient burst doesn't permanently kill a system.
+    if ((this.frame & 255) === 0) {
+      for (const s of this.systems) if (s.errorCount > 0 && this.frame - (s.lastError || 0) > 600) s.errorCount = 0;
+    }
 
     this._accumFrames++;
     this._accumTime += raw;

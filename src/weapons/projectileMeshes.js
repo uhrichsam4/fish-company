@@ -121,7 +121,7 @@ export function buildHarpoon(k = 1) {
 export function buildNet() {
   const g = new THREE.Group();
 
-  const RINGS = 4, SPOKES = 12;
+  const RINGS = 5, SPOKES = 18;
   const netGeo = geo('net.mesh', () => {
     const pts = [];
     for (let r = 1; r <= RINGS; r++) {
@@ -146,17 +146,17 @@ export function buildNet() {
     return bg;
   });
   const netMat = mat('net.mat', () => new THREE.LineBasicMaterial({
-    color: 0xdfe8e2, transparent: true, opacity: 0.8, depthWrite: false,
+    color: 0xeef5f0, transparent: true, opacity: 0.92, depthWrite: false,
   }));
   const web = new THREE.LineSegments(netGeo, netMat);
   web.frustumCulled = false;
   g.add(web);
 
   const weights = [];
-  const wGeo = geo('net.weight', () => new THREE.SphereGeometry(0.07, 6, 5));
-  for (let i = 0; i < 8; i++) {
+  const wGeo = geo('net.weight', () => new THREE.SphereGeometry(0.035, 6, 5));
+  for (let i = 0; i < 12; i++) {
     const w = new THREE.Mesh(wGeo, LEAD());
-    const a = (i / 8) * Math.PI * 2;
+    const a = (i / 12) * Math.PI * 2;
     w.userData.a = a;
     weights.push(w);
     g.add(w);

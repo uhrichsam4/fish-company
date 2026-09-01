@@ -701,7 +701,7 @@ export class Worker {
       const rate = 1.4 * (1 + this.treeBonus('repairSpeed') + this.traitSum('repairSpeed'));
       boats?.repairAny?.(rate);
       this.addXP(3, game);
-      if (this.physical) game.audio.play('impact', { volume: 0.14, position: this.position.clone(), throttle: 500 });
+      if (this.physical) game.audio.play('harpoon_impact', { volume: 0.13, position: this.position.clone(), rate: 1.4, throttle: 500 });
     }
   }
 

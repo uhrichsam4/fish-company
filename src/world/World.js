@@ -8,6 +8,7 @@ import { bus } from '../core/EventBus.js';
 import { clamp, clamp01, lerp, damp, makeRNG } from '../util/math.js';
 import { setStatus } from '../core/Game.js';
 import * as Props from './props/index.js';
+import { batchStatic } from './StaticBatcher.js';
 
 /**
  * Owns terrain, seabed, region streaming and static decoration.
@@ -119,6 +120,18 @@ export class World {
 
     this.buildAnchors(def);
     await this.decorate(s);
+
+    // Collapse the island's static decoration into a few draw calls. Skip the
+    // terrain (already one mesh) and anything a system needs to move later.
+    const before = countMeshes(s.group);
+    const res = batchStatic(s.group, {
+      minPerBatch: 3,
+      skip: (o) => o === mesh || o.name?.startsWith('terrain')
+        || o.userData?.animated || o.parent?.userData?.animated,
+    });
+    if (res.batches) {
+      console.info(`[World] ${id}: batched ${res.meshesRemoved} meshes into ${res.batches} draws (was ${before})`);
+    }
 
     s.active = true;
     s.built = true;
@@ -563,6 +576,12 @@ export class World {
     return { activated: [...this.regions.keys()].filter((k) => this.regions.get(k).built) };
   }
   load(d) { /* regions rebuild on proximity */ }
+}
+
+function countMeshes(root) {
+  let n = 0;
+  root.traverse((o) => { if (o.isMesh) n++; });
+  return n;
 }
 
 function setShadows(obj) {

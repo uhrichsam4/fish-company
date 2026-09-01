@@ -112,7 +112,7 @@ export class PhysicalFishManager {
     this.game.physics.remove(pf.entry);
     this.root.remove(pf.group);
     const fishSys = this.game.get('fish');
-    if (fishSys) fishSys._release(fishSys.meshKeyFor(pf.species, pf.instance.variantId), pf.group);
+    if (fishSys) fishSys._release(fishSys.meshKeyFor(pf.species, pf.instance.variantId, 0), pf.group);
     if (!silent) bus.emit('physfish:despawned', { pf });
   }
 

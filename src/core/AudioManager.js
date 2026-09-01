@@ -193,6 +193,7 @@ export class AudioManager {
       if (!synth) return null;
       src = synth.node; out = synth.out;
       var _preStarted = synth.preStarted === true;
+      var _stopAt = synth.stopAt;
     }
 
     const gain = this.ctx.createGain();
@@ -220,7 +221,8 @@ export class AudioManager {
     src.onended = () => { this._active--; try { gain.disconnect(); tail.disconnect(); } catch { /* */ } };
     if (!_preStarted) {
       try { src.start(0); } catch { /* already started */ }
-      if (o.duration) { try { src.stop(this.ctx.currentTime + o.duration); } catch { /* */ } }
+      const stopTime = o.duration ? this.ctx.currentTime + o.duration : _stopAt;
+      if (stopTime) { try { src.stop(stopTime); } catch { /* */ } }
     }
     return { src, gain, stop: (fade = 0.05) => this._stopNode(src, gain, fade) };
   }
@@ -443,8 +445,9 @@ function synthesize(ctx, name, o = {}) {
     env.gain.linearRampToValueAtTime(spec.peak ?? 0.7, t + (spec.attack ?? 0.005));
     env.gain.exponentialRampToValueAtTime(0.0005, t + spec.dur);
     src.connect(filt); filt.connect(env);
-    src.stop(t + spec.dur + 0.05);
-    return { node: src, out: env };
+    // Do NOT call stop() here — play() starts the node, and stopping before
+    // starting throws InvalidStateError. Hand the stop time back instead.
+    return { node: src, out: env, stopAt: t + spec.dur + 0.05 };
   }
 
   if (spec.type === 'tone') {
@@ -457,8 +460,7 @@ function synthesize(ctx, name, o = {}) {
     env.gain.linearRampToValueAtTime(spec.peak ?? 0.32, t + (spec.attack ?? 0.006));
     env.gain.exponentialRampToValueAtTime(0.0005, t + spec.dur);
     osc.connect(env);
-    osc.stop(t + spec.dur + 0.05);
-    return { node: osc, out: env };
+    return { node: osc, out: env, stopAt: t + spec.dur + 0.05 };
   }
 
   if (spec.type === 'chord') {

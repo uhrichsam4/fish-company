@@ -80,6 +80,7 @@ export class WeaponSystem {
     this._boom = [];
 
     this._crossT = 0;
+    this._crossShown = false;
     this._weaponId = null;
     this._prevFovKick = null;
     this._suctionT = 0;
@@ -172,7 +173,8 @@ export class WeaponSystem {
 
   /** Crosshair is written late so Interaction (order 65) can't clobber it. */
   lateUpdate(dt, game) {
-    if (this._crossT > 0) game.get('hud')?.setCrosshair('hit');
+    if (this._crossT > 0) { game.get('hud')?.setCrosshair('hit'); this._crossShown = true; }
+    else if (this._crossShown) { this._crossShown = false; game.get('hud')?.setCrosshair(''); }
   }
 
   // ---------------------------------------------------------------- weapons
@@ -470,7 +472,14 @@ export class WeaponSystem {
     p.mesh = this._acquireMesh(kind);
     p.mesh.position.copy(p.pos);
     p.mesh.quaternion.setFromUnitVectors(FWD_Z, _a.copy(p.vel).normalize());
-    if (kind === 'net') p.mesh.userData.setOpen?.(0);
+    if (kind === 'net') {
+      // The mesh is authored at unit radius; scale it to the net it actually
+      // casts so the visual matches the capture disc.
+      p.mesh.scale.setScalar(Math.max(1.2, p.netRadius || 5));
+      p.mesh.userData.setOpen?.(0);
+    } else {
+      p.mesh.scale.setScalar(1);
+    }
 
     if (p.tethered) {
       p.line = this._acquireLine();

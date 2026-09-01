@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { makeRNG, lerp, clamp } from '../util/math.js';
 
 /**
@@ -225,12 +226,64 @@ export function buildWorkerMesh(seed, opts = {}) {
   const itemSocket = new THREE.Object3D();
   arms.R.hand.add(itemSocket);
 
+  // Collapse the static clothing/head parts into one mesh per rig node. A
+  // worker went from ~28 draw calls to ~12 with no visible difference; with
+  // dozens of employees on screen that is the difference between 60 and 30 fps.
+  mergeStaticChildren(torso, [head, neck, ...Object.values(arms).map((a) => a.shoulder)]);
+  mergeStaticChildren(head, []);
+
   g.scale.setScalar(height * 1.72);   // ~1.7 m tall at height=1
   g.userData.rig = { hips, torso, head, arms, legs, itemSocket, chestH, legLen, armLen };
   g.userData.seed = seed;
   g.userData.height = height * 1.72;
   g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
   return g;
+}
+
+/**
+ * Merge a node's direct mesh children (excluding `keep`) into one mesh per
+ * material. Only safe for parts that never move independently.
+ */
+function mergeStaticChildren(node, keep) {
+  const keepSet = new Set(keep);
+  const byMat = new Map();
+  for (const c of [...node.children]) {
+    if (!c.isMesh || keepSet.has(c)) continue;
+    const list = byMat.get(c.material) || [];
+    list.push(c);
+    byMat.set(c.material, list);
+  }
+  for (const [mat, meshes] of byMat) {
+    if (meshes.length < 2) continue;
+    const geos = [];
+    for (const m of meshes) {
+      m.updateMatrix();
+      const geo = m.geometry.clone();
+      geo.applyMatrix4(m.matrix);
+      if (!geo.attributes.normal) geo.computeVertexNormals();
+      if (!geo.attributes.uv) {
+        geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+      }
+      for (const name of Object.keys(geo.attributes)) {
+        if (!['position', 'normal', 'uv'].includes(name)) geo.deleteAttribute(name);
+      }
+      if (!geo.index) {
+        const n = geo.attributes.position.count;
+        const idx = new Uint32Array(n);
+        for (let i = 0; i < n; i++) idx[i] = i;
+        geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      }
+      geos.push(geo);
+    }
+    let merged = null;
+    try { merged = mergeGeometries(geos, false); } catch { /* leave them split */ }
+    for (const geo of geos) geo.dispose();
+    if (!merged) continue;
+    const out = new THREE.Mesh(merged, mat);
+    out.castShadow = true; out.receiveShadow = true; out.frustumCulled = false;
+    node.add(out);
+    for (const m of meshes) node.remove(m);
+  }
 }
 
 /** Tapered capsule-ish limb: cheaper than CapsuleGeometry and reads fine. */

@@ -251,7 +251,7 @@ export class FishingSystem {
         // Reflect with damping — bounce shots are a real trick.
         const vn = h.velocity.dot(hit.normal);
         h.velocity.addScaledVector(hit.normal, -2 * vn).multiplyScalar(0.42);
-        game.audio.play('impact', { volume: 0.3, position: hit.point.clone(), throttle: 80 });
+        game.audio.play('harpoon_impact', { volume: 0.28, position: hit.point.clone(), throttle: 80 });
         bus.emit('fx:impact', { position: hit.point.clone(), normal: hit.normal.clone(), kind: 'stone' });
         if (this.castBounces > 4 || h.velocity.lengthSq() < 0.6) {
           this.state = CAST_STATE.REELING_EMPTY;

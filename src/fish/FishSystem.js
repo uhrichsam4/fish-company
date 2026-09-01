@@ -197,7 +197,8 @@ export class FishSystem {
     f.energy = 1;
     f.scale = inst.length;
     f.tailPhase = Math.random() * TAU;
-    this.attachMesh(f);
+    f.lod = 0;
+    this.attachMesh(f, 0);
     f.group.visible = true;
     f.group.position.copy(f.position);
     f.group.scale.setScalar(f.scale);
@@ -255,23 +256,24 @@ export class FishSystem {
   despawnAll() { for (const f of [...this.active]) this.despawn(f); this.schools.length = 0; }
 
   // ------------------------------------------------------------- meshes
-  meshKeyFor(species, variantId) { return `${species.body}:${species.id}:${variantId}`; }
+  meshKeyFor(species, variantId, lod = 0) { return `${species.body}:${species.id}:${variantId}:${lod}`; }
 
-  attachMesh(f) {
-    const key = this.meshKeyFor(f.species, f.instance.variantId);
+  attachMesh(f, lod = 0) {
+    const key = this.meshKeyFor(f.species, f.instance.variantId, lod);
     if (f.meshKey === key && f.group.children.length) return;
     // Detach the previous mesh back to the cache.
     if (f.mesh) { f.group.remove(f.mesh); this._release(f.meshKey, f.mesh); f.mesh = null; }
     f.meshKey = key;
-    f.mesh = this._acquire(key, f.species, f.instance);
+    f.lod = lod;
+    f.mesh = this._acquire(key, f.species, f.instance, lod);
     f.group.add(f.mesh);
   }
 
-  _acquire(key, species, instance) {
+  _acquire(key, species, instance, lod = 0) {
     let bucket = this.meshCache.get(key);
     if (!bucket) { bucket = []; this.meshCache.set(key, bucket); }
     if (bucket.length) return bucket.pop();
-    return this.buildMesh(species, instance);
+    return this.buildMesh(species, instance, lod);
   }
   _release(key, mesh) {
     if (!key || !mesh) return;
@@ -281,10 +283,14 @@ export class FishSystem {
     else disposeDeep(mesh);
   }
 
-  buildMesh(species, instance) {
+  buildMesh(species, instance, lod = 0) {
     const variant = VARIANT_BY_ID[instance.variantId] || VARIANT_BY_ID.normal;
     if (this.FishMesh?.buildFishMesh) {
       try {
+        if (lod > 0 && this.FishMesh.buildFishLOD) {
+          const pair = this.FishMesh.buildFishLOD(species, variant, { rarity: instance.rarity });
+          if (pair?.low) return pair.low;
+        }
         const g = this.FishMesh.buildFishMesh(species, variant, { rarity: instance.rarity });
         if (g) return g;
       } catch (e) { console.error('[Fish] buildFishMesh failed for', species.id, e); }
@@ -534,11 +540,19 @@ export class FishSystem {
     }
     g.updateMatrix();
 
-    // LOD / culling.
+    // LOD / culling. Detailed fish are ~12 draw calls each; swap to the cheap
+    // silhouette past 26 m and hide entirely past 78 m.
     const cam = this.game.camera;
     const dist = g.position.distanceTo(cam.position);
     const vis = dist < 78;
     if (g.visible !== vis) g.visible = vis;
+    if (vis) {
+      const wantLod = dist > 26 ? 1 : 0;
+      if (wantLod !== f.lod) {
+        // Hysteresis: only swap when clearly past the boundary.
+        if ((wantLod === 1 && dist > 30) || (wantLod === 0 && dist < 23)) this.attachMesh(f, wantLod);
+      }
+    }
   }
 
   scare(position, radius, strength) {

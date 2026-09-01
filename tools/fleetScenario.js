@@ -21,6 +21,9 @@ export async function run() {
   quests.unlockRegion('harbor', false);
   workers.hiringUnlocked = true;
   workers.maxWorkers = 20;
+  // Buy the boat first: captains only become hireable once one exists.
+  const boat = boats.buy('skiff') || boats.grant('skiff');
+  step('bought a boat', !!boat, boat?.name);
 
   // --- hire a captain + two fishermen ---
   const need = { captain: 1, fisherman: 2 };
@@ -38,10 +41,6 @@ export async function run() {
   const fishers = workers.workers.filter((w) => w.role === 'fisherman');
   step('hired a captain', !!captain, captain?.name);
   step('hired fishermen', fishers.length >= 2, fishers.length);
-
-  // --- buy a boat ---
-  const boat = boats.buy('skiff') || boats.grant('skiff');
-  step('bought a boat', !!boat, boat?.name);
 
   // --- form the fleet ---
   const f = fleets.create({

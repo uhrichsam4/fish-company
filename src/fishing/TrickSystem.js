@@ -103,7 +103,9 @@ export class TrickSystem {
 
     if (hit.length) {
       const audio = this.game.audio;
-      audio.play(`combo${clamp(this.combo, 1, 5)}`, { volume: 0.5, rate: 1 + Math.min(this.combo, 8) * 0.06 });
+      // No dedicated combo cues in the pack — pitch the coin blip up per step.
+      audio.play('coin', { volume: 0.45, rate: 1 + Math.min(this.combo, 9) * 0.085 });
+      if (this.combo >= 3) audio.play('record', { volume: 0.22, rate: 1 + Math.min(this.combo, 6) * 0.05 });
       this.recentTricks = hit.map((t) => t.name);
       bus.emit('tricks:landed', { tricks: hit, mult, combo: this.combo });
       const player = this.game.get('player');
