@@ -384,8 +384,11 @@ export class FishingSystem {
     if (inst.weight > 8) {
       this.game.audio.play('splash_medium', { volume: 0.3 + heavy * 0.4, position: this.hook.position.clone() });
     }
-    bus.emit('fx:splash', { position: this.hook.position.clone(), scale: 0.3 + heavy * 0.9 });
-    bus.emit('fx:ripple', { position: this.hook.position.clone(), radius: 0.6 + heavy });
+    // At the surface above the hook, not at the hook itself: the hook sits up
+    // to 3 m down, so a splash there happened underwater where nobody saw it.
+    const bitePos = _v4.set(this.hook.position.x, waterHeightAt(this.hook.position.x, this.hook.position.z), this.hook.position.z).clone();
+    bus.emit('fx:splash', { position: bitePos, scale: 0.55 + heavy * 1.1 });
+    bus.emit('fx:ripple', { position: bitePos, radius: 0.9 + heavy * 1.4 });
     bus.emit('ocean:ripple', { x: this.hook.position.x, z: this.hook.position.z, strength: 0.4 + heavy * 0.5 });
     bus.emit('player:shake', 0.08 + heavy * 0.22);
     // Yank the view a few degrees toward the bite.
@@ -855,10 +858,14 @@ export class FishingSystem {
         this.bobber.position.set(hp.x, waterHeightAt(hp.x, hp.z), hp.z);
         // Punchy dip on the bite, decaying over the hook-set window.
         if (this.bobberDip > 0) {
-          this.bobberDip = Math.max(0, this.bobberDip - dt * 2.2);
-          this.bobber.position.y -= this.bobberDip * 0.22;
-          const sc = 1 + this.bobberDip * 0.25;
-          this.bobber.scale.setScalar(sc);
+          // The bite is the one moment the player has to react to, and a
+          // 0.22 m nudge on a 6 cm float was not readable at casting range.
+          // Pull it properly under, then let it pop back: a float that
+          // disappears and resurfaces is the universal signal.
+          this.bobberDip = Math.max(0, this.bobberDip - dt * 1.7);
+          const k = this.bobberDip;
+          this.bobber.position.y -= (k * k) * 0.55;
+          this.bobber.scale.setScalar(1 + k * 0.45);
         } else if (this.bobber.scale.x !== 1) this.bobber.scale.setScalar(1);
         const n = waterNormalAt(this.hook.position.x, this.hook.position.z, undefined, _n);
         this.bobber.quaternion.setFromUnitVectors(UP, _v.set(n.x, n.y, n.z).normalize());

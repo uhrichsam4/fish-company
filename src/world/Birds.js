@@ -97,6 +97,7 @@ export class Birds {
     if (this._checkT >= CHECK_INTERVAL) {
       this._checkT = 0;
       this._checkIsland(game);
+      this._findShoal(game);
     }
     if (!this.active || !this.birds.length) return;
 
@@ -119,6 +120,34 @@ export class Birds {
     }
 
     this._calls(dt, game, cam);
+  }
+
+  /**
+   * Densest cluster of fish in reachable water, recomputed on the same slow
+   * timer as the island check. One pass over the live fish with a coarse grid
+   * -- not a per-bird search, which would be the flock size times the fish
+   * count every time a bird decided to dive.
+   */
+  _findShoal(game) {
+    const fish = game.get('fish');
+    const player = game.get('player');
+    if (!fish?.active?.length || !player) { this._shoal = null; return; }
+
+    const CELL = 14;
+    const bins = new Map();
+    let best = null, bestN = 2;                   // two fish is not a shoal
+    for (const f of fish.active) {
+      const p = f.position;
+      if (!p) continue;
+      const dx = p.x - player.position.x, dz = p.z - player.position.z;
+      if (dx * dx + dz * dz > 160 * 160) continue;   // out of sight anyway
+      const key = `${Math.round(p.x / CELL)},${Math.round(p.z / CELL)}`;
+      const bin = bins.get(key) || { n: 0, x: 0, z: 0 };
+      bin.n++; bin.x += p.x; bin.z += p.z;
+      bins.set(key, bin);
+      if (bin.n > bestN) { bestN = bin.n; best = bin; }
+    }
+    this._shoal = best ? { x: best.x / best.n, z: best.z / best.n, count: best.n } : null;
   }
 
   /** Pick / drop the island the flock belongs to. */
@@ -272,11 +301,21 @@ export class Birds {
           y,
           island.z + Math.sin(b.angle) * r,
         );
-        // Occasionally drop on something shiny in the water.
+        // Drop on a shoal if the flock has found one, otherwise on anything
+        // shiny. Gulls working a patch of water is how a real angler finds
+        // fish, and it is the only cue the game has ever given for where to
+        // cast -- without it the player is guessing at open water.
         if (b.scatterT <= 0 && b.stateT > 4 && rchance(dt * 0.05)) {
-          const a = Math.random() * TAU;
-          const rr = island.radius * rrange(1.02, 1.4);
-          const x = island.x + Math.cos(a) * rr, z = island.z + Math.sin(a) * rr;
+          const shoal = this._shoal;
+          let x, z;
+          if (shoal && Math.random() < 0.8) {
+            x = shoal.x + rrange(-6, 6);
+            z = shoal.z + rrange(-6, 6);
+          } else {
+            const a = Math.random() * TAU;
+            const rr = island.radius * rrange(1.02, 1.4);
+            x = island.x + Math.cos(a) * rr; z = island.z + Math.sin(a) * rr;
+          }
           b.dive.set(x, waterHeightAt(x, z) + rrange(0.6, 1.6), z);
           b.state = 'dive'; b.stateT = 0;
         }
