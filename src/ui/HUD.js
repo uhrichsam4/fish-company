@@ -322,12 +322,12 @@ export class HUD {
       <div class="hb-row sub"><span>${formatWeight(b.weight)} / ${formatWeight(b.capacity)}</span><b>${formatMoneyExact(b.value)}</b></div>`;
   }
 
-  setStorage(used, cap, count) {
-    if (cap == null) { this.storageEl.textContent = ''; return; }
-    const pct = clamp01(used / cap);
-    const color = pct > 0.92 ? 'var(--danger)' : pct > 0.72 ? 'var(--warn)' : 'var(--ink-dim)';
-    this.storageEl.innerHTML = `<span style="color:${color}">${formatWeight(used)} / ${formatWeight(cap)}</span><br><span style="opacity:.6">${count} fish</span>`;
-  }
+  /**
+   * Superseded by the bucket widget, which shows the same load plus what is
+   * still alive. Kept as a no-op because Inventory calls it every frame, and
+   * two readouts of one number is how they end up disagreeing.
+   */
+  setStorage() { if (this.storageEl) this.storageEl.textContent = ''; }
 
   /**
    * Mirror the live world events into the strip. Rows are rebuilt only when the
@@ -452,8 +452,17 @@ export class HUD {
 
     const p = game.get('player');
     if (p) {
-      this.hpFill.style.width = `${clamp01(p.health / p.maxHealth) * 100}%`;
-      this.staFill.style.width = `${clamp01(p.stamina / 100) * 100}%`;
+      const hpFrac = clamp01(p.health / p.maxHealth);
+      const staFrac = clamp01(p.stamina / 100);
+      this.hpFill.style.width = `${hpFrac * 100}%`;
+      this.staFill.style.width = `${staFrac * 100}%`;
+      // Context only. A permanently visible full health bar is decoration --
+      // it appears when it has something to say and fades when it does not.
+      const barsMatter = hpFrac < 0.995 || staFrac < 0.9 || p.underwater;
+      if (barsMatter !== this._barsShown) {
+        this._barsShown = barsMatter;
+        this.bars.classList.toggle('idle', !barsMatter);
+      }
       this.oxyFill.style.width = `${clamp01(p.oxygen / p.maxOxygen) * 100}%`;
       const ocean = game.get('ocean');
       const depth = ocean ? Math.max(0, ocean.heightAt(p.position.x, p.position.z) - p.position.y) : 0;

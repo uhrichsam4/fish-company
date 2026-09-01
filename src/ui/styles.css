@@ -870,3 +870,19 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 }
 .card.trophy .lr-sub { color: var(--ink-faint); font-size: 11.5px; }
 .card.trophy .card-stats { text-align: left; }
+
+
+/* ---- HUD consolidation ------------------------------------------------ */
+/* One right-hand column: minimap, money, bucket. They previously overlapped
+   in the same corner and fought for the same 170px. */
+.minimap { top: 14px; right: 14px; }
+.hud-tr { top: 196px !important; right: 16px !important; text-align: right; }
+.hud-bucket { top: 250px; right: 14px; }
+
+/* Health and stamina fade out when they have nothing to report. */
+.hud-bl > div { transition: opacity .35s ease; }
+.hud-bl > div.idle { opacity: 0.18; }
+.hud-bl > div.idle:hover { opacity: 1; }
+
+/* The old bottom-right storage readout is retired; the bucket widget covers it. */
+.hud-br { display: none; }

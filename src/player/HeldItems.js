@@ -20,6 +20,8 @@ const VM_OFFSET = new THREE.Vector3(0, 0.125, 0);
  * this is the single knob for "the gun/arms are too big".
  */
 const POS_K = 1.18;
+/** Seconds for the bucket stow animation, start to finish. */
+const STOW_TIME = 1.05;
 const INV_K = 1 / POS_K;
 const _restR = new THREE.Vector3(0.30, -0.30, -0.32);
 const _restL = new THREE.Vector3(-0.30, -0.30, -0.32);
@@ -65,6 +67,44 @@ export class HeldItems {
 
     this.hands = buildHands();
     this.rig.add(this.hands);
+
+    // Bucket viewmodel, built once and hidden until a catch is stowed.
+    this.bucketRig = new THREE.Group();
+    const pail = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.115, 0.088, 0.165, 14, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x9aa4ad, roughness: 0.55, metalness: 0.35, side: THREE.DoubleSide }),
+    );
+    const base = new THREE.Mesh(
+      new THREE.CircleGeometry(0.088, 14).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x767f87, roughness: 0.7, metalness: 0.3 }),
+    );
+    base.position.y = -0.0825;
+    const rim = new THREE.Mesh(
+      new THREE.TorusGeometry(0.115, 0.008, 6, 18).rotateX(Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0xb6c0c8, roughness: 0.4, metalness: 0.5 }),
+    );
+    rim.position.y = 0.0825;
+    const handle = new THREE.Mesh(
+      new THREE.TorusGeometry(0.112, 0.006, 5, 16, Math.PI),
+      new THREE.MeshStandardMaterial({ color: 0x8d949a, roughness: 0.45, metalness: 0.5 }),
+    );
+    handle.position.y = 0.085;
+    this.bucketRig.add(pail, base, rim, handle);
+    // Stand-in for the catch going in: a small fish-shaped blob is all that
+    // reads at this size and for this long.
+    this.stowFish = new THREE.Mesh(
+      new THREE.SphereGeometry(0.042, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0x6fa8d6, roughness: 0.45 }),
+    );
+    this.stowFish.scale.set(1.5, 0.72, 0.6);
+    this.stowFish.visible = false;
+    this.bucketRig.add(this.stowFish);
+    this.bucketRig.visible = false;
+    this.rig.add(this.bucketRig);
+
+    this.stowT = 0;
+    // Fires when a rod catch collects itself into the bucket.
+    bus.on('bucket:stowed', () => { this.stowT = 1; });
 
     bus.on('resize', () => {
       this.vmCamera.aspect = window.innerWidth / window.innerHeight;
@@ -134,6 +174,32 @@ export class HeldItems {
       Math.sin(ph * 2) * 0.016 * bobA - clamp01(-player.velocity.y / 12) * 0.05,
       Math.sin(ph) * 0.008 * bobA,
     );
+
+    // ---- bucket stow ----
+    // Plays when a catch is collected: the bucket swings up into frame, the
+    // fish goes in, and it drops back out. Driven off one 0..1 timeline so it
+    // cannot desync from the viewmodel's own sway and bob.
+    if (this.stowT > 0) {
+      this.stowT = Math.max(0, this.stowT - dt / STOW_TIME);
+      const k = 1 - this.stowT;                       // 0 -> 1 over the anim
+      // Up fast, hold, down slower: the hold is what reads as "putting it in".
+      const rise = k < 0.28 ? smoothstep(k / 0.28)
+        : k < 0.62 ? 1
+        : 1 - smoothstep((k - 0.62) / 0.38);
+      this.bucketRig.visible = rise > 0.01;
+      this.bucketRig.position.set(0.055, -0.20 + rise * 0.155, -0.20 - rise * 0.045);
+      this.bucketRig.rotation.set(rise * -0.32, 0.5 - rise * 0.22, rise * 0.16);
+      // The fish arcs down into it during the hold.
+      const drop = clamp01((k - 0.3) / 0.3);
+      if (this.stowFish) {
+        this.stowFish.visible = drop > 0.02 && drop < 0.98;
+        this.stowFish.position.set(0, 0.10 - drop * 0.115, 0.012);
+        this.stowFish.rotation.z = drop * 2.1;
+      }
+    } else if (this.bucketRig?.visible) {
+      this.bucketRig.visible = false;
+      if (this.stowFish) this.stowFish.visible = false;
+    }
 
     const swapDrop = (1 - smoothstep(this.swapT)) * 0.42;
     this.root.position.set(
