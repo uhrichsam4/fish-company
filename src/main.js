@@ -8,6 +8,9 @@ import { HUD } from './ui/HUD.js';
 import { REGION_BY_ID } from './data/regions.js';
 import { worldHeight } from './world/Terrain.js';
 
+/** Every module the optional-system list can name, bundled at build time. */
+const SYSTEM_MODULES = import.meta.glob('./**/*.js');
+
 const bootEl = document.getElementById('boot');
 const fillEl = document.getElementById('boot-fill');
 const errEl = document.getElementById('boot-error');
@@ -81,6 +84,7 @@ async function boot() {
     ['./boats/FleetSystem.js', 'FleetSystem'],
     ['./submarines/SubSystem.js', 'SubSystem'],
     ['./submarines/DeepSea.js', 'DeepSea'],
+    ['./net/NetSystem.js', 'NetSystem'],
     ['./world/LobbySystem.js', 'LobbySystem'],
     ['./world/EventSystem.js', 'EventSystem'],
     ['./world/NPCSystem.js', 'NPCSystem'],
@@ -92,16 +96,22 @@ async function boot() {
     ['./ui/UIManager.js', 'UIManager'],
     ['./ui/DebugMenu.js', 'DebugMenu'],
   ];
+  // Resolved through import.meta.glob, not a bare dynamic import. A runtime
+  // string path cannot be analysed by the bundler, so `import(path)` works in
+  // dev -- where the dev server happens to serve the source tree at those
+  // paths -- and 404s in a build. That silently reduced the shipped game to
+  // the five statically imported systems: no fishing, no fish, no economy.
+  // Globbing gives the bundler a set it can actually include.
   for (const [path, name] of optional) {
     try {
-      const mod = await import(/* @vite-ignore */ path);
+      const loader = SYSTEM_MODULES[path];
+      if (!loader) { console.warn(`[boot] system ${name} not found at ${path}`); continue; }
+      const mod = await loader();
       const Cls = mod[name] || mod.default;
       if (Cls) game.add(new Cls(game));
       else console.warn(`[boot] ${path} has no export "${name}"`);
     } catch (e) {
-      if (!String(e?.message || '').includes('Failed to fetch dynamically imported module')) {
-        console.warn(`[boot] optional system ${name} unavailable:`, e.message);
-      }
+      console.warn(`[boot] optional system ${name} unavailable:`, e.message);
     }
   }
   setProgress(0.24);
