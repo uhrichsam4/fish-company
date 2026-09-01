@@ -100,6 +100,7 @@ async function boot() {
     ['./ui/Tutorial.js', 'Tutorial'],
     ['./ui/Waypoints.js', 'Waypoints'],
     ['./ui/Minimap.js', 'Minimap'],
+    ['./fx/Underwater.js', 'Underwater'],
     ['./ui/UIManager.js', 'UIManager'],
     ['./util/PerfPanel.js', 'PerfPanel'],
     ['./ui/DebugMenu.js', 'DebugMenu'],
