@@ -151,7 +151,11 @@ export class UIManager {
     // must capture input too, or the number keys meant for choosing a party
     // size fall through to the hotbar.
     const lobbyOpen = !!game.get('lobby')?.panelOpen;
-    input.uiCapture = anyOpen || !!debugOpen || lobbyOpen;
+    // Build mode owns the number keys and both mouse buttons while it is on,
+    // so it captures input the same way a panel does -- otherwise placing a
+    // wall also swaps your hotbar slot and swings whatever you are holding.
+    const building = !!game.get('build')?.mode;
+    input.uiCapture = anyOpen || !!debugOpen || lobbyOpen || building;
 
     if (input.rawPressed('Escape')) {
       if (anyOpen) this.closeAll();
@@ -162,7 +166,11 @@ export class UIManager {
     if (input.rawPressed('Tab') && !anyOpen) this.show('inventory');
     else if (input.rawPressed('Tab') && anyOpen) this.closeAll();
     if (!input.uiCapture) {
-      if (input.rawPressed('KeyB')) this.toggle('atlas');
+      if (input.rawPressed('KeyB')) {
+        // Shift+B is the atlas; plain B is build mode, which is used far more.
+        if (input.down('ShiftLeft') || input.down('ShiftRight')) this.toggle('atlas');
+        else bus.emit('build:toggle', {});
+      }
       if (input.rawPressed('KeyM')) this.toggle('map');
       if (input.rawPressed('KeyC')) { /* reserved for crouch */ }
       if (input.rawPressed('KeyO')) this.toggle('company');
