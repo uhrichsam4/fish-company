@@ -99,6 +99,7 @@ async function boot() {
     ['./world/Birds.js', 'Birds'],
     ['./ui/Tutorial.js', 'Tutorial'],
     ['./ui/Waypoints.js', 'Waypoints'],
+    ['./ui/Minimap.js', 'Minimap'],
     ['./ui/UIManager.js', 'UIManager'],
     ['./util/PerfPanel.js', 'PerfPanel'],
     ['./ui/DebugMenu.js', 'DebugMenu'],
