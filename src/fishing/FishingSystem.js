@@ -704,6 +704,9 @@ export class FishingSystem {
     const pf = mgr?.spawn({
       instance: inst, position: spawnPos, velocity: vel, mesh,
       angularVelocity: { x: rrange(-3, 3), y: rrange(-4, 4), z: rrange(-3, 3) },
+      // Fly out, land, then stow itself. Only rod catches do this -- a fish
+      // the player deliberately drops out of the inventory must stay dropped.
+      autoStore: true,
     });
 
     // A landed fish should land: brief hit-stop scaled by size, plus a shove.
@@ -845,7 +848,11 @@ export class FishingSystem {
       this.line.setTension(this.tension);
       this.bobber.visible = this.state === CAST_STATE.IN_WATER || this.state === CAST_STATE.NIBBLE || this.state === CAST_STATE.REELING_EMPTY;
       if (this.bobber.visible) {
-        this.bobber.position.copy(this.hook.position);
+        // The hook hangs at the bait's working depth (see updateInWater), which
+        // is up to 3.2 m down. The bobber is a float: it belongs on the surface
+        // above the hook, not at it -- copying the hook's y sank it out of sight.
+        const hp = this.hook.position;
+        this.bobber.position.set(hp.x, waterHeightAt(hp.x, hp.z), hp.z);
         // Punchy dip on the bite, decaying over the hook-set window.
         if (this.bobberDip > 0) {
           this.bobberDip = Math.max(0, this.bobberDip - dt * 2.2);

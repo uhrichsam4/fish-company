@@ -9,6 +9,10 @@ const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 
+/** Auto-collect window for rod-caught fish: settle first, then give up waiting. */
+const AUTO_STORE_MIN = 1.0;
+const AUTO_STORE_MAX = 2.8;
+
 /**
  * Caught fish that exist as real physics bodies in the world: they flop,
  * get thrown, knock crates over, and can be picked up, sold or stored.
@@ -36,7 +40,7 @@ export class PhysicalFishManager {
   /**
    * @param {object} o {instance, position, velocity, mesh?, angularVelocity?, alive?}
    */
-  spawn({ instance, position, velocity, mesh, angularVelocity, alive = true, ownerless = false }) {
+  spawn({ instance, position, velocity, mesh, angularVelocity, alive = true, ownerless = false, autoStore = false }) {
     if (!instance) return null;
     const species = getSpecies(instance.speciesId);
     if (!species) return null;
@@ -78,7 +82,7 @@ export class PhysicalFishManager {
 
     const pf = {
       entry, group, instance, species, alive,
-      life: 0, maxLife: 300, flopTimer: rrange(0.1, 0.5),
+      life: 0, maxLife: 300, flopTimer: rrange(0.1, 0.5), autoStore,
       energy: 1, mass, len, calm: false, held: false,
       submerged: 0, lastImpact: 0, sold: false,
       samples: buoyancySamples(len, radius),
@@ -131,10 +135,11 @@ export class PhysicalFishManager {
   }
 
   /** Convert a physical fish to inventory data (used by sell zones/storage). */
-  absorb(pf, into = 'inventory') {
+  absorb(pf, into = 'inventory', opts = {}) {
     const inv = this.game.get('inventory');
     if (into === 'inventory' && inv) {
-      if (!inv.storeFish(pf.instance)) return false;
+      // opts carries the trick multiplier; dropping it silently loses the bonus.
+      if (!inv.storeFish(pf.instance, opts)) return false;
     }
     this.despawn(pf);
     return true;
@@ -151,6 +156,24 @@ export class PhysicalFishManager {
 
       const p = phys.getPosition(pf.entry, _v);
       if (p.y < -300) { this.despawn(pf); continue; }
+
+      // A rod-caught fish collects itself once it has come to rest. The launch
+      // is the good part; making the player then find it, press E to pick it
+      // up and E again to stow it is a chore, and a fish that lands back in
+      // the water is otherwise just lost.
+      if (pf.autoStore && pf.life > AUTO_STORE_MIN) {
+        const settled = _v2.copy(phys.getVelocity(pf.entry)).length() < 2;
+        if (settled || pf.life > AUTO_STORE_MAX) {
+          if (this.absorb(pf, 'inventory', { styleMult: pf.styleMult || 1 })) {
+            game.audio?.play('pickup', { volume: 0.6, rate: 1.2 });
+            bus.emit('fx:sparkle', { position: p.clone(), count: 8, color: '#5ddb6a' });
+            continue;
+          }
+          // Nowhere to put it -- leave it on the ground rather than binning it.
+          pf.autoStore = false;
+          bus.emit('toast', { text: 'Storage full — your catch is on the ground.', kind: 'error', duration: 3600 });
+        }
+      }
 
       const waterY = waterHeightAt(p.x, p.z);
       const submerged = clamp01((waterY - p.y + pf.len * 0.25) / Math.max(0.2, pf.len * 0.5));
