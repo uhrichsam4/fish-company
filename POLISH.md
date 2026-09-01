@@ -4,8 +4,9 @@
 - [ ] **Island density** — interiors read sparse from a distance; add mid-scale rocks, grass patches, height variation, and cluster vegetation instead of scattering it evenly.
 - [ ] **Beach transition** — the sand/water line is clean but flat; add wet-sand darkening, tidal debris and foam that reacts to the actual wave phase.
 - [ ] **Ocean at distance** — detail normals fade correctly but the mid-field still shows faint tiling. Consider a third normal layer at a prime-ratio scale.
-- [ ] **Underwater** — no distinct underwater look yet outside the deep-sea system. Needs caustics, god rays near the surface, particulate, and a proper colour ramp.
+- [ ] **Underwater** — no distinct underwater look yet outside the deep-sea system. Needs caustics on the underside of the surface, god rays near it, particulate, and a proper colour ramp.
 - [x] Terrain colour banding.
+- [x] Streaks and a hard seam across half of every island (overlapping region terrain z-fighting).
 - [x] Night water (was staying tropical after dark).
 - [ ] **Shadows** — a single 90 m cascade; distant terrain has no shadowing at all.
 - [ ] **Worker variety** — silhouettes vary, but everyone walks identically. Per-worker gait speed/stride/lean.
@@ -31,10 +32,15 @@
 - [ ] **Objective marker** — no world-space waypoint toward the current objective.
 - [ ] **Map** — regions render but there's no travel action from it.
 - [ ] Company panel needs Contracts and Processing tabs.
+- [ ] **Fleet fuel readout** — a captain now turns back on the reserve, but nothing on the fleet card shows how much range is left.
 - [ ] Fleet editor is functional but has no live profit estimate.
 
 ## Content
-- [ ] Only Crash Island is decorated with intent; the other seven use the generic decorator.
-- [ ] No NPC characters yet — the shop is a building, not a person.
-- [ ] Gambling minigames (spec calls for optional in-game-currency ones) unstarted.
-- [ ] Random events (migrations, market booms, boss sightings) unstarted.
+- [x] Per-region set dressing — all eight regions, the Abyss included.
+- [x] NPC characters with dialogue.
+- [x] Gambling minigames (fictional in-game currency only).
+- [x] Random world events.
+- [ ] **Island interiors** — the larger islands are dressed at the shoreline and the peak; the ground
+      between them is still the generic decorator.
+- [ ] **Quests beyond the main chain** — no side quests, no per-region contracts of their own, no boss
+      rematches.

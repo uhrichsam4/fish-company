@@ -611,6 +611,9 @@ export class World {
       o.rotation.set(srng(), sp.rot, srng());
       s.group.add(o);
     }
+    // A trench takes the same set-dressing pass as an island. It was skipped
+    // here, which is why the Abyss was a bare bowl with nothing on the rim.
+    dressRegion(this, s, def, this.getAnchors(def.id));
   }
 
   update(dt, game) {

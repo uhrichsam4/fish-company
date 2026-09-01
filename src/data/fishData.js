@@ -577,7 +577,7 @@ export const FISH_SPECIES = [
     depth: [1, 60], weight: [1.5, 12], length: [0.4, 1.05], value: 62, rarity: 'uncommon', spawnWeight: 52,
     strength: 0.32, speed: 0.62, stamina: 0.5, aggression: 0.6, escape: 0.45, fight: 'runner',
     body: 'trout', colors: { main: '#5d7f92', belly: '#f2a071', fin: '#3f5c6d', accent: '#ffd9a8', eye: '#101418' },
-    pattern: 'spotted', glow: 0.0, time: 'any', weather: 'any',
+    pattern: 'spots', glow: 0.0, time: 'any', weather: 'any',
     desc: 'Salmon that moved north and got better looking for it. The belly goes the colour of a sunset it never sees.',
     atlasHint: 'Cold inshore water and river mouths. Small spoons work fine.',
     dangerous: false, boss: false, edible: true, xp: 70 },

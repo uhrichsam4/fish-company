@@ -64,9 +64,13 @@ export class SubExpeditionPanel extends Panel {
     const rated = s && band ? band.depth <= crush * BAND_MARGIN : false;
     const plan = s && band ? project(subs, s, band, crew) : null;
 
+    // Every pick rebuilds the whole body, which would otherwise throw the player
+    // back to the top of a long crew list mid-selection.
+    const scrolls = [...this.bodyEl.querySelectorAll('.scroll-y')].map((n) => n.scrollTop);
     this.bodyEl.innerHTML = `
       <div class="grid c3">
         <div class="card"><div class="card-title">1 · Submarine</div>
+          <div class="scroll-y" style="max-height:34vh">
           ${fleet.length ? fleet.map((x) => `
             <div class="list-row ${x.id === this.sel.subId ? 'selected' : ''}" data-action="pickSub" data-id="${x.id}" style="cursor:pointer">
               <span class="lr-icon">${x.icon}</span>
@@ -76,8 +80,10 @@ export class SubExpeditionPanel extends Panel {
                 <span style="color:var(--gold)">${Math.round(clamp01(x.battery / x.stats.battery) * 100)}%</span></div>
             </div>`).join('')
             : '<div class="lr-sub">Every sub is out or in use. Recall one first.</div>'}
+          </div>
         </div>
         <div class="card"><div class="card-title">2 · Depth band</div>
+          <div class="scroll-y" style="max-height:34vh">
           ${DEPTH_BANDS.map((b) => {
             const tooDeep = s ? b.depth > crush * BAND_MARGIN : false;
             return `<div class="list-row ${b.id === this.sel.band ? 'selected' : ''}"
@@ -88,8 +94,10 @@ export class SubExpeditionPanel extends Panel {
               <div class="lr-right">×${b.valueMult}</div>
             </div>`;
           }).join('')}
+          </div>
         </div>
         <div class="card"><div class="card-title">3 · Crew ${s ? `<span class="chip ${overCrew ? 'bad' : ''}">${crew.length}/${Math.round(s.stats.crew)}</span>` : ''}</div>
+          <div class="scroll-y" style="max-height:34vh">
           ${free.length ? free.map((w) => `
             <div class="list-row ${this.sel.crew.has(w.id) ? 'selected' : ''}" data-action="toggleCrew" data-id="${w.id}" style="cursor:pointer">
               <span class="lr-icon">${w.icon}</span>
@@ -98,6 +106,7 @@ export class SubExpeditionPanel extends Panel {
               ${this.sel.crew.has(w.id) ? '<span class="chip good">On</span>' : ''}
             </div>`).join('')
             : '<div class="lr-sub">No free crew. An expedition needs a sub pilot or a captain once you employ anyone.</div>'}
+          </div>
         </div>
       </div>
       <div class="card" style="margin-top:12px">
@@ -123,6 +132,8 @@ export class SubExpeditionPanel extends Panel {
         ${plan && plan.powerDraw > s.battery
           ? '<div class="lr-sub" style="margin-top:4px;color:var(--warn)">She will surface early on a flat battery — recharge her in the refit bay first.</div>' : ''}
       </div>`;
+
+    this.bodyEl.querySelectorAll('.scroll-y').forEach((n, i) => { n.scrollTop = scrolls[i] || 0; });
 
     const ready = !!s && !!band && rated && hullOk && !overCrew && (!needsPilot || hasPilot);
     this.setFoot(`

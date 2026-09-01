@@ -150,7 +150,7 @@ export async function run() {
     ui.show('subExpedition', { id: sub?.id }); await T.sleep(320);
     const ed = ui.get('subExpedition');
     T.realClick(ed.el.querySelector('[data-action=pickBand][data-id=shelf]')); await T.sleep(200);
-    const pilot = workers?.workers.find((w) => w.role === 'subpilot' || w.role === 'captain');
+    const pilot = workers?.workers.find((w) => (w.role === 'subpilot' || w.role === 'captain') && !w.fleet && !w.subExpedition);
     const pilotRow = pilot && ed.el.querySelector(`[data-action=toggleCrew][data-id="${pilot.id}"]`);
     if (pilotRow) { T.realClick(pilotRow); await T.sleep(200); }
     const launch = ed.el.querySelector('[data-action=launch]');
