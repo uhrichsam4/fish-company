@@ -100,6 +100,7 @@ export class Worker {
       return `Fishing · ${r?.short || '?'}`;
     }
     if (this.assignment.startsWith('fleet:')) return `Crew · ${this.fleet?.name || 'fleet'}`;
+    if (this.assignment.startsWith('sub:')) return `Sub · ${this.subExpedition?.sub?.name || 'expedition'}`;
     if (this.assignment === 'process') return 'Processing';
     if (this.assignment === 'repair') return 'Repairs';
     if (this.assignment === 'rest') return 'Resting';

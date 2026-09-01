@@ -71,7 +71,7 @@ export class SubExpeditionPanel extends Panel {
             <div class="list-row ${x.id === this.sel.subId ? 'selected' : ''}" data-action="pickSub" data-id="${x.id}" style="cursor:pointer">
               <span class="lr-icon">${x.icon}</span>
               <div class="lr-main"><div class="lr-title">${x.name}</div>
-                <div class="lr-sub">${x.def.name} · ${Math.round(subs.crushDepthOf(x))} m · ${Math.round(x.stats.crew)} seats</div></div>
+                <div class="lr-sub">${x.def.name} · ${Math.round(subs.crushDepthOf(x))} m · ${Math.round(x.stats.crew)} seat${x.stats.crew >= 2 ? 's' : ''}</div></div>
               <div class="lr-right">${Math.round(clamp01(x.hull / x.stats.hullStrength) * 100)}%<br>
                 <span style="color:var(--gold)">${Math.round(clamp01(x.battery / x.stats.battery) * 100)}%</span></div>
             </div>`).join('')
@@ -115,13 +115,13 @@ export class SubExpeditionPanel extends Panel {
           <div class="stat-line"><span class="sl-k">Est. salvage</span><span class="sl-v gold">${plan ? formatMoneyExact(Math.round(plan.cash)) : '—'}</span></div>
           <div class="stat-line"><span class="sl-k">Est. hull cost</span><span class="sl-v bad">${plan ? `−${Math.round(plan.hullLoss)}` : '—'}</span></div>
           <div class="stat-line"><span class="sl-k">Power</span><span class="sl-v ${plan && plan.powerDraw > s.battery ? 'bad' : ''}">${plan ? `${Math.round(plan.powerDraw)} / ${Math.round(s.battery)}` : '—'}</span></div>
-          <div class="stat-line"><span class="sl-k">Hold</span><span class="sl-v">${s ? formatWeight(s.stats.cargo) : '—'}</span></div>
-          <div class="stat-line"><span class="sl-k">Risk</span><span class="sl-v">${band ? riskLabel(band.risk) : '—'}</span></div>
-          <div class="stat-line"><span class="sl-k">Daily wages</span><span class="sl-v bad">${formatMoneyExact(crew.reduce((a, w) => a + w.wage, 0))}</span></div>
-          <div class="stat-line"><span class="sl-k">Value multiplier</span><span class="sl-v gold">×${band?.valueMult || '—'}</span></div>
         </div>
+        <div class="lr-sub" style="margin-top:8px">Hold ${s ? formatWeight(s.stats.cargo) : '—'}
+          · risk ${band ? riskLabel(band.risk) : '—'}
+          · ×${band?.valueMult || '—'} on everything she brings up
+          · ${formatMoneyExact(crew.reduce((a, w) => a + w.wage, 0))}/day in wages</div>
         ${plan && plan.powerDraw > s.battery
-          ? '<div class="lr-sub" style="margin-top:8px;color:var(--warn)">She will surface early on a flat battery — recharge her in the refit bay first.</div>' : ''}
+          ? '<div class="lr-sub" style="margin-top:4px;color:var(--warn)">She will surface early on a flat battery — recharge her in the refit bay first.</div>' : ''}
       </div>`;
 
     const ready = !!s && !!band && rated && hullOk && !overCrew && (!needsPilot || hasPilot);

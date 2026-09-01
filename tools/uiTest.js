@@ -18,6 +18,8 @@ const PANELS = [
   { id: 'pause' },
   { id: 'fleetEditor' },
   { id: 'boatUpgrade' },
+  { id: 'subUpgrade' },
+  { id: 'subExpedition' },
   { id: 'workerGear' },
   { id: 'gambling' },
 ];
@@ -41,6 +43,7 @@ export async function run() {
     if (!workers.workers.length) workers.hire(workers.candidates[0]?.id, true);
   }
   g.get('boats')?.grant('skiff');
+  g.get('subs')?.grant('scout');
   T.clearErrors();
 
   for (const p of PANELS) {
@@ -88,6 +91,74 @@ export async function run() {
     await T.sleep(250);
     S('company: tab switches on a real click', r.ok && ui.get('company').activeTab !== before,
       { before, after: ui.get('company').activeTab, click: r });
+  }
+
+  // Submarines, end to end: buy → refit → upgrade → expedition → recall.
+  // Every step goes through a real pointer click on the rendered control.
+  const subs = g.get('subs');
+  if (subs) {
+    g.get('economy').add(50000000, 'ui-test');
+    T.bus.emit('debug:unlockResearch', {});
+    ui.closeAll(); await T.sleep(150);
+    ui.show('company'); await T.sleep(250);
+    const company = ui.get('company');
+    const subTab = [...company.el.querySelectorAll('.tab')].find((t) => t.dataset.tab === 'subs');
+    T.realClick(subTab); await T.sleep(320);
+    S('subs: tab renders', company.activeTab === 'subs' && company.bodyEl.textContent.trim().length > 40,
+      company.bodyEl.textContent.trim().length);
+
+    const buy = [...company.bodyEl.querySelectorAll('[data-action=buySub]')].find((b) => !b.disabled);
+    if (buy) {
+      const before = subs.owned.length;
+      T.realClick(buy); await T.sleep(400);
+      S('subs: buying adds a sub', subs.owned.length === before + 1, { before, after: subs.owned.length });
+    }
+    // Anything the player cannot buy has to say why, or the shop is a dead end.
+    const locked = [...company.bodyEl.querySelectorAll('.card.locked')];
+    S('subs: locked hulls give a reason', locked.every((c) => (c.querySelector('.chip')?.textContent || '').length > 3),
+      locked.map((c) => c.querySelector('.chip')?.textContent));
+
+    const refit = company.bodyEl.querySelector('[data-action=upgradeSub]');
+    const sub = subs.byId(refit?.dataset.id);
+    if (refit) {
+      T.realClick(refit); await T.sleep(400);
+      const up = ui.get('subUpgrade');
+      S('subUpgrade: opens from the Subs tab', up.open && !company.open);
+      const btn = [...(up.el?.querySelectorAll('[data-action=up]') || [])].find((b) => !b.disabled);
+      const lvl = sub ? (sub.upgrades[btn?.dataset.id] || 0) : 0;
+      if (btn) {
+        T.realClick(btn); await T.sleep(400);
+        S('subUpgrade: an upgrade applies', (sub.upgrades[btn.dataset.id] || 0) === lvl + 1,
+          { id: btn.dataset.id, before: lvl, after: sub.upgrades[btn.dataset.id] });
+      }
+    }
+
+    // An expedition needs a qualified pilot the moment the company has staff.
+    if (workers && !workers.workers.some((w) => w.role === 'subpilot' || w.role === 'captain')) {
+      for (let i = 0; i < 40; i++) {
+        workers.refreshCandidates(true);
+        const c = workers.candidates.find((x) => x.role === 'subpilot' || x.role === 'captain');
+        if (c) { workers.hire(c.id, true); break; }
+      }
+    }
+    ui.closeAll(); await T.sleep(150);
+    ui.show('subExpedition', { id: sub?.id }); await T.sleep(320);
+    const ed = ui.get('subExpedition');
+    T.realClick(ed.el.querySelector('[data-action=pickBand][data-id=shelf]')); await T.sleep(200);
+    const pilotRow = ed.el.querySelector('[data-action=toggleCrew]');
+    if (pilotRow) { T.realClick(pilotRow); await T.sleep(200); }
+    const launch = ed.el.querySelector('[data-action=launch]');
+    S('subExpedition: dive unlocks once the plan is legal', !launch.disabled, ed.footEl.textContent.trim());
+    const expBefore = subs.expeditions.length;
+    T.realClick(launch); await T.sleep(500);
+    S('subExpedition: launching starts a dive', subs.expeditions.length === expBefore + 1,
+      { before: expBefore, after: subs.expeditions.length, state: subs.expeditions[0]?.state });
+
+    const recall = ui.get('company').bodyEl.querySelector('[data-action=recallExpedition]');
+    if (recall) {
+      T.realClick(recall); await T.sleep(400);
+      S('subs: an expedition can be recalled', !!subs.expeditions.find((e) => e.id === recall.dataset.id)?.recalled);
+    } else S('subs: an expedition can be recalled', false, 'no recall button rendered');
   }
 
   ui.closeAll();

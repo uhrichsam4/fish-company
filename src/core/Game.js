@@ -168,18 +168,48 @@ export class Game {
 
     // rAF stops in a backgrounded tab AND in an off-screen embedded pane that
     // still reports document.hidden === false. Automated sessions set
-    // `allowHiddenTick`; drive the loop from a timer whenever rAF has stalled.
-    this._hiddenTimer = setInterval(() => {
+    // `allowHiddenTick`; drive the loop from a worker whenever rAF has stalled.
+    //
+    // The ticker lives in a worker because a main-thread setInterval is clamped
+    // to roughly 1 Hz in a background tab: the game did keep running, but at a
+    // frame a second, which turned every timed assertion in an automated run
+    // into a spurious failure. Worker timers are not clamped that way.
+    this._startFallbackTicker();
+  }
+
+  _startFallbackTicker() {
+    const tick = () => {
       if (!this.running || !this.allowHiddenTick) return;
       if (performance.now() - this._lastRaf < 150) return;
       this.tick(performance.now());
-    }, 16);
+    };
+    try {
+      // Ping-pong rather than a free-running interval: the worker only schedules
+      // the next tick once this one has been asked for. A fixed interval queues
+      // messages faster than a slow frame can drain them, and the main thread
+      // never catches up.
+      const src = 'onmessage=(e)=>{setTimeout(()=>postMessage(0),e.data);};';
+      const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+      this._tickWorker = new Worker(url);
+      URL.revokeObjectURL(url);
+      this._tickWorker.onmessage = () => {
+        tick();
+        if (this.running) this._tickWorker?.postMessage(16);
+      };
+      this._tickWorker.postMessage(16);
+    } catch (e) {
+      // No worker (blob URLs blocked, or a very old runtime): a throttled timer
+      // still beats no loop at all.
+      this._hiddenTimer = setInterval(tick, 16);
+    }
   }
 
   stop() {
     this.running = false;
     cancelAnimationFrame(this._raf);
     clearInterval(this._hiddenTimer);
+    this._tickWorker?.terminate();
+    this._tickWorker = null;
   }
 
   tick(tMs) {

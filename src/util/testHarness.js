@@ -30,10 +30,19 @@ export function installTestHarness(game) {
   });
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const frames = (n = 1) => new Promise((r) => {
-    let k = 0;
-    const tick = () => { if (++k >= n) r(); else requestAnimationFrame(tick); };
-    requestAnimationFrame(tick);
+  // Wait n simulated frames, counted off the game's own frame number rather
+  // than requestAnimationFrame. A browser pane that isn't compositing stops
+  // rAF entirely while the game keeps running on its fallback ticker, so an
+  // rAF-based wait hangs for ever — which silently turned every cast in an
+  // automated run into a timeout and looked like a gameplay regression.
+  const frames = (n = 1) => new Promise((resolve) => {
+    const target = game.frame + Math.max(1, n);
+    const deadline = performance.now() + 4000;
+    const check = () => {
+      if (game.frame >= target || performance.now() > deadline) resolve();
+      else setTimeout(check, 8);
+    };
+    check();
   });
 
   const input = game.input;

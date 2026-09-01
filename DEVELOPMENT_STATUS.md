@@ -104,7 +104,8 @@ the fallback ticker is throttled; measure `perf.renderMs` and per-system update 
    caustics, no surface-from-below, no particulate.
 3. **Region decoration depth** — Crash, Rocky, Harbour, Wilds, Storm, Frozen and Station have bespoke
    dressing; the Abyss is bare and the inland areas of the larger islands are still generic.
-4. **Economy balance** — the soft cap fixed the tail, but the mid-game curve is untested over a long
-   session. A normal tuna at ~$22 k may outpace the shop.
+4. **Economy balance** — per-catch value is now monotone with region tier (22 / 226 / 353 / 2,299 /
+   8,641 / 10,245 / 13,228 / 37,410) and every region unlock pays back in 2-17 catches. Still untested
+   over a long session against fleet and contract income, which scale on their own curves.
 5. **Boat/sub crews on deck** — crew board and stand, but they don't work stations while under way.
 6. **More content passes** — quests beyond the main chain, per-region contracts, boss rematches.

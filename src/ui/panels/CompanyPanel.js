@@ -277,11 +277,11 @@ export class CompanyPanel extends Panel {
         return `<div class="card ${e ? '' : 'owned'}">
           <div class="card-title">${s.icon} ${s.name}
             <span class="chip ${e ? 'good' : ''}">${e ? e.stateLabel : s.docked ? 'In the bay' : 'At sea'}</span></div>
-          <div class="card-desc">${s.def.name} · ${s.locationLabel}</div>
+          <div class="card-desc">${s.def.name} · ${e ? `${e.band.name} (${e.band.depth} m)` : s.locationLabel}</div>
           ${bar('Hull', hull, hull < 0.35 ? 'bad' : hull < 0.7 ? 'warn' : '')}
           ${bar('Power', power, power < 0.22 ? 'bad' : 'gold')}
           ${e ? `<div class="progress" style="margin:8px 0"><i style="width:${clamp01(e.progress || 0) * 100}%"></i></div>
-            <div class="lr-sub">${e.band.name} · ${e.stateLabel} · ${formatTime(Math.max(0, dur - e.stateTime))} left${e.recalled ? ' · recalled' : ''}</div>
+            <div class="lr-sub">${e.stateLabel} · ${formatTime(Math.max(0, dur - e.stateTime))} left${e.recalled ? ' · recalled' : ''}</div>
             <div class="card-stats">
               Specimens: <b>${e.specimens.length}</b><br>
               Salvage: <b style="color:var(--gold)">${formatMoneyExact(e.salvage)}</b><br>

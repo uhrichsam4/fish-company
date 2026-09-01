@@ -23,7 +23,7 @@ export class SubUpgradePanel extends Panel {
       return;
     }
 
-    this.el.querySelector('.panel-head h2').textContent = `🔧 ${s.icon} ${s.name}`;
+    this.el.querySelector('.panel-head h2').textContent = `🔧 ${s.name}`;
     this.setSubtitle(`${s.def.name} · ${s.locationLabel}`);
     this.setHeadRight(`<span style="font-family:var(--mono);color:var(--gold);font-weight:800">${formatMoneyExact(eco.money)}</span>`);
 
