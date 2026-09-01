@@ -238,6 +238,37 @@ export function installTestHarness(game) {
       return { materials: seen.size, shaderErrors };
     },
 
+    /**
+     * Is this element actually clickable? `elementFromPoint` honours
+     * pointer-events and z-order, so this catches the class of bug that
+     * calling a handler directly never will.
+     */
+    hitTest(selOrEl) {
+      const el = typeof selOrEl === 'string' ? document.querySelector(selOrEl) : selOrEl;
+      if (!el) return { ok: false, why: 'not found' };
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return { ok: false, why: 'zero size', rect: r.toJSON?.() };
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      const ok = !!hit && (hit === el || el.contains(hit) || hit.contains(el));
+      return { ok, why: ok ? '' : `blocked by <${hit?.tagName?.toLowerCase()} class="${hit?.className}">`, x, y };
+    },
+
+    /** Dispatch a real pointer+mouse click sequence at an element's centre. */
+    realClick(selOrEl) {
+      const el = typeof selOrEl === 'string' ? document.querySelector(selOrEl) : selOrEl;
+      if (!el) return { ok: false, why: 'not found' };
+      const test = T.hitTest(el);
+      if (!test.ok) return test;
+      const target = document.elementFromPoint(test.x, test.y);
+      const opts = { bubbles: true, cancelable: true, clientX: test.x, clientY: test.y, button: 0 };
+      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+        const Ctor = type.startsWith('pointer') && window.PointerEvent ? PointerEvent : MouseEvent;
+        target.dispatchEvent(new Ctor(type, opts));
+      }
+      return { ok: true, target: `${target.tagName.toLowerCase()}.${target.className}` };
+    },
+
     /** Run a named debug-menu action. */
     debug(action) { game.get('debug')?.run(action); },
 

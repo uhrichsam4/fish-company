@@ -82,9 +82,29 @@ export class Input {
 
   requestLock() {
     if (this.locked) return;
-    const p = this.dom.requestPointerLock?.({ unadjustedMovement: true });
-    // Chrome returns a promise; Safari returns undefined. Fall back on rejection.
-    if (p && typeof p.catch === 'function') p.catch(() => { try { this.dom.requestPointerLock(); } catch { /* ignore */ } });
+    // Chrome returns a promise; Safari returns undefined. Pointer lock can also
+    // be refused outright (embedded/iframed contexts, or a lock requested too
+    // soon after an exit) — none of that should surface as an unhandled
+    // rejection, so every path is swallowed.
+    try {
+      const p = this.dom.requestPointerLock?.({ unadjustedMovement: true });
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          try {
+            const p2 = this.dom.requestPointerLock();
+            if (p2 && typeof p2.catch === 'function') p2.catch(() => this._lockUnavailable());
+          } catch { this._lockUnavailable(); }
+        });
+      }
+    } catch { this._lockUnavailable(); }
+  }
+
+  /** Called when the browser refuses pointer lock; the game stays playable. */
+  _lockUnavailable() {
+    if (this._warnedLock) return;
+    this._warnedLock = true;
+    console.info('[Input] pointer lock unavailable in this context — mouse look disabled');
+    bus.emit('input:noPointerLock');
   }
   exitLock() { if (this.locked) document.exitPointerLock?.(); }
 

@@ -390,6 +390,9 @@ export class BossSystem {
     if (b.dead) return false;
 
     if (b.killedByWeapon) { this._die(true); return false; }
+    // Already on its way out — leave it derelict rather than fighting
+    // FishSystem for the entry every frame.
+    if (b.graceT > 0) return true;
 
     // Recycled, not killed: put it back and let the grace-period escape logic
     // decide whether the fight is over.
@@ -616,7 +619,9 @@ export class BossSystem {
     const d = dist2D(player.position.x, player.position.z, b.fish.position.x, b.fish.position.z);
     const region = regionAt(player.position.x, player.position.z);
     const leftRegion = b.region && region?.id !== b.region && d > 120;
-    const playerDied = b.playerDownT < 1.5;
+    // The window has to outlast the grace period or the grace can never run
+    // to completion on a death alone.
+    const playerDied = b.playerDownT < 8;
 
     if (leftRegion || playerDied || d > 190) {
       b.graceT += dt;
@@ -1158,8 +1163,10 @@ export class BossSystem {
       const keepY = f.position.y;
       f.position.copy(player.position).add(_v);
       f.position.y = keepY;
-    } else if (away > 88) {
-      // Never wander so far the fish system despawns it.
+    } else if (away > 88 && away < 150) {
+      // Soft leash so it never drifts out of FishSystem's despawn radius on
+      // its own. Past 150 m the player has genuinely left — do not drag the
+      // boss along behind them, that is what the escape grace period is for.
       _v.multiplyScalar(88 / away);
       f.position.copy(player.position).add(_v);
     }

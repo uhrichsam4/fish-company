@@ -261,7 +261,7 @@ export class GamblingPanel extends Panel {
       const band = ROULETTE_BANDS.find((b) => b.key === res.landed);
       if (msg) {
         msg.innerHTML = res.win
-          ? `<span style="color:var(--good)">${band.name} — you win ${formatMoneyExact(res.payout * res.stake)}</span>`
+          ? `<span style="color:var(--good)">${band.name} at ${res.multiplier.toFixed(2)}× — you win ${formatMoneyExact(res.payout)}</span>`
           : `<span style="color:var(--danger)">${band.name}. Not yours.</span>`;
       }
       this._refreshHeader();
@@ -362,7 +362,7 @@ export class GamblingPanel extends Panel {
     }, () => {
       if (msg) {
         msg.innerHTML = res.win
-          ? `<span style="color:var(--good)">${res.winner.emoji} ${res.winner.name} wins — you take ${formatMoneyExact(res.payout * res.stake)}</span>`
+          ? `<span style="color:var(--good)">${res.winner.emoji} ${res.winner.name} wins at ${res.multiplier.toFixed(2)}× — you take ${formatMoneyExact(res.payout)}</span>`
           : `<span style="color:var(--danger)">${res.winner.emoji} ${res.winner.name} wins. You backed ${res.bet.name}.</span>`;
       }
       this._refreshHeader();

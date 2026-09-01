@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { bus } from '../core/EventBus.js';
 import { buildWorkerMesh, buildWorkerTool } from '../workers/WorkerMesh.js';
-import { NPCS, NPC_BY_ID, npcAmbient } from '../data/npcs.js';
+import { NPCS, npcAmbient } from '../data/npcs.js';
 import { REGION_BY_ID } from '../data/regions.js';
 import { worldHeight } from './Terrain.js';
 import { DialoguePanel } from '../ui/panels/DialoguePanel.js';
@@ -325,6 +325,7 @@ export class NPCSystem {
   /** Floating bubble over an NPC's head. One at a time, world-wide. */
   say(n, line) {
     if (!line) return;
+    if (!this.game.settings.subtitles) return;   // same gate the crew speech uses
     if (!this._bubble) {
       const el = document.createElement('div');
       el.className = 'npc-bubble';

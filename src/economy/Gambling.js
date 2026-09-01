@@ -318,7 +318,9 @@ export class Gambling {
     const win = landed === bandKey;
     const res = this._settle('roulette', stake, win ? stake * payout : 0,
       `${band.name} @ ${payout}× · landed ${landed}`);
-    return { ok: true, pocket, landed, win, payout, p, ...res };
+    // `res.payout` is money; the odds multiplier is kept under its own name so
+    // the two can never be confused at the call site.
+    return { ok: true, pocket, landed, win, multiplier: payout, p, ...res };
   }
 
   /**
@@ -370,7 +372,7 @@ export class Gambling {
       `${bet.name} @ ${bet.payout}× · ${winner.name} won`);
     const card = { ...race, winner: winner.id, order: order.map((r) => r.id), times, ran: true };
     this.race = this.newRace();
-    return { ok: true, win, winner, bet, payout: bet.payout, card, ...res };
+    return { ok: true, win, winner, bet, multiplier: bet.payout, card, ...res };
   }
 
   /**
