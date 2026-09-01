@@ -244,7 +244,7 @@ export class WeaponSystem {
     // Solve the launch angle so the arc actually passes through the reticle.
     // Flat weapons barely move; a lobbed spear gets the elevation a player
     // would instinctively add, so the crosshair never lies.
-    this._ballisticDir(_muzzle, _g, stats.speed ?? 30, stats.gravity ?? 0, _d);
+    this._solveLaunch(_muzzle, _g, stats, _d);
     if (!Number.isFinite(_d.x) || _d.lengthSq() < 1e-6) _d.copy(_fwd);
 
     // Hip fire wanders a little; aiming down the weapon is dead accurate.
@@ -288,6 +288,65 @@ export class WeaponSystem {
       }
     }
     return out.copy(_eye).addScaledVector(_fwd, dist);
+  }
+
+  /**
+   * Launch direction that actually lands on `to`, drag included.
+   *
+   * The closed-form ballistic angle ignores drag, which is fine for a flat
+   * 62 m/s harpoon and badly wrong for a thrown spear that loses most of its
+   * speed the moment it touches water. Seed with the closed form, then run a
+   * few cheap forward simulations of the real integrator and correct the
+   * elevation. Only runs on the trigger pull.
+   */
+  _solveLaunch(from, to, stats, out) {
+    const speed = stats.speed ?? 30;
+    const gravity = stats.gravity ?? 0;
+    this._ballisticDir(from, to, speed, gravity, out);
+    if (gravity <= 0.01) return out;
+    let fx = to.x - from.x, fz = to.z - from.z;
+    const X = Math.hypot(fx, fz);
+    if (X < 0.5) return out;
+    fx /= X; fz /= X;
+    let tan = out.y / Math.max(1e-4, Math.hypot(out.x, out.z));
+    // The surface barely moves over one shot, so one sample is plenty here.
+    const waterY = waterHeightAt(to.x, to.z);
+    const airK = stats.projectile === 'net' ? 0.45 : 0.86;
+    const spent2 = Math.pow(Math.max(3, speed * 0.22), 2);
+    for (let i = 0; i < 4; i++) {
+      const y = this._simDrop(from, fx, fz, tan, speed, gravity, airK, spent2, waterY, X);
+      if (y === null) { tan += 0.3; continue; }
+      const err = to.y - y;
+      if (Math.abs(err) < 0.1) break;
+      tan += err / X;
+    }
+    tan = clamp(tan, -6, 6);
+    const inv = 1 / Math.sqrt(1 + tan * tan);
+    return out.set(fx * inv, tan * inv, fz * inv);
+  }
+
+  /** Height of the simulated arc after `targetX` metres of ground track. */
+  _simDrop(from, fx, fz, tan, speed, gravity, airK, spent2, waterY, targetX) {
+    const inv = 1 / Math.sqrt(1 + tan * tan);
+    let vx = fx * speed * inv, vy = tan * speed * inv, vz = fz * speed * inv;
+    let px = from.x, py = from.y, pz = from.z, ground = 0;
+    const dt = 1 / 40;
+    for (let i = 0; i < 170; i++) {
+      const uw = py <= waterY;
+      vy -= gravity * (uw ? 0.3 : 1) * dt;
+      const k = uw ? ((vx * vx + vy * vy + vz * vz) > spent2 ? 0.14 : 0.55) : airK;
+      const m = Math.pow(k, dt);
+      vx *= m; vy *= m; vz *= m;
+      const nx = px + vx * dt, ny = py + vy * dt, nz = pz + vz * dt;
+      const step = Math.hypot(nx - px, nz - pz);
+      if (ground + step >= targetX) {
+        return py + (ny - py) * ((targetX - ground) / Math.max(1e-5, step));
+      }
+      ground += step;
+      px = nx; py = ny; pz = nz;
+      if (py < waterY - 400) break;
+    }
+    return null;
   }
 
   /**
@@ -1235,7 +1294,8 @@ export class WeaponSystem {
       }
     }
 
-    const knock = (stats.knockback ?? 0) * clamp(pf.mass, 0.4, 30) * 0.6;
+    // A gaff drags the fish in; its knockback would just cancel the pull.
+    const knock = stats.pull ? 0 : (stats.knockback ?? 0) * clamp(pf.mass, 0.4, 30) * 0.6;
     if (knock > 0) {
       phys.addImpulse(pf.entry, _a.x * knock, _a.y * knock + knock * 0.5, _a.z * knock);
       phys.addTorqueImpulse(pf.entry,

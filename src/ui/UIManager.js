@@ -5,6 +5,8 @@ import { AtlasPanel } from './panels/AtlasPanel.js';
 import { CompanyPanel } from './panels/CompanyPanel.js';
 import { PausePanel } from './panels/PausePanel.js';
 import { MapPanel } from './panels/MapPanel.js';
+import { FleetEditorPanel } from './panels/FleetEditorPanel.js';
+import { BoatUpgradePanel } from './panels/BoatUpgradePanel.js';
 
 /** Owns every modal panel and the global keybinds that open them. */
 export class UIManager {
@@ -22,6 +24,8 @@ export class UIManager {
     this.register('company', new CompanyPanel(game));
     this.register('pause', new PausePanel(game));
     this.register('map', new MapPanel(game));
+    this.register('fleetEditor', new FleetEditorPanel(game));
+    this.register('boatUpgrade', new BoatUpgradePanel(game));
 
     // Panels may be stateful systems in their own right (Atlas tracks discovery).
     for (const [id, p] of this.panels) {

@@ -192,6 +192,7 @@ export class AudioManager {
       const synth = synthesize(this.ctx, name, o);
       if (!synth) return null;
       src = synth.node; out = synth.out;
+      var _preStarted = synth.preStarted === true;
     }
 
     const gain = this.ctx.createGain();
@@ -217,8 +218,10 @@ export class AudioManager {
 
     this._active++;
     src.onended = () => { this._active--; try { gain.disconnect(); tail.disconnect(); } catch { /* */ } };
-    src.start(0);
-    if (o.duration) src.stop(this.ctx.currentTime + o.duration);
+    if (!_preStarted) {
+      try { src.start(0); } catch { /* already started */ }
+      if (o.duration) { try { src.stop(this.ctx.currentTime + o.duration); } catch { /* */ } }
+    }
     return { src, gain, stop: (fade = 0.05) => this._stopNode(src, gain, fade) };
   }
 
@@ -477,8 +480,9 @@ function synthesize(ctx, name, o = {}) {
       osc.start(st); osc.stop(st + spec.dur + 0.05);
       if (!first) first = osc;
     });
-    // Merger needs a node with onended/start; reuse the first oscillator as driver.
-    return { node: first, out: merger };
+    // The oscillators are already running; flag it so play() doesn't
+    // start/stop them a second time (that throws InvalidStateError).
+    return { node: first, out: merger, preStarted: true };
   }
 
   return null;

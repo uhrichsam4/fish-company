@@ -127,10 +127,17 @@ export class Company {
   /** Economy has already rolled its ledger; `d.previous` is the closed day. */
   onNewDay(d) {
     const workers = this.game.get('workers');
-    let wages = 0;
-    try { wages = workers?.payWages?.() || 0; } catch (e) { console.warn('[Company] payWages threw', e); }
+    // The worker system runs its own payroll on its day tick when it has one.
+    // Only drive payroll from here if nothing else does — never charge twice.
+    const paysItself = typeof workers?.onNewDay === 'function' || workers?.autoPayWages === true;
+    if (workers && !paysItself) {
+      try { workers.payWages?.(); } catch (e) { console.warn('[Company] payWages threw', e); }
+    }
 
     const prev = d?.previous;
+    // Wages land on the ledger of the day they were charged, so report the
+    // closed day's figure rather than whatever payroll just did.
+    const wages = prev?.wages || 0;
     const rev = prev?.revenue || 0;
     const exp = (prev?.expenses || 0);
     const profit = rev - exp;
