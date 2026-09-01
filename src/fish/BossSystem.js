@@ -215,7 +215,6 @@ export class BossSystem {
       graceT: 0, playerDownT: 99,
       submergedT: 0,
       hooked: false, rodDamage: 0, killedByWeapon: false,
-      musicRefs: 1 + (opts.fromEvent ? 1 : 0),
       adds: 0,
       dead: false,
       region: regionAt(pos.x, pos.z)?.id || null,
@@ -246,9 +245,7 @@ export class BossSystem {
     this._pendingDamage.length = 0;
     this._detachFish(b, true);
     this._showBar(false);
-    // Balance MusicDirector's ref-count (it counts both spawn events).
     bus.emit(reason === 'escaped' ? 'boss:escaped' : 'boss:despawned', { id: b.id, reason });
-    for (let i = 1; i < b.musicRefs; i++) bus.emit('boss:despawned', { id: b.id, reason });
     if (reason !== 'dispose' && reason !== 'reset') {
       this.cooldown.set(b.id, 45);
       bus.emit('toast', { text: `${b.species.name} slips away.`, kind: 'muted' });
@@ -511,6 +508,14 @@ export class BossSystem {
   }
 
   // ------------------------------------------------------------- ambient
+
+  /**
+   * The ocean's threat level, from the world-event system. A storm front runs
+   * 1.8 and a sighting 1.4; several events stack multiplicatively, so it is
+   * clamped before anything gets to divide by it.
+   */
+  _danger() { return clamp(this.game.get('events')?.dangerMult ?? 1, 0.25, 4); }
+
   _tickAmbient(dt, game) {
     for (const [k, v] of this.cooldown) {
       const n = v - dt;
@@ -541,7 +546,10 @@ export class BossSystem {
     const species = getSpecies(id);
     const len = BOSS_LENGTH[id] ?? species?.length?.[1] ?? 6;
     if (!this._deepWaterNear(player, len, _v)) return;
-    let chance = cond.chance;
+    // The roll is the only knob this path has, and a boss surfacing is the
+    // most direct thing a dangerous ocean can buy — a storm front raising the
+    // odds is exactly what "big things feed in bad weather" should mean.
+    let chance = cond.chance * this._danger();
     if (this.defeated.has(id)) chance *= 0.35;      // rematches are rarer
     if (!rchance(chance)) return;
     this.spawn(id, { ambient: true });
@@ -786,7 +794,10 @@ export class BossSystem {
         b.attack = null;
         b.attackT = 0;
         const [lo, hi] = b.bd.attackInterval;
-        b.attackTimer = rrange(lo, hi) * lerp(1.15, 0.75, b.aggro);
+        // Danger shortens the gap between attacks — the same boss in a storm
+        // presses instead of circling. Only the idle gap moves: windups are
+        // left alone so every attack stays readable however bad it gets.
+        b.attackTimer = rrange(lo, hi) * lerp(1.15, 0.75, b.aggro) / this._danger();
       }
     }
   }
@@ -1395,8 +1406,6 @@ export class BossSystem {
       id: b.id, species: b.species.id, money,
       unlocks: bd.reward?.unlocks || [], fightTime: b.fightTime, pf,
     });
-    // Balance MusicDirector's ref-count (spawn may have counted twice).
-    for (let i = 1; i < b.musicRefs; i++) bus.emit('boss:despawned', { id: b.id, reason: 'defeated' });
 
     if (this.debugLog) console.info('[Boss] defeated', b.id, 'in', b.fightTime.toFixed(1), 's');
     this.boss = null;

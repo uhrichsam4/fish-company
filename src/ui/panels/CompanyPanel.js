@@ -18,6 +18,7 @@ export class CompanyPanel extends Panel {
         { id: 'hire', name: 'Hire', icon: '📋' },
         { id: 'boats', name: 'Boats', icon: '🚤' },
         { id: 'fleets', name: 'Fleets', icon: '⚓' },
+        { id: 'subs', name: 'Subs', icon: '🌊' },
         { id: 'research', name: 'Research', icon: '🔬' },
         { id: 'harbor', name: 'Harbor', icon: '🏗' },
         { id: 'finances', name: 'Finances', icon: '💰' },
@@ -46,6 +47,7 @@ export class CompanyPanel extends Panel {
       case 'hire': this.renderHire(g, workers, eco); break;
       case 'boats': this.renderBoats(g, boats, eco); break;
       case 'fleets': this.renderFleets(g, fleets, workers, boats); break;
+      case 'subs': this.renderSubs(g, g.get('subs'), eco); break;
       case 'research': this.renderResearch(g, research, eco); break;
       case 'harbor': this.renderHarbor(g, harbor, eco); break;
       case 'finances': this.renderFinances(g, eco); break;
@@ -255,6 +257,77 @@ export class CompanyPanel extends Panel {
         </div>`).join('')}</div>` : this.empty('⚓', 'No fleets yet.', 'A fleet needs a boat, a captain and at least one fisherman.')}
       <button class="btn primary" data-action="newFleet">+ Create Fleet</button>`;
     this.setFoot('');
+  }
+
+  renderSubs(g, subs, eco) {
+    if (!subs) { this.bodyEl.innerHTML = this.empty('🌊', 'Submarines are not available yet.'); this.setFoot(''); return; }
+    const owned = subs.owned || [];
+    const catalogue = subs.catalogue || [];
+    const bar = (label, frac, cls) => `<div class="lr-sub" style="display:flex;justify-content:space-between"><span>${label}</span><b>${Math.round(frac * 100)}%</b></div>
+      <div class="progress ${cls}" style="margin-bottom:6px"><i style="width:${clamp01(frac) * 100}%"></i></div>`;
+
+    this.bodyEl.innerHTML = `
+      ${owned.length ? `<div class="card-title" style="margin-bottom:9px">Your submarines</div>
+      <div class="grid c2" style="margin-bottom:14px">${owned.map((s) => {
+        const st = s.stats;
+        const e = s.expedition;
+        const hull = clamp01(s.hull / st.hullStrength);
+        const power = clamp01(s.battery / st.battery);
+        const dur = e ? (e.durations?.[e.state] || 1) : 0;
+        return `<div class="card ${e ? '' : 'owned'}">
+          <div class="card-title">${s.icon} ${s.name}
+            <span class="chip ${e ? 'good' : ''}">${e ? e.stateLabel : s.docked ? 'In the bay' : 'At sea'}</span></div>
+          <div class="card-desc">${s.def.name} · ${s.locationLabel}</div>
+          ${bar('Hull', hull, hull < 0.35 ? 'bad' : hull < 0.7 ? 'warn' : '')}
+          ${bar('Power', power, power < 0.22 ? 'bad' : 'gold')}
+          ${e ? `<div class="progress" style="margin:8px 0"><i style="width:${clamp01(e.progress || 0) * 100}%"></i></div>
+            <div class="lr-sub">${e.band.name} · ${e.stateLabel} · ${formatTime(Math.max(0, dur - e.stateTime))} left${e.recalled ? ' · recalled' : ''}</div>
+            <div class="card-stats">
+              Specimens: <b>${e.specimens.length}</b><br>
+              Salvage: <b style="color:var(--gold)">${formatMoneyExact(e.salvage)}</b><br>
+              Hull damage: <b>${Math.round(e.hullDamage)}</b><br>
+              ${e.log.length ? `Last: <b>${e.log[e.log.length - 1]}</b>` : 'Nothing logged yet'}
+            </div>
+            <div style="margin-top:8px">${e.crew.map((w) => `<span class="chip">${w.name} (${w.roleName})</span>`).join(' ')}</div>`
+          : `<div class="card-stats">
+              Crush: <b>${Math.round(subs.crushDepthOf(s))} m</b><br>
+              Hold: <b>${formatWeight(s.cargoWeight)}</b> / ${formatWeight(st.cargo)}<br>
+              Seats: <b>${Math.round(st.crew)}</b> · Sonar: <b>${Math.round(st.sonarRange)} m</b><br>
+              Deepest: <b>${Math.round(s.deepest)} m</b> · Dives: <b>${s.trips}</b><br>
+              Profit: <b style="color:var(--gold)">${formatMoneyExact(s.lifetimeProfit)}</b>
+            </div>`}
+          <div class="card-row">
+            ${e ? `<button class="btn sm" data-action="recallExpedition" data-id="${e.id}" ${e.recalled ? 'disabled' : ''}>Recall</button>`
+              : `<button class="btn sm primary" data-action="subExpedition" data-id="${s.id}">Expedition</button>
+                 <button class="btn sm" data-action="upgradeSub" data-id="${s.id}">Refit</button>
+                 <button class="btn sm" data-action="repairSub" data-id="${s.id}">Repair</button>
+                 <button class="btn sm" data-action="rechargeSub" data-id="${s.id}">Recharge</button>`}
+          </div>
+        </div>`;
+      }).join('')}</div>
+      <button class="btn primary" style="margin-bottom:18px" data-action="subExpedition">+ Plan Expedition</button>` : ''}
+      <div class="card-title" style="margin-bottom:9px">Sub bay</div>
+      <div class="grid auto">${catalogue.map((d) => {
+        const locked = !subs.isUnlocked(d);
+        const afford = eco.money >= d.price;
+        return `<div class="card hover ${locked ? 'locked' : ''}">
+          <div class="card-title">${d.icon} ${d.name}</div>
+          <div class="card-desc">${d.desc}</div>
+          <div class="card-stats">
+            Crush depth: <b>${d.crushDepth} m</b><br>Hull: <b>${d.hullStrength}</b><br>
+            Speed: <b>${d.speed} m/s</b><br>Hold: <b>${formatWeight(d.cargo)}</b><br>
+            Crew: <b>${d.crew}</b><br>Air: <b>${formatTime(d.oxygen)}</b><br>
+            Sonar: <b>${d.sonarRange} m</b> · Lights: <b>${d.lightRange} m</b>
+          </div>
+          <div class="card-row">
+            <span class="card-price ${afford ? '' : 'cant'}">${formatMoneyExact(d.price)}</span>
+            ${locked ? `<span class="chip">${subs.lockReason(d) || 'Locked'}</span>`
+              : `<button class="btn sm ${afford ? 'gold' : ''}" data-action="buySub" data-id="${d.id}" ${afford ? '' : 'disabled'}>Buy</button>`}
+          </div>
+          ${!locked && !afford ? `<div class="lr-sub" style="margin-top:5px">Short ${formatMoneyExact(d.price - eco.money)}</div>` : ''}
+        </div>`;
+      }).join('')}</div>`;
+    this.setFoot(`<span style="color:var(--ink-faint)">${owned.length} submarine${owned.length === 1 ? '' : 's'} · ${subs.expeditions.length} on expedition · fleet value ${formatMoneyExact(Math.round(subs.totalValue()))}</span>`);
   }
 
   renderResearch(g, research, eco) {

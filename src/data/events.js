@@ -211,8 +211,9 @@ export const WORLD_EVENTS = [
       ev.mult('events', 'deepBonus', 2.2);
       ev.emit('weather:set', { id: 'fog' });
       ev.data.ambTimer = 6;
-      const amb = game.get('ambience');
-      if (amb?.setEventDrone) { amb.setEventDrone(0.75); ev.data.drone = true; }
+      // The EventSystem owns the bed and fades it back out when this ends,
+      // however it ends — expiry, cancel, reset or a save being loaded over it.
+      ev.drone = 0.75;
       ev.summary = 'Deep spawn rate ×1.7, rare ×2.6, everything is listening';
     },
 
@@ -224,10 +225,7 @@ export const WORLD_EVENTS = [
       if (ev.rng() < 0.4) ev.emit('fx:screenFlash', { color: 'rgba(10,0,20,0.30)', duration: 500 });
     },
 
-    end(game, ev) {
-      const amb = game.get('ambience');
-      if (ev.data.drone && amb?.setEventDrone) amb.setEventDrone(0);
-    },
+    end() {},
   },
 
   // ============================================================ world / weather

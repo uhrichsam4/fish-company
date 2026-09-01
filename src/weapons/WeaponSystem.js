@@ -718,6 +718,9 @@ export class WeaponSystem {
     });
     if (p.hitIds) p.hitIds.push(fish.id);
     if (p.explosive > 0) this._explode(game, point, p);
+    // Where the shot actually landed. BossSystem reads this for weak-point and
+    // crit detection; without it there is nothing to do but guess from the aim ray.
+    bus.emit('weapon:hit', { target: fish, damage: p.damage, point, direction: dir });
 
     if (fish.hp > 0) {
       // Survived: violent flight, plus a knockback you can actually see.
@@ -775,6 +778,11 @@ export class WeaponSystem {
    */
   killFish(game, fish, dir, ctx = {}) {
     if (!fish.active || !fish.instance) return null;
+    // A boss owns its own death: its HP pool is authoritative and BossSystem
+    // decides when the fight ends. Nets, melee and a tethered harpoon reeling
+    // one in all land a fish unconditionally, which recycled the entry out from
+    // under BossSystem and paid the defeat reward for free.
+    if (fish.isBoss) return null;
     const fishSys = game.get('fish');
     const inst = fish.instance;
     const eco = game.get('economy');

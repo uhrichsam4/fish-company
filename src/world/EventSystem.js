@@ -79,6 +79,7 @@ export class EventSystem {
     this.deepBonus = 1;
 
     this.root = null;
+    this._drone = 0;                         // last level handed to Ambience
     this._markerPool = [];
     this._applied = new Map();               // "target.key" -> factor we last wrote
     this._modKeys = new Map();               // target -> Set(keys)
@@ -140,7 +141,7 @@ export class EventSystem {
     this.activeEvents.length = 0;
     this.history.length = 0;
     this.rollTimer = rrange(150, 300);
-    this._recomputeMults();
+    this._refresh();
   }
 
   /** Seconds until the next roll — the HUD/debug menu likes to show this. */
@@ -172,7 +173,7 @@ export class EventSystem {
     if (opts.remaining != null) ev.remaining = opts.remaining;
 
     this.activeEvents.push(ev);
-    this._recomputeMults();
+    this._refresh();
     if (ev.marker) this._makeMarker(ev);
 
     if (!opts.silent) {
@@ -196,7 +197,7 @@ export class EventSystem {
     try { ev.def.end?.(this.game, ev); }
     catch (e) { console.error(`[Events] "${ev.id}" end threw:`, e); }
     this._releaseMarker(ev);
-    this._recomputeMults();
+    this._refresh();
     this.history.push({ id: ev.id, at: this.game.time, reason });
     if (this.history.length > 24) this.history.shift();
     if (reason !== 'reset' && reason !== 'load') {
@@ -221,6 +222,8 @@ export class EventSystem {
       summary: '',
       data: {},
       mods: null,
+      /** 0..1 — how much unsettling low drone this event wants underneath. */
+      drone: 0,
       marker: null,
       markerObj: null,
       remaining: def.duration ?? 240,
@@ -295,6 +298,28 @@ export class EventSystem {
   }
 
   // ------------------------------------------------------------- modifiers
+
+  /** Everything derived from the live event set, recomputed together. */
+  _refresh() {
+    this._recomputeMults();
+    this._syncDrone();
+  }
+
+  /**
+   * Push the loudest requested drone level at the ambience bed. Owned here
+   * rather than by the event definitions so a cancel/reset/save-load unwinds
+   * it exactly like a multiplier does, and so two events asking for a drone
+   * don't fight over it on the way out.
+   */
+  _syncDrone() {
+    const amb = this.game.get('ambience');
+    if (!amb?.setEventDrone) return;
+    let want = 0;
+    for (const ev of this.activeEvents) if (ev.drone > want) want = ev.drone;
+    if (want === this._drone) return;
+    this._drone = want;
+    amb.setEventDrone(want);
+  }
 
   _target(name) {
     if (name === 'fish') return this.game.get('fish');
@@ -458,7 +483,7 @@ export class EventSystem {
         seed: s.seed, data: s.data, remaining: s.remaining, silent: true,
       });
     }
-    this._recomputeMults();
+    this._refresh();
   }
 }
 

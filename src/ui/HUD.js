@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { bus } from '../core/EventBus.js';
-import { clamp01, formatMoney, formatMoneyExact, formatWeight, formatDistance, lerp, damp } from '../util/math.js';
+import { clamp01, formatMoney, formatMoneyExact, formatWeight, formatDistance, formatTime, lerp, damp } from '../util/math.js';
+
+/** Event rows drawn before the strip collapses into a "+n more" line. */
+const MAX_EVENT_ROWS = 5;
+/** Seconds a freshly started event shows its summary without being asked. */
+const EVENT_REVEAL = 9;
 
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -40,9 +45,18 @@ export class HUD {
     this.objective.id = 'objective';
     this.objective.innerHTML = `<div class="obj-label">Objective</div><div class="obj-text">…</div><div class="obj-progress"></div>`;
     tl.appendChild(this.objective);
-    this.root.appendChild(tl);
     this.objText = this.objective.querySelector('.obj-text');
     this.objProg = this.objective.querySelector('.obj-progress');
+
+    // Active world events. Laid out *inside* the top-left corner, below the
+    // objective card, so it can never overlap it however tall the card gets.
+    this.eventStrip = el('div', '');
+    this.eventStrip.id = 'event-strip';
+    this.eventStrip.classList.add('hidden');
+    tl.appendChild(this.eventStrip);
+    this._eventRows = [];
+    this._eventSig = '';
+    this.root.appendChild(tl);
 
     // top-right money
     const tr = el('div', 'hud-corner hud-tr');
@@ -290,6 +304,58 @@ export class HUD {
     this.storageEl.innerHTML = `<span style="color:${color}">${formatWeight(used)} / ${formatWeight(cap)}</span><br><span style="opacity:.6">${count} fish</span>`;
   }
 
+  /**
+   * Mirror the live world events into the strip. Rows are rebuilt only when the
+   * set of events changes (title/icon/summary are final by the time an event
+   * reaches `activeEvents` — `apply()` runs before it is pushed), so the
+   * per-frame cost is one text write per row per whole second.
+   */
+  _updateEvents(game) {
+    const list = game.get('events')?.activeEvents;
+    const ui = game.get('ui');
+    const blocked = !!(ui?.anyOpen?.() || game.get('debug')?.open);
+    const n = list?.length || 0;
+
+    let sig = '';
+    for (let i = 0; i < n; i++) sig += `${list[i].uid},`;
+    if (sig !== this._eventSig) { this._eventSig = sig; this._buildEventRows(list, n); }
+
+    this.eventStrip.classList.toggle('hidden', blocked || n === 0);
+    if (blocked || !this._eventRows.length) return;
+
+    for (const r of this._eventRows) {
+      const t = Math.max(0, Math.ceil(r.ev.remaining));
+      if (t === r.lastT) continue;
+      r.lastT = t;
+      r.timeEl.textContent = formatTime(t);
+      r.el.classList.toggle('urgent', t <= 30);
+      // Auto-reveal the summary for a beat: hovering only works when the
+      // pointer is free, and it is locked for most of the game.
+      r.el.classList.toggle('open', r.ev.elapsed < EVENT_REVEAL);
+    }
+  }
+
+  _buildEventRows(list, n) {
+    const shown = Math.min(n, MAX_EVENT_ROWS);
+    let html = '';
+    for (let i = 0; i < shown; i++) {
+      const ev = list[i];
+      html += `<div class="ev-row">
+        <span class="ev-icon">${ev.icon || '❗'}</span>
+        <span class="ev-title">${ev.title || ev.id}</span>
+        <span class="ev-time">—</span>
+        <span class="ev-sum">${ev.summary || ev.def?.desc || ''}</span>
+      </div>`;
+    }
+    if (n > shown) html += `<div class="ev-more">+${n - shown} more</div>`;
+    this.eventStrip.innerHTML = html;
+    const els = this.eventStrip.querySelectorAll('.ev-row');
+    this._eventRows.length = 0;
+    for (let i = 0; i < els.length; i++) {
+      this._eventRows.push({ el: els[i], timeEl: els[i].querySelector('.ev-time'), ev: list[i], lastT: -1 });
+    }
+  }
+
   toast(text, kind = '', duration = 3200) {
     const t = el('div', `toast ${kind}`, text);
     this.toastBox.appendChild(t);
@@ -381,6 +447,8 @@ export class HUD {
         e.style.opacity = String(1 - Math.abs(d) / 75);
       }
     }
+
+    this._updateEvents(game);
 
     // toasts
     const now = performance.now();

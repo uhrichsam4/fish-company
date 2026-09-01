@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { bus } from '../core/EventBus.js';
 import { REGIONS, REGION_BY_ID } from '../data/regions.js';
-import { speciesInRegion, rollFishInstance, getSpecies, RARITY } from '../data/fishData.js';
+import { speciesInRegion, rollFishInstance, getSpecies, RARITY, spawnWeightIn } from '../data/fishData.js';
 import { WS } from '../workers/Worker.js';
 import { worldHeight } from '../world/Terrain.js';
 import { waterHeightAt } from '../world/waves.js';
@@ -238,6 +238,14 @@ export class FleetSystem {
         const total = Math.max(1, f.route.dist);
         f.progress = clamp01(1 - d / total);
         if (d < 22) { this.setState(f, FLEET_STATE.FISHING); f.captain?.say('arrive'); break; }
+        // Turn back while there is still fuel to get home, rather than pressing
+        // on to a ground the tank was never going to cover both ways.
+        if (b.def.fuel > 0 && b.fuel <= this.fuelReserve(f, b, game)) {
+          f.log.push({ t: game.time, msg: 'Turned back — not enough fuel to reach the grounds' });
+          bus.emit('toast', { text: `${f.name} turned back: not enough fuel for the run.`, kind: 'warn' });
+          this.setState(f, FLEET_STATE.RETURNING);
+          break;
+        }
         this.steerTowards(f, b, to.x, to.z, dt, near);
         this.burnFuel(f, b, dt, game);
         break;
@@ -248,8 +256,10 @@ export class FleetSystem {
         this.crewFish(f, dt, game, near);
         const cap = b.stats.storage;
         f.progress = clamp01(f.cargoWeight / cap);
-        if (f.cargoWeight >= cap * 0.985 || f.stateTime > 600) {
-          f.captain?.say('full');
+        const lowFuel = b.def.fuel > 0 && b.fuel <= this.fuelReserve(f, b, game);
+        if (f.cargoWeight >= cap * 0.985 || f.stateTime > 600 || lowFuel) {
+          f.captain?.say(lowFuel ? 'fuel' : 'full');
+          if (lowFuel) f.log.push({ t: game.time, msg: 'Headed back on the last of the fuel' });
           this.setState(f, FLEET_STATE.RETURNING);
         }
         this.burnFuel(f, b, dt * 0.25, game);
@@ -371,12 +381,32 @@ export class FleetSystem {
     }
   }
 
-  burnFuel(f, b, dt, game) {
-    if (b.def.fuel <= 0) return;
+  /** Fuel burned per second under way, captain skill and research included. */
+  fuelBurnRate(f, b, game) {
+    if (b.def.fuel <= 0) return 0;
     const captain = f.captain;
     const eff = 1 - clamp01((captain?.treeBonus('fuelEff') || 0) + (captain?.traitSum('fuelEff') || 0));
-    const research = game.get('research');
-    b.fuel = Math.max(0, b.fuel - b.stats.fuelUse * dt * 0.28 * eff * (research?.fuelMult ?? 1));
+    return b.stats.fuelUse * 0.28 * eff * (game.get('research')?.fuelMult ?? 1);
+  }
+
+  /**
+   * Fuel a captain keeps back to reach the home dock, with a third again for
+   * weather and a wandering course. A dinghy's 40-unit tank does not survive a
+   * full ten-minute fishing stint plus the trip home, so without this every
+   * first fleet ran dry short of the harbour and had to be towed.
+   */
+  fuelReserve(f, b, game) {
+    if (b.def.fuel <= 0) return 0;
+    const home = REGION_BY_ID[f.homeRegion] || REGION_BY_ID.crash;
+    const anchors = game.get('world')?.getAnchors(home.id);
+    const dock = anchors?.dockEnd || { x: home.x, z: home.z };
+    const d = Math.hypot(dock.x - b.position.x, dock.z - b.position.z);
+    return this.fuelBurnRate(f, b, game) * (d / Math.max(1, b.stats.speed)) * 1.35;
+  }
+
+  burnFuel(f, b, dt, game) {
+    if (b.def.fuel <= 0) return;
+    b.fuel = Math.max(0, b.fuel - this.fuelBurnRate(f, b, game) * dt);
     if (b.fuel <= 0 && f.state !== FLEET_STATE.STRANDED) {
       this.setState(f, FLEET_STATE.STRANDED);
       f.captain?.say('fuel');
@@ -455,7 +485,7 @@ export class FleetSystem {
     const weather = game.get('weather');
     const luck = 1 + (w.skills.luck - 3) * 0.07 + w.traitSum('rareBonus') + w.treeBonus('rareBonus');
     const cands = pool.map((s) => {
-      let weight = s.spawnWeight;
+      let weight = spawnWeightIn(s, region.id);
       if (s.time !== 'any' && sky) { if ((s.time === 'night') !== sky.isNight) weight *= 0.25; }
       if (s.weather !== 'any' && weather) weight *= s.weather === weather.current.id ? 2 : 0.35;
       const rIdx = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'].indexOf(s.rarity);

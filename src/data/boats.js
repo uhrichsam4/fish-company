@@ -18,7 +18,7 @@ export const BOATS = [
   {
     id: 'dinghy', name: 'Dinghy', icon: '🛶', price: 3200, tier: 1,
     desc: 'An outboard, a bench and a bailing bucket.',
-    speed: 7.5, handling: 0.72, storage: 140, crew: 2, fuel: 40, fuelUse: 0.9,
+    speed: 7.5, handling: 0.72, storage: 140, crew: 2, fuel: 110, fuelUse: 0.9,
     durability: 120, sonar: 0, range: 520, slots: 2, mass: 620,
     unlockRegion: 'rocky',
     hull: { length: 4.4, width: 1.9, height: 0.75, style: 'vee', color: '#3f6f9c', deck: '#c9c2a8' },
@@ -29,7 +29,7 @@ export const BOATS = [
   {
     id: 'motorboat', name: 'Motorboat', icon: '🚤', price: 12000, tier: 2,
     desc: 'Fast, loud, and completely unsuitable for cargo.',
-    speed: 13.5, handling: 0.9, storage: 260, crew: 3, fuel: 90, fuelUse: 1.8,
+    speed: 13.5, handling: 0.9, storage: 260, crew: 3, fuel: 240, fuelUse: 1.8,
     durability: 220, sonar: 1, range: 900, slots: 3, mass: 1100,
     unlockRegion: 'harbor',
     hull: { length: 6.2, width: 2.3, height: 1.1, style: 'speed', color: '#e8e2d4', deck: '#3d4a55', accent: '#d8541f' },
@@ -40,7 +40,7 @@ export const BOATS = [
   {
     id: 'skiff', name: 'Fishing Skiff', icon: '⛵', price: 34000, tier: 3,
     desc: 'Built for work. Wide deck, rod holders, smells permanently of bait.',
-    speed: 10.5, handling: 0.8, storage: 900, crew: 4, fuel: 160, fuelUse: 2.2,
+    speed: 10.5, handling: 0.8, storage: 900, crew: 4, fuel: 430, fuelUse: 2.2,
     durability: 420, sonar: 2, range: 1400, slots: 4, mass: 2600,
     unlockRegion: 'harbor',
     hull: { length: 8.5, width: 3.1, height: 1.5, style: 'work', color: '#2f6f5a', deck: '#b8a882', accent: '#e8b023' },
@@ -51,7 +51,7 @@ export const BOATS = [
   {
     id: 'cabin', name: 'Cabin Cruiser', icon: '🛥️', price: 110000, tier: 4,
     desc: 'A boat with an indoors. Your crew will never stop mentioning it.',
-    speed: 12.5, handling: 0.78, storage: 2200, crew: 6, fuel: 320, fuelUse: 3.4,
+    speed: 12.5, handling: 0.78, storage: 2200, crew: 6, fuel: 880, fuelUse: 3.4,
     durability: 800, sonar: 3, range: 2400, slots: 6, mass: 6500,
     unlockRegion: 'wilds',
     hull: { length: 12.5, width: 4.2, height: 2.6, style: 'cabin', color: '#f0ece2', deck: '#5a6570', accent: '#2f6fb5' },
@@ -62,7 +62,7 @@ export const BOATS = [
   {
     id: 'commercial', name: 'Commercial Boat', icon: '🚢', price: 420000, tier: 5,
     desc: 'Nets, winches, a crane and a crew who resent all three.',
-    speed: 10.0, handling: 0.62, storage: 8000, crew: 8, fuel: 700, fuelUse: 5.2,
+    speed: 10.0, handling: 0.62, storage: 8000, crew: 8, fuel: 1900, fuelUse: 5.2,
     durability: 1800, sonar: 3, range: 3600, slots: 8, mass: 24000,
     unlockRegion: 'storm',
     hull: { length: 20, width: 6.4, height: 4.2, style: 'commercial', color: '#3f5f7f', deck: '#6a6f74', accent: '#e8b023' },
@@ -73,7 +73,7 @@ export const BOATS = [
   {
     id: 'trawler', name: 'Deep Sea Trawler', icon: '🛳️', price: 1600000, tier: 6,
     desc: 'Drags a net the size of a football pitch. Ethically ambiguous.',
-    speed: 8.5, handling: 0.5, storage: 26000, crew: 12, fuel: 1800, fuelUse: 8.5,
+    speed: 8.5, handling: 0.5, storage: 26000, crew: 12, fuel: 4800, fuelUse: 8.5,
     durability: 4200, sonar: 4, range: 6000, slots: 12, mass: 90000,
     unlockRegion: 'frozen',
     hull: { length: 34, width: 9.5, height: 6.5, style: 'trawler', color: '#5a3f3f', deck: '#6a6f74', accent: '#d8541f' },
@@ -84,7 +84,7 @@ export const BOATS = [
   {
     id: 'factory', name: 'Factory Ship', icon: '🏭', price: 12000000, tier: 7,
     desc: 'A moving fish processing plant. Has a canteen. Has a barber.',
-    speed: 7.0, handling: 0.36, storage: 120000, crew: 24, fuel: 6000, fuelUse: 16,
+    speed: 7.0, handling: 0.36, storage: 120000, crew: 24, fuel: 16000, fuelUse: 16,
     durability: 12000, sonar: 5, range: 12000, slots: 20, mass: 420000,
     unlockRegion: 'station', requiresResearch: 'factory_ship',
     hull: { length: 62, width: 16, height: 12, style: 'factory', color: '#4a5560', deck: '#6a6f74', accent: '#e8b023' },

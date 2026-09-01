@@ -122,6 +122,31 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 #objective.flash { animation: objFlash .8s ease; }
 @keyframes objFlash { 0%,100% { background: rgba(8,16,24,.62);} 30% { background: rgba(47,212,196,.3);} }
 
+/* active world events — stacked under the objective card, same corner */
+#event-strip { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+.ev-row {
+  display: grid; grid-template-columns: 17px minmax(0,1fr) auto; align-items: center;
+  column-gap: 7px; padding: 5px 9px 5px 8px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: rgba(8,16,24,.62); border-left: 3px solid var(--gold);
+  backdrop-filter: blur(7px); box-shadow: var(--shadow-sm);
+  animation: evIn .3s cubic-bezier(.2,1.3,.4,1);
+  pointer-events: auto;   /* #ui-root > * turns these off; hover needs them back */
+}
+.ev-icon { font-size: 14px; line-height: 1; text-align: center; }
+.ev-title { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev-time { font-family: var(--mono); font-size: 11.5px; font-weight: 700; color: var(--gold); font-variant-numeric: tabular-nums; }
+.ev-row.urgent { border-left-color: var(--danger); }
+.ev-row.urgent .ev-time { color: var(--danger); animation: evPulse 1.1s ease-in-out infinite; }
+.ev-sum {
+  grid-column: 2 / -1; font-size: 11px; line-height: 1.32; color: var(--ink-dim);
+  max-height: 0; opacity: 0; overflow: hidden;
+  transition: max-height .22s ease, opacity .22s ease, margin-top .22s ease;
+}
+.ev-row.open .ev-sum, .ev-row:hover .ev-sum { max-height: 44px; opacity: 1; margin-top: 3px; }
+.ev-more { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); padding-left: 11px; }
+@keyframes evIn { from { opacity: 0; transform: translateX(-16px);} to { opacity: 1; transform: none; } }
+@keyframes evPulse { 0%,100% { opacity: 1;} 50% { opacity: .4;} }
+
 #region-banner {
   position: absolute; top: 15%; left: 50%; transform: translateX(-50%);
   text-align: center; opacity: 0; transition: opacity .6s ease;
@@ -350,6 +375,8 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 .progress > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width .3s; }
 .progress.gold > i { background: var(--gold); }
 .progress.xp > i { background: linear-gradient(90deg,var(--accent-2),var(--accent)); }
+.progress.warn > i { background: var(--warn); }
+.progress.bad > i { background: var(--danger); }
 
 .list-row {
   display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: var(--radius-sm);

@@ -58,11 +58,12 @@ export class MusicDirector {
       if (first) this.restartCalm(); else this._evalT = 99;
     });
 
-    // Debug menu emits `boss:spawn`; gameplay emits `boss:spawned`.
+    // `boss:spawn` is a REQUEST (debug menu, world events); BossSystem answers
+    // it with `boss:spawned`. Counting both double-counted every summon and
+    // left the fight music stuck on after the boss died.
     const spawned = () => { this._bossActive++; this._bossT = 0; this._evalT = 99; };
     const cleared = () => { this._bossActive = Math.max(0, this._bossActive - 1); this._evalT = 99; };
     on('boss:spawned', spawned);
-    on('boss:spawn', spawned);
     on('boss:defeated', cleared);
     on('boss:despawned', cleared);
     on('boss:escaped', cleared);

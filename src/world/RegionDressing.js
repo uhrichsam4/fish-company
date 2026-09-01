@@ -32,6 +32,11 @@ export function dressRegion(world, state, def, anchors) {
 
 function place(group, obj, x, z, opts = {}) {
   if (!obj) return null;
+  // Some builders return a descriptor ({ pieces, group, material }) rather than
+  // the Object3D itself — buildShellsAndDebris does, and used to take the whole
+  // region's dressing down with it.
+  if (!obj.isObject3D) obj = obj.group;
+  if (!obj?.isObject3D) return null;
   const y = opts.y != null ? opts.y : worldHeight(x, z) + (opts.yOffset || 0);
   obj.position.set(x, y, z);
   if (opts.rot != null) obj.rotation.y = opts.rot;

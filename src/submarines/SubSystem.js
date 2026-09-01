@@ -1352,6 +1352,21 @@ export class SubSystem {
 
   // ------------------------------------------------------- sub expeditions
   /**
+   * Seconds each phase of an expedition takes, scaled so a shelf run is a
+   * couple of minutes and a hadal run is a slog. Split out from
+   * `startExpedition` so the planner can quote a schedule before committing.
+   */
+  expeditionDurations(s, band) {
+    return {
+      prep: 6,
+      descent: band.minutes * 18 * (1 / Math.max(0.4, s.stats.ascendRate / 3)),
+      survey: band.minutes * 34,
+      ascent: band.minutes * 14,
+      debrief: 5,
+    };
+  }
+
+  /**
    * Autonomous crewed dives. Same idea as FleetSystem's trips, but a sub
    * expedition is simulated purely statistically — nobody ever sees it — so it
    * is a state machine over money, discoveries, battery and hull.
@@ -1398,14 +1413,7 @@ export class SubSystem {
       stateLabel: EXP_LABEL.prep,
       stateTime: 0,
       progress: 0,
-      // Scaled so a shelf run is a couple of minutes and a hadal run is a slog.
-      durations: {
-        prep: 6,
-        descent: band.minutes * 18 * (1 / Math.max(0.4, s.stats.ascendRate / 3)),
-        survey: band.minutes * 34,
-        ascent: band.minutes * 14,
-        debrief: 5,
-      },
+      durations: this.expeditionDurations(s, band),
       eventTimer: 3,
       specimens: [],
       discoveries: [],

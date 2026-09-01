@@ -3,7 +3,6 @@
 ## Open
 | # | Severity | Area | Issue | Notes |
 |---|---|---|---|---|
-| B-12 | med | Economy | `computeFishValue` multiplies rarity mult × mass, so a Golden Abyssal Leviathan prices at ~$34 B — the late game overflows into meaninglessness. | Needs a soft cap / logarithmic tail above ~$10 M. |
 | B-17 | low | Testing | FPS readings taken while the automation pane isn't compositing are meaningless — the fallback ticker is throttled. Measure `perf.renderMs` / per-system update cost instead. Current real cost: **~1 ms/frame CPU, ~1 ms render at 2880x1620**. | Documented; don't chase it again. |
 | B-14 | low | Workers | Crew occasionally pick fishing spots close together despite the 6.5 m dedup, when few spots pass the water test. | Generate more shoreline candidates per region. |
 | B-15 | low | UI | Company panel has no Contracts or Processing tab; those systems are only reachable over the event bus. | Add tabs. |
@@ -11,6 +10,13 @@
 
 ## Fixed
 | # | Area | Issue | Fix |
+| B-19 | Terrain | Dark angular streaks over half of every island, with a razor-straight seam along a world axis. Read as a lighting, shadow or noise-aliasing bug and survived a dozen attempts at all three. | Region footprints overlap (Crash reaches 250 m from the origin, Harbour 400 m from (-400, 400) — eight pairs in all) and every region samples the same `worldHeight`, so overlaps drew two near-identical surfaces that z-fought. Terrain now builds on one global lattice and each cell is emitted only by its owning region. Verified over 1.38 M world samples: every point in any footprint is drawn exactly once, no holes. |
+| B-20 | Dressing | `[Dressing] wilds failed: Cannot read properties of undefined (reading 'set')` — the jungle region lost all its set dressing. | `buildShellsAndDebris` returns a `{ pieces, group, material }` descriptor, not an Object3D; `place()` now unwraps it and rejects anything that still isn't one. |
+| B-21 | Testing | Every gameplay test run after a screenshot run failed at the first input. | `TEST.shot` left the survey pose held, which freezes the player; it now releases, and `progression.run` clears it defensively. |
+| B-22 | Boats | Boarding and leaving a boat could happen in the same frame. | Interaction (order 65) and BoatSystem (order 76) both consumed the same `E`; BoatSystem now swallows it until the key comes back up, matching SubSystem. |
+| B-23 | Audio | Boss fight music stuck on after the boss died. | MusicDirector counted both `boss:spawn` (a request) and `boss:spawned` (the fact); it now counts only the latter, and BossSystem's compensating ref-count emits are gone. |
+| B-24 | Weapons | A net, a melee swing or a tethered harpoon landed a boss outright, paying the defeat reward for free. | `killFish` refuses a boss entry — its HP pool is authoritative — and `_hitFish` now emits `weapon:hit` so BossSystem reads real impact points instead of guessing from the aim ray. |
+| B-12 | Economy | `computeFishValue` priced a Golden Abyssal Leviathan at ~$14 B. | `softCapValue` compresses by sqrt above $20 k (leviathan ~$5.7 M, golden ~$27.5 M). |
 | B-13 | Render | 921 draw calls; every prop was its own mesh. | Static batching by material signature + fish LOD + worker mesh merging → ~210 draws. |
 | B-18 | Ocean | The whole ocean vanished — a partial edit left a call to a helper I'd deleted, so the fragment shader failed to compile and the material silently rendered nothing. | Rewrote the block; added `TEST.checkShaders()` which relinks every material and surfaces compile errors, so this can't pass a screenshot review again. |
 |---|---|---|---|

@@ -57,6 +57,9 @@ export async function run(opts = {}) {
   g.get('tricks')?.load?.(null);
   g.get('subs')?.load?.(null);
   T.clearEvents(); T.clearErrors();
+  // Release a held survey pose: a screenshot run leaves the player frozen, and
+  // every input the test sends after that goes nowhere.
+  T.survey(null);
   const spawn = world.getAnchors('crash').spawn;
   g.get('player').spawnAt(spawn, 0);
   await T.sleep(600);

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { bus } from '../core/EventBus.js';
 import {
   FISH_SPECIES, getSpecies, speciesInRegion, rollFishInstance, rollVariant,
-  rollSpecies, RARITY, VARIANT_BY_ID,
+  rollSpecies, RARITY, VARIANT_BY_ID, spawnWeightIn,
 } from '../data/fishData.js';
 import { REGION_BY_ID, regionAt } from '../data/regions.js';
 import {
@@ -23,6 +23,9 @@ const _v3 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _m = new THREE.Matrix4();
 const UP = new THREE.Vector3(0, 1, 0);
+
+/** Metres: a species whose depth band sits below this counts as deep water. */
+const DEEP_BAND = 25;
 
 /** One live fish. Pooled — `reset()` re-arms an instance for a new species. */
 class Fish {
@@ -77,6 +80,9 @@ export class FishSystem {
     this.densityMult = 1;
     this.luckMult = 1;
     this.rareMult = 1;
+    /** Sampled from the event system once per update — see update(). */
+    this._danger = 1;
+    this._deepBonus = 1;
     this.totalSpawned = 0;
     this.enabled = true;
     this.debugDraw = false;
@@ -121,7 +127,7 @@ export class FishSystem {
     for (const s of pool) {
       if (s.boss) continue;
       if (depth < s.depth[0] * 0.7 || depth > s.depth[1] * 1.5) continue;
-      let w = s.spawnWeight;
+      let w = spawnWeightIn(s, region.id);
       if (s.time !== 'any') {
         if (s.time === 'night' && !isNight) w *= 0.12;
         if (s.time === 'day' && isNight) w *= 0.12;
@@ -133,6 +139,10 @@ export class FishSystem {
       const mid = (s.depth[0] + s.depth[1]) / 2;
       const span = Math.max(1.5, (s.depth[1] - s.depth[0]) / 2);
       w *= Math.exp(-Math.pow((depth - mid) / (span * 1.35), 2));
+      // A deep-water event favours the residents of the deep over whatever
+      // else happens to overlap the sampled depth — the whole point of the
+      // abyssal anomaly is *what* comes up, not how much of it.
+      if (mid > DEEP_BAND) w *= this._deepBonus;
       if (w > 0.01) candidates.push({ s, weight: w });
     }
     if (!candidates.length) return null;
@@ -153,7 +163,10 @@ export class FishSystem {
       if (waterDepth < 1.1) continue;
       const region = regionAt(x, z) || REGION_BY_ID.crash;
       // Bias toward mid-water; keep clear of surface and seabed.
-      const d = lerp(0.9, Math.min(waterDepth - 0.5, 140), Math.pow(this.rng(), 1.5));
+      // `events.deepBonus` flattens the exponent instead of weighting species:
+      // the depth is drawn *before* the species is picked, so weighting deep
+      // species alone can never fire when the draw never reaches their band.
+      const d = lerp(0.9, Math.min(waterDepth - 0.5, 140), Math.pow(this.rng(), 1.5 / this._deepBonus));
       const species = this.pickSpecies(region, d, this.rng);
       if (!species) continue;
       const f = this.spawn(species, x, surf - d, z);
@@ -307,6 +320,15 @@ export class FishSystem {
     const ocean = game.get('ocean');
     const region = regionAt(px, pz);
 
+    // World events reach this system two ways: `densityMult`/`luckMult`/
+    // `rareMult` are written directly by `ev.mult('fish', …)`, while these two
+    // live on the event system and have to be read. Sampled once per frame so
+    // the per-fish AI below never touches the system registry, and clamped
+    // because several events stack multiplicatively.
+    const events = game.get('events');
+    this._danger = events ? clamp(events.dangerMult || 1, 0.25, 4) : 1;
+    this._deepBonus = events ? clamp(events.deepBonus || 1, 0.25, 4) : 1;
+
     // ---- population control ----
     this._spawnTimer -= dt;
     if (this._spawnTimer <= 0) {
@@ -370,11 +392,16 @@ export class FishSystem {
     f.spooked = Math.max(0, f.spooked - dt * 0.45);
 
     // ---- bait attraction ----
+    // `events.dangerMult` is the ocean's threat level (a storm front, a boss
+    // circling). It rides the *aggression* terms rather than the spawn table
+    // because both of those events describe an ocean where things are up and
+    // feeding — a dangerous sea should feel different to fish in, not merely
+    // have more fish in it.
     if (bait && bait.inWater && f.state !== FISH_STATE.NIBBLE) {
       const bd2 = f.position.distanceToSquared(bait.position);
-      const senseRange = lerp(9, 26, sp.aggression) * (bait.attractMult ?? 1);
+      const senseRange = lerp(9, 26, sp.aggression) * (bait.attractMult ?? 1) * this._danger;
       if (bd2 < senseRange * senseRange && f.spooked < 0.5) {
-        const eagerness = sp.aggression * (bait.attractMult ?? 1) * (bait.speciesBias?.[sp.id] ?? 1);
+        const eagerness = sp.aggression * this._danger * (bait.attractMult ?? 1) * (bait.speciesBias?.[sp.id] ?? 1);
         f.interest = clamp01(f.interest + dt * eagerness * 0.9);
         if (f.interest > 0.32 && f.state !== FISH_STATE.INTERESTED) {
           f.state = FISH_STATE.INTERESTED; f.stateTime = 0; f.baitRef = bait;
@@ -407,7 +434,7 @@ export class FishSystem {
         const d = _v.length();
         if (d < 0.55 + f.scale * 0.4) {
           // Close enough to commit.
-          const biteChance = clamp01(sp.aggression * 0.9 + f.interest * 0.5 - f.spooked);
+          const biteChance = clamp01(sp.aggression * 0.9 * this._danger + f.interest * 0.5 - f.spooked);
           if (this.rng() < biteChance) {
             f.state = FISH_STATE.NIBBLE; f.stateTime = 0;
             bus.emit('fish:nibble', { fish: f, bait: b });

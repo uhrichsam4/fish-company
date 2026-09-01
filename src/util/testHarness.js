@@ -354,7 +354,11 @@ export function installTestHarness(game) {
     async shot(name, x, y, z, yaw, pitch, settleMs = 700) {
       T.survey(x, y, z, yaw, pitch);
       await sleep(settleMs);
-      return T.capture(name);
+      const out = await T.capture(name);
+      // Hand the player back. A held survey pose leaves them frozen and unable
+      // to move, which silently fails every gameplay test run afterwards.
+      T.survey(null);
+      return out;
     },
   };
 

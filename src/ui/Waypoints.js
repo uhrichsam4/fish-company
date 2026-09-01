@@ -102,6 +102,19 @@ export class Waypoints {
     const qt = this._questTarget(game);
     if (qt) this._push('quest', '🎯', qt.label, 'var(--accent)', qt.x, qt.y, qt.z, 100);
 
+    // --- live world events carrying a beacon ---------------------------------
+    // Gathered right after the quest so they survive a MAX_MARKERS overflow:
+    // an event beacon is the only cue for a thing that expires on a timer.
+    const events = game.get('events');
+    if (events?.activeEvents?.length) {
+      for (const ev of events.activeEvents) {
+        const m = ev.marker;
+        if (!m) continue;
+        this._push('event', ev.icon || '❗', m.label || ev.title, cssHex(m.color),
+          m.x, (m.y ?? 0) + 2.2, m.z, 95);
+      }
+    }
+
     // --- sell station while carrying / holding fish -------------------------
     const inv = game.get('inventory');
     const carrying = !!game.get('interaction')?.held?.pf;
@@ -234,7 +247,8 @@ export class Waypoints {
 
       // Fade with distance; never fully invisible so a far fleet still reads.
       const fade = 1 - clamp01((dist - NEAR_FADE) / (FAR_FADE - NEAR_FADE)) * 0.68;
-      const opacity = clamp(fade * (s.kind === 'quest' || s.kind === 'sell' ? 1 : 0.9), 0.22, 1);
+      const full = s.kind === 'quest' || s.kind === 'sell' || s.kind === 'event';
+      const opacity = clamp(fade * (full ? 1 : 0.9), 0.22, 1);
 
       const ix = sx | 0, iy = sy | 0;
       if (!m.shown) { m.el.style.display = ''; m.shown = true; }
@@ -268,6 +282,11 @@ export class Waypoints {
     this.layer?.remove();
     this.layer = null;
   }
+}
+
+/** Beacon colours arrive as three.js hex numbers; the pin wants CSS. */
+function cssHex(n) {
+  return Number.isFinite(n) ? `#${(n >>> 0).toString(16).padStart(6, '0')}` : 'var(--gold)';
 }
 
 /** Nearest entry with a `.position` to `p`. No allocation. */

@@ -619,6 +619,29 @@ function synthesizeLoop(ctx, name, o = {}) {
     src.connect(bp); bp.connect(g);
     return { node: src, out: g, rateParam: src.playbackRate };
   }
+  if (base.includes('drone')) {
+    // Two saws a few cents apart under a resonant low-pass. The beating between
+    // them is what makes this read as *wrong* rather than as one more ambience
+    // bed — a single clean oscillator just sounds like a hum.
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth'; osc.frequency.value = 41;
+    const det = ctx.createOscillator();
+    det.type = 'sawtooth'; det.frequency.value = 41 * 1.014;
+    const sub = ctx.createOscillator();
+    sub.type = 'sine'; sub.frequency.value = 20.5;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 165; lp.Q.value = 4.5;
+    // Very slow sweep so the bed breathes instead of sitting perfectly still.
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.047;
+    const lfoG = ctx.createGain(); lfoG.gain.value = 85;
+    lfo.connect(lfoG); lfoG.connect(lp.frequency); lfo.start(0);
+    const subG = ctx.createGain(); subG.gain.value = 0.55;
+    const mix = ctx.createGain(); mix.gain.value = 0.42;
+    osc.connect(lp); det.connect(lp); lp.connect(mix);
+    sub.connect(subG); subG.connect(mix);
+    det.start(0); sub.start(0);
+    return { node: osc, out: mix, rateParam: osc.frequency, extra: [det, sub, lfo] };
+  }
   if (base.includes('underwater') || base.includes('deep')) {
     const src = ctx.createBufferSource();
     src.buffer = cachedNoise(ctx, 3, 'brown'); src.loop = true;

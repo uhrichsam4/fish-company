@@ -103,7 +103,7 @@ export const FISH_SPECIES = [
     atlasHint: 'Shallow cover — logs, weed, dock shade. Loves a noisy lure.',
     dangerous: false, boss: false, edible: true, xp: 8 },
 
-  { id: 'trout', name: 'Rainbow Trout', short: 'Trout', tier: 1, habitat: ['river', 'shallow'], regions: ['crash', 'rocky', 'frozen'],
+  { id: 'trout', name: 'Rainbow Trout', short: 'Trout', tier: 1, habitat: ['river', 'shallow'], regions: ['crash', 'rocky'],
     depth: [0.3, 12], weight: [0.4, 5.5], length: [0.25, 0.7], value: 16, rarity: 'common', spawnWeight: 130,
     strength: 0.22, speed: 0.52, stamina: 0.4, aggression: 0.5, escape: 0.32, fight: 'jumper',
     body: 'trout', colors: { main: '#6f8a9c', belly: '#f2ede0', fin: '#c46b7e', accent: '#e0577a', eye: '#131313' },
@@ -168,7 +168,7 @@ export const FISH_SPECIES = [
 
   // --- Junk. Still species. Still counts for the atlas. ---
 
-  { id: 'boot', name: 'Waterlogged Boot', short: 'Boot', tier: 1, habitat: ['shallow', 'harbor', 'river', 'wreck'], regions: ['crash', 'rocky', 'harbor', 'station'],
+  { id: 'boot', name: 'Waterlogged Boot', short: 'Boot', tier: 1, habitat: ['shallow', 'harbor', 'river', 'wreck'], regions: ['crash', 'rocky', 'harbor'],
     depth: [0.2, 40], weight: [1.2, 1.2], length: [0.28, 0.34], value: 1, rarity: 'common', spawnWeight: 70,
     strength: 0.02, speed: 0.0, stamina: 0.05, aggression: 0.0, escape: 0.0, fight: 'weak',
     body: 'junk_boot', colors: { main: '#4a3b30', belly: '#6d5a49', fin: '#2c231c', accent: '#9a8a6b', eye: '#000000' },
@@ -177,7 +177,7 @@ export const FISH_SPECIES = [
     atlasHint: 'Fish badly, anywhere. You will find one eventually. You will find several.',
     dangerous: false, boss: false, edible: false, xp: 1 },
 
-  { id: 'tin-can', name: 'Rusted Tin Can', short: 'Can', tier: 1, habitat: ['shallow', 'harbor', 'wreck'], regions: ['crash', 'rocky', 'harbor', 'station'],
+  { id: 'tin-can', name: 'Rusted Tin Can', short: 'Can', tier: 1, habitat: ['shallow', 'harbor', 'wreck'], regions: ['crash', 'rocky', 'harbor'],
     depth: [0.2, 60], weight: [0.3, 0.55], length: [0.1, 0.15], value: 1, rarity: 'common', spawnWeight: 60,
     strength: 0.01, speed: 0.0, stamina: 0.05, aggression: 0.0, escape: 0.0, fight: 'weak',
     body: 'junk_can', colors: { main: '#8d9096', belly: '#b8bcc2', fin: '#5e6166', accent: '#b06a3a', eye: '#000000' },
@@ -219,7 +219,7 @@ export const FISH_SPECIES = [
   // === TIER 3 — harbour, wilds, the first real coast ========================
 
   { id: 'salmon', name: 'King Salmon', short: 'Salmon', tier: 3, habitat: ['coast', 'river', 'openocean'], regions: ['rocky', 'harbor', 'wilds', 'frozen'],
-    depth: [1, 60], weight: [3, 32], length: [0.6, 1.45], value: 26, rarity: 'common', spawnWeight: 95,
+    depth: [1, 60], weight: [3, 32], length: [0.6, 1.45], value: 26, rarity: 'common', spawnWeight: 95, regionWeight: { frozen: 40 },
     strength: 0.42, speed: 0.62, stamina: 0.62, aggression: 0.55, escape: 0.4, fight: 'runner',
     body: 'trout', colors: { main: '#5d7f90', belly: '#f4ece2', fin: '#c9576a', accent: '#e8657c', eye: '#121212' },
     pattern: 'spots', glow: 0, time: 'dawn', weather: 'any',
@@ -255,7 +255,7 @@ export const FISH_SPECIES = [
     dangerous: false, boss: false, edible: true, xp: 48 },
 
   { id: 'halibut', name: 'Pacific Halibut', short: 'Halibut', tier: 4, habitat: ['coast', 'openocean', 'arctic'], regions: ['wilds', 'frozen', 'rocky'],
-    depth: [20, 320], weight: [5, 190], length: [0.7, 2.4], value: 38, rarity: 'uncommon', spawnWeight: 55,
+    depth: [20, 320], weight: [5, 190], length: [0.7, 2.4], value: 38, rarity: 'uncommon', spawnWeight: 55, regionWeight: { frozen: 34 },
     strength: 0.66, speed: 0.2, stamina: 0.65, aggression: 0.45, escape: 0.22, fight: 'brawler',
     body: 'flatfish', colors: { main: '#5e5b4b', belly: '#f0ece0', fin: '#46443a', accent: '#8f8a70', eye: '#111111' },
     pattern: 'mottled', glow: 0, time: 'any', weather: 'any',
@@ -282,7 +282,7 @@ export const FISH_SPECIES = [
     dangerous: true, boss: false, edible: true, xp: 34 },
 
   { id: 'squid', name: 'Humboldt Squid', short: 'Squid', tier: 4, habitat: ['openocean', 'deep'], regions: ['wilds', 'storm', 'station'],
-    depth: [30, 500], weight: [4, 55], length: [0.7, 2.0], value: 48, rarity: 'uncommon', spawnWeight: 48,
+    depth: [30, 500], weight: [4, 55], length: [0.7, 2.0], value: 48, rarity: 'uncommon', spawnWeight: 48, regionWeight: { station: 18 },
     strength: 0.46, speed: 0.66, stamina: 0.5, aggression: 0.92, escape: 0.5, fight: 'thrasher',
     body: 'squid', colors: { main: '#b03a54', belly: '#f0d6d0', fin: '#7d2438', accent: '#ff8f6a', eye: '#0a0a0a' },
     pattern: 'gradient', glow: 0.12, time: 'night', weather: 'any',
@@ -395,7 +395,7 @@ export const FISH_SPECIES = [
     dangerous: true, boss: false, edible: true, xp: 210 },
 
   { id: 'swordfish', name: 'Swordfish', short: 'Swordfish', tier: 5, habitat: ['openocean', 'deep'], regions: ['storm', 'station'],
-    depth: [50, 700], weight: [50, 400], length: [1.8, 4.0], value: 84, rarity: 'rare', spawnWeight: 20,
+    depth: [50, 700], weight: [50, 400], length: [1.8, 4.0], value: 84, rarity: 'rare', spawnWeight: 20, regionWeight: { station: 24 },
     strength: 0.88, speed: 0.78, stamina: 0.9, aggression: 0.5, escape: 0.42, fight: 'diver',
     body: 'marlin', colors: { main: '#3a4a5c', belly: '#e8ecec', fin: '#232f3c', accent: '#8fa6bc', eye: '#0b0b0b' },
     pattern: 'gradient', glow: 0, time: 'night', weather: 'any',
@@ -502,7 +502,7 @@ export const FISH_SPECIES = [
   // === TIER 5-6 — the frozen shelf =========================================
 
   { id: 'arctic-cod', name: 'Polar Cod', short: 'Arctic Cod', tier: 5, habitat: ['arctic', 'coast'], regions: ['frozen'],
-    depth: [5, 300], weight: [0.3, 3.0], length: [0.2, 0.5], value: 34, rarity: 'common', spawnWeight: 90,
+    depth: [5, 300], weight: [0.3, 3.0], length: [0.2, 0.5], value: 34, rarity: 'common', spawnWeight: 90, regionWeight: { frozen: 48 },
     strength: 0.2, speed: 0.35, stamina: 0.35, aggression: 0.55, escape: 0.16, fight: 'runner',
     body: 'trout', colors: { main: '#7d8f9c', belly: '#f2f6f6', fin: '#5b6d7a', accent: '#b8d6e2', eye: '#131313' },
     pattern: 'spots', glow: 0, time: 'any', weather: 'any',
@@ -511,7 +511,7 @@ export const FISH_SPECIES = [
     dangerous: false, boss: false, edible: true, xp: 28 },
 
   { id: 'greenland-halibut', name: 'Greenland Halibut', short: 'G. Halibut', tier: 6, habitat: ['arctic', 'deep'], regions: ['frozen'],
-    depth: [200, 1400], weight: [4, 60], length: [0.6, 1.3], value: 96, rarity: 'uncommon', spawnWeight: 46,
+    depth: [200, 1400], weight: [4, 60], length: [0.6, 1.3], value: 260, rarity: 'uncommon', spawnWeight: 38,
     strength: 0.6, speed: 0.28, stamina: 0.62, aggression: 0.5, escape: 0.22, fight: 'diver',
     body: 'flatfish', colors: { main: '#4a4f55', belly: '#cfd6d6', fin: '#33383d', accent: '#7f8a92', eye: '#101010' },
     pattern: 'gradient', glow: 0, time: 'any', weather: 'any',
@@ -520,7 +520,7 @@ export const FISH_SPECIES = [
     dangerous: false, boss: false, edible: true, xp: 90 },
 
   { id: 'icefish', name: 'Crocodile Icefish', short: 'Icefish', tier: 6, habitat: ['arctic', 'deep'], regions: ['frozen'],
-    depth: [80, 900], weight: [0.3, 4.0], length: [0.25, 0.7], value: 150, rarity: 'rare', spawnWeight: 30,
+    depth: [80, 900], weight: [0.3, 4.0], length: [0.25, 0.7], value: 1400, rarity: 'rare', spawnWeight: 30,
     strength: 0.2, speed: 0.3, stamina: 0.3, aggression: 0.45, escape: 0.25, fight: 'runner',
     body: 'sardine', colors: { main: '#c8dbe6', belly: '#f7fbfd', fin: '#a2c4d6', accent: '#e6f4ff', eye: '#1a1a1a' },
     pattern: 'gradient', glow: 0.08, time: 'any', weather: 'any',
@@ -529,7 +529,7 @@ export const FISH_SPECIES = [
     dangerous: false, boss: false, edible: true, xp: 110 },
 
   { id: 'narwhal-eel', name: 'Narwhal Eel', short: 'Narwhal Eel', tier: 6, habitat: ['arctic', 'deep'], regions: ['frozen'],
-    depth: [120, 1100], weight: [8, 95], length: [1.6, 4.2], value: 190, rarity: 'epic', spawnWeight: 12,
+    depth: [120, 1100], weight: [8, 95], length: [1.6, 4.2], value: 2400, rarity: 'epic', spawnWeight: 18,
     strength: 0.68, speed: 0.55, stamina: 0.7, aggression: 0.7, escape: 0.6, fight: 'thrasher',
     body: 'eel', colors: { main: '#4d6b86', belly: '#dfeaf0', fin: '#33506b', accent: '#c8e8ff', eye: '#8fd6ff' },
     pattern: 'mottled', glow: 0.22, time: 'night', weather: 'any',
@@ -538,7 +538,7 @@ export const FISH_SPECIES = [
     dangerous: true, boss: false, edible: true, xp: 240 },
 
   { id: 'king-crab', name: 'Red King Crab', short: 'King Crab', tier: 5, habitat: ['arctic', 'coast', 'deep'], regions: ['frozen'],
-    depth: [20, 400], weight: [2, 12], length: [0.3, 1.8], value: 120, rarity: 'uncommon', spawnWeight: 48,
+    depth: [20, 400], weight: [2, 12], length: [0.3, 1.8], value: 900, rarity: 'uncommon', spawnWeight: 48,
     strength: 0.4, speed: 0.1, stamina: 0.65, aggression: 0.5, escape: 0.2, fight: 'brawler',
     body: 'crab', colors: { main: '#b3402c', belly: '#e8c2a0', fin: '#7c2718', accent: '#ff9d6a', eye: '#111111' },
     pattern: 'bands', glow: 0, time: 'any', weather: 'any',
@@ -547,13 +547,40 @@ export const FISH_SPECIES = [
     dangerous: false, boss: false, edible: true, xp: 85 },
 
   { id: 'wolffish', name: 'Atlantic Wolffish', short: 'Wolffish', tier: 6, habitat: ['arctic', 'coast', 'wreck'], regions: ['frozen', 'rocky'],
-    depth: [30, 600], weight: [3, 24], length: [0.6, 1.5], value: 110, rarity: 'uncommon', spawnWeight: 40,
+    depth: [30, 600], weight: [3, 24], length: [0.6, 1.5], value: 330, rarity: 'uncommon', spawnWeight: 40, regionWeight: { rocky: 18 },
     strength: 0.58, speed: 0.22, stamina: 0.6, aggression: 0.8, escape: 0.3, fight: 'brawler',
     body: 'catfish', colors: { main: '#586570', belly: '#c9cfcc', fin: '#3c464e', accent: '#8e9aa0', eye: '#0f0f0f' },
     pattern: 'bands', glow: 0, time: 'any', weather: 'any',
     desc: 'Face like a punched fist and teeth built for cracking shellfish. Will demonstrate on your pliers.',
     atlasHint: 'Cold rocky bottom. Keep every finger accounted for on release.',
     dangerous: true, boss: false, edible: true, xp: 95 },
+
+  { id: 'greenland-shark', name: 'Greenland Shark', short: 'Greenland', tier: 6, habitat: ['arctic', 'deep'], regions: ['frozen'],
+    depth: [120, 1400], weight: [220, 900], length: [3.0, 6.4], value: 420, rarity: 'epic', spawnWeight: 14,
+    strength: 0.82, speed: 0.12, stamina: 0.95, aggression: 0.4, escape: 0.25, fight: 'brawler',
+    body: 'shark', colors: { main: '#5a5f63', belly: '#9aa2a6', fin: '#3d4245', accent: '#7d8a90', eye: '#c9d8dd' },
+    pattern: 'gradient', glow: 0.0, time: 'any', weather: 'any',
+    desc: 'Older than the harbour, the town and most of the graves in it. Swims at the speed of a decision it has not made yet.',
+    atlasHint: 'Deep, cold and dark. It will not run — it will simply refuse to come up.',
+    dangerous: true, boss: false, edible: false, xp: 460 },
+
+  { id: 'colossal-squid', name: 'Colossal Squid', short: 'Colossal', tier: 6, habitat: ['arctic', 'deep'], regions: ['frozen'],
+    depth: [300, 2000], weight: [180, 720], length: [4.0, 9.5], value: 620, rarity: 'epic', spawnWeight: 11,
+    strength: 0.88, speed: 0.5, stamina: 0.72, aggression: 0.9, escape: 0.7, fight: 'thrasher',
+    body: 'squid', colors: { main: '#8e3f52', belly: '#e0b6b2', fin: '#5c2739', accent: '#ffd0c0', eye: '#f4f8ff' },
+    pattern: 'mottled', glow: 0.12, time: 'any', weather: 'any',
+    desc: 'Hooks on the suckers, eyes the size of dinner plates, and absolutely no interest in being weighed.',
+    atlasHint: 'Under the polar shelf, very deep. Bring the heaviest line you own.',
+    dangerous: true, boss: false, edible: true, xp: 520 },
+
+  { id: 'arctic-char', name: 'Arctic Char', short: 'Char', tier: 5, habitat: ['arctic', 'coast'], regions: ['frozen'],
+    depth: [1, 60], weight: [1.5, 12], length: [0.4, 1.05], value: 62, rarity: 'uncommon', spawnWeight: 52,
+    strength: 0.32, speed: 0.62, stamina: 0.5, aggression: 0.6, escape: 0.45, fight: 'runner',
+    body: 'trout', colors: { main: '#5d7f92', belly: '#f2a071', fin: '#3f5c6d', accent: '#ffd9a8', eye: '#101418' },
+    pattern: 'spotted', glow: 0.0, time: 'any', weather: 'any',
+    desc: 'Salmon that moved north and got better looking for it. The belly goes the colour of a sunset it never sees.',
+    atlasHint: 'Cold inshore water and river mouths. Small spoons work fine.',
+    dangerous: false, boss: false, edible: true, xp: 70 },
 
   // === TIER 6 BOSS ==========================================================
 
@@ -580,7 +607,7 @@ export const FISH_SPECIES = [
   // === TIER 6-7 — the deep and the station =================================
 
   { id: 'lanternfish', name: 'Lanternfish', short: 'Lanternfish', tier: 6, habitat: ['deep', 'openocean'], regions: ['station', 'storm', 'abyss'],
-    depth: [200, 1200], weight: [0.01, 0.15], length: [0.03, 0.14], value: 200, rarity: 'common', spawnWeight: 130,
+    depth: [200, 1200], weight: [0.01, 0.15], length: [0.03, 0.14], value: 200, rarity: 'common', spawnWeight: 130, regionWeight: { station: 24, abyss: 20 },
     strength: 0.04, speed: 0.4, stamina: 0.12, aggression: 0.6, escape: 0.2, fight: 'weak',
     body: 'sardine', colors: { main: '#2a3a4e', belly: '#4fd8e8', fin: '#1c2836', accent: '#7ef0ff', eye: '#dff8ff' },
     pattern: 'glow', glow: 0.75, time: 'night', weather: 'any',
@@ -589,7 +616,7 @@ export const FISH_SPECIES = [
     dangerous: false, boss: false, edible: true, xp: 60 },
 
   { id: 'anglerfish', name: 'Humpback Anglerfish', short: 'Anglerfish', tier: 6, habitat: ['deep', 'abyss'], regions: ['station', 'abyss'],
-    depth: [500, 2500], weight: [0.4, 12], length: [0.15, 0.7], value: 280, rarity: 'rare', spawnWeight: 42,
+    depth: [500, 2500], weight: [0.4, 12], length: [0.15, 0.7], value: 280, rarity: 'rare', spawnWeight: 42, regionWeight: { station: 20, abyss: 20 },
     strength: 0.3, speed: 0.12, stamina: 0.35, aggression: 0.95, escape: 0.3, fight: 'thrasher',
     body: 'anglerfish', colors: { main: '#2e2438', belly: '#4a3a54', fin: '#1b1522', accent: '#8affd8', eye: '#f0ffe8' },
     pattern: 'glow', glow: 0.6, time: 'any', weather: 'any',
@@ -598,7 +625,7 @@ export const FISH_SPECIES = [
     dangerous: true, boss: false, edible: true, xp: 180 },
 
   { id: 'viperfish', name: 'Sloane Viperfish', short: 'Viperfish', tier: 6, habitat: ['deep'], regions: ['station', 'abyss'],
-    depth: [300, 2000], weight: [0.05, 0.9], length: [0.15, 0.42], value: 240, rarity: 'uncommon', spawnWeight: 55,
+    depth: [300, 2000], weight: [0.05, 0.9], length: [0.15, 0.42], value: 240, rarity: 'uncommon', spawnWeight: 55, regionWeight: { station: 20, abyss: 18 },
     strength: 0.14, speed: 0.5, stamina: 0.25, aggression: 0.95, escape: 0.45, fight: 'thrasher',
     body: 'anglerfish', colors: { main: '#1e2a3a', belly: '#33465e', fin: '#141c28', accent: '#6affc8', eye: '#e8fff4' },
     pattern: 'glow', glow: 0.55, time: 'any', weather: 'any',
@@ -607,7 +634,7 @@ export const FISH_SPECIES = [
     dangerous: true, boss: false, edible: false, xp: 130 },
 
   { id: 'giant-isopod', name: 'Giant Isopod', short: 'Isopod', tier: 6, habitat: ['deep', 'trench'], regions: ['station', 'abyss'],
-    depth: [400, 2600], weight: [0.4, 3.5], length: [0.2, 0.55], value: 260, rarity: 'uncommon', spawnWeight: 60,
+    depth: [400, 2600], weight: [0.4, 3.5], length: [0.2, 0.55], value: 260, rarity: 'uncommon', spawnWeight: 60, regionWeight: { station: 22, abyss: 20 },
     strength: 0.22, speed: 0.06, stamina: 0.5, aggression: 0.3, escape: 0.15, fight: 'weak',
     body: 'isopod', colors: { main: '#b9a582', belly: '#e2d3b4', fin: '#8c7a5c', accent: '#6a5c44', eye: '#0d0d0d' },
     pattern: 'bands', glow: 0, time: 'any', weather: 'any',
@@ -616,7 +643,7 @@ export const FISH_SPECIES = [
     dangerous: false, boss: false, edible: false, xp: 120 },
 
   { id: 'dumbo-octopus', name: 'Dumbo Octopus', short: 'Dumbo', tier: 7, habitat: ['deep', 'trench', 'abyss'], regions: ['station', 'abyss'],
-    depth: [1000, 4500], weight: [0.1, 6], length: [0.15, 0.9], value: 360, rarity: 'rare', spawnWeight: 30,
+    depth: [1000, 4500], weight: [0.1, 6], length: [0.15, 0.9], value: 360, rarity: 'rare', spawnWeight: 30, regionWeight: { station: 22, abyss: 18 },
     strength: 0.16, speed: 0.16, stamina: 0.3, aggression: 0.1, escape: 0.4, fight: 'weak',
     body: 'octopus', colors: { main: '#c47a9a', belly: '#f0d0dc', fin: '#95506e', accent: '#ffd0e2', eye: '#0c0c0c' },
     pattern: 'gradient', glow: 0.14, time: 'any', weather: 'any',
@@ -625,7 +652,7 @@ export const FISH_SPECIES = [
     dangerous: false, boss: false, edible: false, xp: 190 },
 
   { id: 'vampire-squid', name: 'Vampire Squid', short: 'V. Squid', tier: 7, habitat: ['deep', 'trench'], regions: ['station', 'abyss'],
-    depth: [600, 3000], weight: [0.2, 2.5], length: [0.2, 0.6], value: 400, rarity: 'rare', spawnWeight: 28,
+    depth: [600, 3000], weight: [0.2, 2.5], length: [0.2, 0.6], value: 400, rarity: 'rare', spawnWeight: 28, regionWeight: { station: 20, abyss: 16 },
     strength: 0.18, speed: 0.28, stamina: 0.35, aggression: 0.15, escape: 0.65, fight: 'runner',
     body: 'squid', colors: { main: '#5a1e33', belly: '#8f3a52', fin: '#380f20', accent: '#5fe8ff', eye: '#a8e0ff' },
     pattern: 'glow', glow: 0.5, time: 'any', weather: 'any',
@@ -634,7 +661,7 @@ export const FISH_SPECIES = [
     dangerous: false, boss: false, edible: false, xp: 210 },
 
   { id: 'goblin-shark', name: 'Goblin Shark', short: 'Goblin', tier: 7, habitat: ['deep', 'trench'], regions: ['station', 'abyss'],
-    depth: [300, 1500], weight: [40, 210], length: [2.0, 4.2], value: 340, rarity: 'epic', spawnWeight: 14,
+    depth: [300, 1500], weight: [40, 210], length: [2.0, 4.2], value: 340, rarity: 'epic', spawnWeight: 14, regionWeight: { station: 26 },
     strength: 0.7, speed: 0.35, stamina: 0.6, aggression: 0.85, escape: 0.4, fight: 'brawler',
     body: 'shark', colors: { main: '#d09fa8', belly: '#f0dfe0', fin: '#9a6a76', accent: '#5f3a48', eye: '#0a0a0a' },
     pattern: 'gradient', glow: 0.05, time: 'any', weather: 'any',
@@ -643,7 +670,7 @@ export const FISH_SPECIES = [
     dangerous: true, boss: false, edible: false, xp: 420 },
 
   { id: 'frilled-shark', name: 'Frilled Shark', short: 'Frilled', tier: 7, habitat: ['deep', 'trench'], regions: ['station', 'abyss'],
-    depth: [400, 1800], weight: [8, 90], length: [1.2, 2.6], value: 380, rarity: 'epic', spawnWeight: 13,
+    depth: [400, 1800], weight: [8, 90], length: [1.2, 2.6], value: 380, rarity: 'epic', spawnWeight: 13, regionWeight: { station: 24 },
     strength: 0.55, speed: 0.42, stamina: 0.65, aggression: 0.8, escape: 0.6, fight: 'thrasher',
     body: 'shark', colors: { main: '#6b5f52', belly: '#ab9c88', fin: '#463d34', accent: '#d8c6a4', eye: '#0b0b0b' },
     pattern: 'bands', glow: 0.05, time: 'any', weather: 'any',
@@ -652,7 +679,7 @@ export const FISH_SPECIES = [
     dangerous: true, boss: false, edible: false, xp: 400 },
 
   { id: 'oarfish', name: 'Giant Oarfish', short: 'Oarfish', tier: 7, habitat: ['deep', 'openocean'], regions: ['station', 'storm', 'abyss'],
-    depth: [200, 1000], weight: [40, 270], length: [3.0, 9.0], value: 420, rarity: 'epic', spawnWeight: 10,
+    depth: [200, 1000], weight: [40, 270], length: [3.0, 9.0], value: 420, rarity: 'epic', spawnWeight: 10, regionWeight: { station: 20 },
     strength: 0.48, speed: 0.3, stamina: 0.55, aggression: 0.2, escape: 0.5, fight: 'runner',
     body: 'oarfish', colors: { main: '#c2c8cf', belly: '#f2f4f6', fin: '#e0453f', accent: '#ff6a5e', eye: '#0e0e0e' },
     pattern: 'spots', glow: 0.1, time: 'night', weather: 'storm',
@@ -661,7 +688,7 @@ export const FISH_SPECIES = [
     dangerous: false, boss: false, edible: false, xp: 380 },
 
   { id: 'giant-squid', name: 'Giant Squid', short: 'G. Squid', tier: 7, habitat: ['deep', 'trench'], regions: ['station', 'abyss', 'storm'],
-    depth: [300, 2000], weight: [100, 900], length: [4.0, 13.0], value: 460, rarity: 'epic', spawnWeight: 8,
+    depth: [300, 2000], weight: [100, 900], length: [4.0, 13.0], value: 460, rarity: 'epic', spawnWeight: 8, regionWeight: { station: 17 },
     strength: 0.88, speed: 0.55, stamina: 0.8, aggression: 0.75, escape: 0.68, fight: 'thrasher',
     body: 'squid', colors: { main: '#a4384c', belly: '#e8c8c0', fin: '#6e1f30', accent: '#ffb08a', eye: '#e8e0d0' },
     pattern: 'mottled', glow: 0.1, time: 'night', weather: 'any',
@@ -670,7 +697,7 @@ export const FISH_SPECIES = [
     dangerous: true, boss: false, edible: true, xp: 620 },
 
   { id: 'blobfish', name: 'Blobfish', short: 'Blobfish', tier: 6, habitat: ['deep', 'trench'], regions: ['station', 'abyss'],
-    depth: [600, 1800], weight: [1, 9], length: [0.25, 0.7], value: 220, rarity: 'uncommon', spawnWeight: 50,
+    depth: [600, 1800], weight: [1, 9], length: [0.25, 0.7], value: 220, rarity: 'uncommon', spawnWeight: 50, regionWeight: { station: 20, abyss: 18 },
     strength: 0.1, speed: 0.05, stamina: 0.2, aggression: 0.2, escape: 0.05, fight: 'weak',
     body: 'sunfish', colors: { main: '#d4a2a0', belly: '#efd6cf', fin: '#a97a7c', accent: '#8f5f66', eye: '#1a1a1a' },
     pattern: 'mottled', glow: 0, time: 'any', weather: 'any',
@@ -947,6 +974,20 @@ export function rollRarity(rng = Math.random, luckMult = 1) {
  * running away.
  */
 export const VALUE_SOFT_CAP = 20000;
+
+/**
+ * Spawn weight for a species in one region.
+ *
+ * A species keeps one weight everywhere by default, but several appear in
+ * regions eight tiers apart, where the same weight means very different things:
+ * a boot is a joke on the starter beach and an insult at a $260k research
+ * station, and a lantern fish that is 20% of the catch there flattens the whole
+ * region's payout. `regionWeight` retunes a roster without repricing a species
+ * for every other region that shares it.
+ */
+export function spawnWeightIn(species, regionId) {
+  return species.regionWeight?.[regionId] ?? species.spawnWeight;
+}
 
 export function softCapValue(raw) {
   if (raw <= VALUE_SOFT_CAP) return raw;

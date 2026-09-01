@@ -31,6 +31,13 @@ const BEDS = [
 
 const MIX_EPS = 0.05;
 const MIX_INTERVAL = 0.4;
+/**
+ * Loop name for the world-event drone. Deliberately *not* `amb_*`: setAmbience()
+ * zeroes every `amb_` loop missing from the mix, which would fight the drone
+ * back to silence every MIX_INTERVAL.
+ */
+const DRONE = 'event_drone';
+const DRONE_FADE = 4;         // slow enough that you notice it after it arrived
 const SHORE_SCAN_MAX = 45;    // metres searched for a waterline
 const ABYSS_DEPTH = 200;      // metres below the surface = "the deep"
 const BOOT_GRACE = 25;        // give preload this long before falling back to synth
@@ -81,6 +88,7 @@ export class Ambience {
     this._surfRate = 1;
 
     this._rain = 0;
+    this._drone = 0;
     this._underwaterTarget = 0;
     this._reverbTarget = 0;
     this._reverbSent = -1;
@@ -157,6 +165,10 @@ export class Ambience {
       this._sample(game);
       this._buildMix();
       this._applyMix();
+      // Pausing zeroes every loop's gain and only the beds are re-issued, and
+      // an event can fire before the audio context is ready — so the drone is
+      // re-asserted on the bed cadence rather than only when an event starts.
+      if (this._drone > 0.001) this._applyDrone();
     }
 
     this._updateSurf(dt);
@@ -417,6 +429,35 @@ export class Ambience {
     }
   }
 
+  // -------------------------------------------------------------- event drone
+
+  /**
+   * Fade an unsettling low bed in behind the mix. `amount` is 0..1; 0 fades it
+   * back out. World events drive this (the abyssal anomaly) — the level is
+   * theirs to own, so calls here are absolute, not additive.
+   */
+  setEventDrone(amount, fade = DRONE_FADE) {
+    this._drone = clamp01(+amount || 0);
+    this._applyDrone(fade);
+    return this._drone;
+  }
+
+  /** Current drone level, 0..1. */
+  get eventDrone() { return this._drone; }
+
+  _applyDrone(fade = DRONE_FADE) {
+    const audio = this.audio;
+    if (!audio?.ready) return;                 // retried from the mix tick
+    let h = audio.loops.get(DRONE);
+    if (!h) {
+      if (this._drone <= 0.001) return;        // don't build the bed just to mute it
+      h = audio.loop(DRONE, { volume: 0, bus: 'ambience', fadeIn: 0.01 });
+    }
+    // Parked at silence rather than stopped: an oscillator that has been
+    // stopped cannot be restarted, so the next event would get nothing.
+    h?.setVolume(this._drone, fade);
+  }
+
   // ---------------------------------------------------------------- one-shots
 
   _oneShots(dt, game) {
@@ -512,6 +553,8 @@ export class Ambience {
     for (const off of this._offs) { try { off(); } catch { /* */ } }
     this._offs.length = 0;
     for (const k of BEDS) this.audio?.stopLoop?.(k, 0.5);
+    this.audio?.stopLoop?.(DRONE, 0.5);
+    this._drone = 0;
     this._surfHandle = null;
   }
 

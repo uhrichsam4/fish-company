@@ -266,6 +266,10 @@ export class BoatSystem {
     if (!b.physical) this.spawnPhysical(b);
     const player = this.game.get('player');
     this.driving = b;
+    // Interaction (order 65) boards on the same E press this system (order 76)
+    // reads a few systems later — swallow it until the key comes back up, or
+    // boarding and leaving happen in a single frame.
+    this._ignoreE = true;
     b.engineOn = b.def.fuel === 0 || b.fuel > 0;
     player.mode = 'boat';
     player.canMove = false;
@@ -279,6 +283,7 @@ export class BoatSystem {
     if (!b) return;
     const player = this.game.get('player');
     this.driving = null;
+    this._ignoreE = false;
     player.mode = 'walk';
     player.canMove = true;
     // Step onto the deck rather than into the sea.
@@ -501,7 +506,9 @@ export class BoatSystem {
     }
     if (input.justPressed('KeyF')) { b.lightsOn = !b.lightsOn; game.audio.play('ui_click'); }
     if (input.justPressed('KeyV')) { this.cameraMode = (this.cameraMode + 1) % 2; }
-    if (input.justPressed('KeyE')) { this.disembark(); return; }
+    if (this._ignoreE) {
+      if (!input.rawDown('KeyE')) this._ignoreE = false;
+    } else if (input.justPressed('KeyE')) { this.disembark(); return; }
 
     // ---- camera ----
     const cam = game.camera;
