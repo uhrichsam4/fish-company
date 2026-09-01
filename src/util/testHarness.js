@@ -331,6 +331,51 @@ export function installTestHarness(game) {
     hideUI(v = true) { bus.emit('hud:visible', !v); document.getElementById('click-to-play')?.classList.add('hidden'); },
 
     /**
+     * Round-trip every system's save through its own load and report anything
+     * that does not survive. A system that saves a field and ignores it on the
+     * way back in loses that state on every reload, silently -- there is no
+     * error, the value is just quietly reset. Three shipped that way at once
+     * (a fish position that compounded a 0.2 m lift per cycle, the weather
+     * clock, and per-event elapsed), so it is worth being able to re-run this.
+     *
+     * Play for a bit first: a system holding no interesting state round-trips
+     * clean whether or not its load() is correct.
+     */
+    checkSaves() {
+      const diffs = [];
+      const walk = (a, b, path, out) => {
+        if (JSON.stringify(a) === JSON.stringify(b)) return;
+        const both = a && b && typeof a === 'object' && typeof b === 'object';
+        if (both && Array.isArray(a) === Array.isArray(b)) {
+          for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+            if (out.length < 10) walk(a[k], b[k], path ? `${path}.${k}` : k, out);
+          }
+        } else if (out.length < 10) {
+          out.push(`${path}: ${JSON.stringify(a)} -> ${JSON.stringify(b)}`);
+        }
+      };
+
+      let checked = 0;
+      for (const s of game.systems) {
+        if (typeof s.save !== 'function' || typeof s.load !== 'function') continue;
+        const id = s.id || s.constructor?.name || '?';
+        checked++;
+        try {
+          const a = JSON.parse(JSON.stringify(s.save() ?? null));
+          s.load(JSON.parse(JSON.stringify(a)));
+          const b = JSON.parse(JSON.stringify(s.save() ?? null));
+          if (JSON.stringify(a) === JSON.stringify(b)) continue;
+          const lost = [];
+          walk(a, b, '', lost);
+          diffs.push({ id, lost });
+        } catch (e) {
+          diffs.push({ id, lost: [`threw: ${e.message}`] });
+        }
+      }
+      return { checked, ok: diffs.length === 0, diffs };
+    },
+
+    /**
      * Grab the framebuffer and POST it to tools/shotserver.mjs, which writes a
      * PNG under tools/shots/. The read has to happen inside the same task as
      * the draw call because the context isn't created with
