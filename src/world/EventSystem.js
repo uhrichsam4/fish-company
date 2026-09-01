@@ -171,6 +171,9 @@ export class EventSystem {
 
     if (opts.data) Object.assign(ev.data, opts.data);
     if (opts.remaining != null) ev.remaining = opts.remaining;
+    // Restored on load. Without it a reloaded event reads as brand new, and
+    // the HUD re-reveals every active event's summary as if it just fired.
+    if (opts.elapsed != null) ev.elapsed = opts.elapsed;
 
     this.activeEvents.push(ev);
     this._refresh();
@@ -480,7 +483,7 @@ export class EventSystem {
       if (!def || def.once) continue;          // one-shot effects already happened
       if (!(s.remaining > 1)) continue;
       this._start(def, s.regionId, {
-        seed: s.seed, data: s.data, remaining: s.remaining, silent: true,
+        seed: s.seed, data: s.data, remaining: s.remaining, elapsed: s.elapsed, silent: true,
       });
     }
     this._refresh();

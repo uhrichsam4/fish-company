@@ -227,7 +227,12 @@ export class PhysicalFishManager {
     this.despawnAll();
     if (!d?.fish) return;
     for (const f of d.fish) {
-      const pf = this.spawn({ instance: f.i, position: { x: f.x, y: f.y + 0.2, z: f.z }, alive: f.alive });
+      // Restore the exact saved position. save() reads it back out of the
+      // solver, so it is already a settled, non-interpenetrating spot -- and
+      // any lift added here compounds, because the next save records the
+      // lifted position and the next load lifts it again. A fish left on the
+      // dock used to climb 0.2 m per save/load cycle.
+      const pf = this.spawn({ instance: f.i, position: { x: f.x, y: f.y, z: f.z }, alive: f.alive });
       if (pf) pf.energy = f.energy ?? 1;
     }
   }

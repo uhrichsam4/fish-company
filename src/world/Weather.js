@@ -48,7 +48,7 @@ export class Weather {
     return this;
   }
 
-  set(id, instant = false) {
+  set(id, instant = false, silent = false) {
     const w = WEATHER_BY_ID[id];
     if (!w) { console.warn('[Weather] unknown', id); return; }
     if (this.target === w && !instant) return;
@@ -59,7 +59,7 @@ export class Weather {
     this.timer = 0;
     this.duration = rrange(150, 400);
     bus.emit('weather:changed', { weather: w });
-    bus.emit('toast', { text: `Weather: ${w.name}`, kind: 'muted', duration: 2400 });
+    if (!silent) bus.emit('toast', { text: `Weather: ${w.name}`, kind: 'muted', duration: 2400 });
   }
 
   roll() {
@@ -160,6 +160,17 @@ export class Weather {
     return species.weather === this.current.id ? 2.2 : 0.3;
   }
 
-  save() { return { id: this.target.id, timer: this.timer }; }
-  load(d) { if (d?.id) this.set(d.id, true); }
+  save() { return { id: this.target.id, timer: this.timer, duration: this.duration }; }
+
+  load(d) {
+    if (!d?.id) return;
+    // Silent: the weather is not changing, it is being restored, and a load
+    // should not announce itself with a "Weather: ..." toast.
+    this.set(d.id, true, true);
+    // set() restarts the clock on a fresh random duration, so without this a
+    // load hands the saved weather a whole new spell instead of resuming the
+    // one that was running. timer was already saved and simply dropped.
+    if (d.timer >= 0) this.timer = d.timer;
+    if (d.duration > 0) this.duration = d.duration;
+  }
 }
