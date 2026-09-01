@@ -33,17 +33,15 @@ function glassMat(tint = 0x9fd8ee) {
   return m(tint, 0.08, 0.0, { transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false });
 }
 
-/** Emissive lamp material — SubSystem drives `emissiveIntensity`. */
+/**
+ * Emissive lamp material — SubSystem drives `emissiveIntensity` per sub, so
+ * these are NOT shared: two boats side by side must be able to disagree about
+ * whether their lights are on.
+ */
 function lampMat(color) {
-  const k = `lamp:${color}`;
-  let mat = _mats.get(k);
-  if (!mat) {
-    mat = new THREE.MeshStandardMaterial({
-      color, emissive: color, emissiveIntensity: 0, roughness: 0.3, metalness: 0.1,
-    });
-    _mats.set(k, mat);
-  }
-  return mat;
+  return new THREE.MeshStandardMaterial({
+    color, emissive: color, emissiveIntensity: 0, roughness: 0.3, metalness: 0.1,
+  });
 }
 
 /**

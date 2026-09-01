@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MATERIALS } from '../data/textureManifest.js';
+import { MATERIALS, TEXTURES } from '../data/textureManifest.js';
 
 /**
  * Splatted terrain material.
@@ -27,6 +27,9 @@ export function createTerrainMaterial(assets, opts = {}) {
   const wet = {
     map: assets.texture(MATERIALS.sand_seafloor?.color || MATERIALS.sand.color, { repeat: rep, srgb: true, fallback: 'flat' }),
   };
+  const caustics = assets.texture(TEXTURES.caustics || 'assets/textures/caustics.jpg',
+    { repeat: rep, srgb: false, linear: true, fallback: 'noise' });
+  caustics.wrapS = caustics.wrapT = THREE.RepeatWrapping;
   for (const t of [sand.map, sand.nrm, grass.map, grass.nrm, rock.map, rock.nrm, wet.map]) {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
   }
@@ -54,6 +57,16 @@ export function createTerrainMaterial(assets, opts = {}) {
     uGrassEnd: { value: 5.5 },
     uRockSlope: { value: 0.42 },
     uFarFade: { value: 220 },
+    // Caustics: sunlight refracted by the surface, painted onto whatever is
+    // underwater. Fades out with depth and with the sun going down.
+    uCaustics: { value: caustics },
+    // ~3 m per caustic cell. At 0.08 the texture was stretched over 12 m and
+    // magnified into hard angular blotches.
+    uCausticScale: { value: 0.34 },
+    uCausticStrength: { value: 0.9 },
+    uCausticTime: { value: 0 },
+    uWaterY: { value: 0 },
+    uSunUp: { value: 1 },
   };
 
   mat.onBeforeCompile = (shader) => {
@@ -74,6 +87,8 @@ export function createTerrainMaterial(assets, opts = {}) {
         uniform sampler2D uSandMap, uSandNrm, uGrassMap, uGrassNrm, uRockMap, uRockNrm, uWetMap;
         uniform float uScale, uMacroScale, uDetailStrength, uNormalStrength;
         uniform float uGrassStart, uGrassEnd, uRockSlope, uFarFade;
+        uniform sampler2D uCaustics;
+        uniform float uCausticScale, uCausticStrength, uCausticTime, uWaterY, uSunUp;
         varying vec3 vTerrWorld;
         varying vec3 vTerrNormal;
 
@@ -119,6 +134,25 @@ export function createTerrainMaterial(assets, opts = {}) {
           float fade = 1.0 - smoothstep(uFarFade * 0.45, uFarFade, length(vViewPosition));
           float k = uDetailStrength * fade;
           diffuseColor.rgb *= mix(vec3(1.0), tinted * (0.72 + lum * 0.62), k);
+
+          // Caustics on everything below the waterline. Two layers scrolling
+          // against each other, multiplied so the bright veins read as light
+          // rather than a texture pasted on the sand.
+          float sub = clamp((uWaterY - vTerrWorld.y) / 1.2, 0.0, 1.0);
+          if (sub > 0.01 && uCausticStrength > 0.01) {
+            float depthFade = 1.0 - smoothstep(4.0, 26.0, uWaterY - vTerrWorld.y);
+            float amt = sub * depthFade * uCausticStrength * uSunUp;
+            if (amt > 0.005) {
+              vec2 cu = vTerrWorld.xz * uCausticScale;
+              float c1 = texture2D(uCaustics, cu + vec2(uCausticTime * 0.021, uCausticTime * 0.013)).r;
+              float c2 = texture2D(uCaustics, cu * 1.43 - vec2(uCausticTime * 0.017, uCausticTime * 0.026)).r;
+              float c = min(c1, c2);
+              c = clamp(pow(c, 2.6) * 3.2, 0.0, 1.6);
+              diffuseColor.rgb *= 1.0 + c * amt * 0.55;
+              // Slight blue-green bias, as if the light came through water.
+              diffuseColor.rgb += vec3(0.012, 0.05, 0.045) * c * amt;
+            }
+          }
         }
       `)
       .replace('#include <normal_fragment_maps>', `
@@ -136,12 +170,18 @@ export function createTerrainMaterial(assets, opts = {}) {
                  : texture2D(uSandNrm, uvT).xyz;
           n = n * 2.0 - 1.0;
           float fade = 1.0 - smoothstep(uFarFade * 0.4, uFarFade, length(vViewPosition));
-          if (fade < 0.02) { /* far terrain keeps the geometric normal */ } else {
-          // Perturb the geometric normal in world space; terrain has no tangents.
-          vec3 up = abs(normal.y) > 0.99 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
-          vec3 t = normalize(cross(up, normal));
-          vec3 b = cross(normal, t);
-          normal = normalize(normal + (t * n.x + b * n.y) * uNormalStrength * fade);
+          if (fade >= 0.02) {
+            // Build the tangent frame from the WORLD normal. The shader's
+            // own 'normal' is in VIEW space, and choosing a fallback axis by
+            // abs(normal.y) > 0.99 put a hard, camera-locked discontinuity
+            // straight across the terrain. Gram-Schmidt against world +X is
+            // continuous for any upward-facing surface and matches the UVs,
+            // which are world XZ.
+            vec3 wn = normalize(vTerrNormal);
+            vec3 t = normalize(vec3(1.0, 0.0, 0.0) - wn * wn.x);
+            vec3 b = cross(wn, t);
+            vec3 pw = normalize(wn + (t * n.x + b * n.y) * uNormalStrength * fade);
+            normal = normalize((viewMatrix * vec4(pw, 0.0)).xyz);
           }
         }
       `);

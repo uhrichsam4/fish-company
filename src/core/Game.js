@@ -111,7 +111,9 @@ export class Game {
       this.audio.setVolume('ambience', s.volAmb);
     }
     this.save.enabled = s.autosave;
-    this.scene.traverse?.((o) => { if (o.isDirectionalLight && o.shadow) { o.shadow.mapSize.setScalar(s.shadowRes); o.shadow.map?.dispose(); o.shadow.map = null; } });
+    // Sky owns its own shadow sizing (the frustum and the map resolution have
+    // to change together); tell it rather than poking the light directly.
+    this.get('sky')?._applyShadowSize?.(s.shadowRes);
     bus.emit('settings:applied', s);
   }
 

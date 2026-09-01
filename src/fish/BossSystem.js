@@ -256,20 +256,34 @@ export class BossSystem {
   }
 
   // ====================================================== fish integration
-  _spawnPoint(player, length) {
+  /**
+   * Find water deep enough to hold the boss, in a ring around the player.
+   * Returns null when there is nowhere — a player inland gets no boss.
+   */
+  _deepWaterNear(player, length, out = new THREE.Vector3()) {
     const a = Math.random() * TAU;
     const want = clamp(10 + length * 1.3, 14, 46);
-    for (let k = 0; k < 26; k++) {
-      const ang = a + k * 0.6;
-      const r = want + (k % 5) * 4;
+    const need = Math.max(3.5, length * 0.45 + 2);
+    for (let k = 0; k < 30; k++) {
+      const ang = a + k * 0.63;
+      const r = want + (k % 6) * 5;
       const x = player.position.x + Math.cos(ang) * r;
       const z = player.position.z + Math.sin(ang) * r;
       const surf = waterHeightAt(x, z);
       const bed = worldHeight(x, z);
-      if (surf - bed > Math.max(3.5, length * 0.45 + 2)) {
-        return new THREE.Vector3(x, surf - Math.min((surf - bed) * 0.45, length * 0.35 + 1.5), z);
+      if (surf - bed > need) {
+        return out.set(x, surf - Math.min((surf - bed) * 0.45, length * 0.35 + 1.5), z);
       }
     }
+    return null;
+  }
+
+  _spawnPoint(player, length) {
+    const p = this._deepWaterNear(player, length);
+    if (p) return p;
+    // Nowhere ideal — surface it anyway rather than refusing an explicit summon.
+    const a = Math.random() * TAU;
+    const want = clamp(10 + length * 1.3, 14, 46);
     const x = player.position.x + Math.cos(a) * want;
     const z = player.position.z + Math.sin(a) * want;
     return new THREE.Vector3(x, waterHeightAt(x, z) - 2.5, z);
@@ -389,7 +403,22 @@ export class BossSystem {
     if (fishSys.active.includes(b.fish)) return true;
     if (b.dead) return false;
 
-    if (b.killedByWeapon) { this._die(true); return false; }
+    if (b.killedByWeapon) {
+      b.killedByWeapon = false;
+      // The HP pool is the only thing that decides when a boss dies. A net, a
+      // melee swing or a tethered harpoon reeled to landing range all call
+      // `killFish` directly; while there is health left the boss tears free
+      // and the fight carries on.
+      if (b.hp > 0) {
+        this._reclaimEntry(b);
+        bus.emit('toast', { text: `${b.species.name} tears free!`, kind: 'warn', duration: 2200 });
+        this.game.audio?.play('line_snap', { volume: 0.7 });
+        bus.emit('player:shake', 0.4);
+        return true;
+      }
+      this._die(true);
+      return false;
+    }
     // Already on its way out — leave it derelict rather than fighting
     // FishSystem for the entry every frame.
     if (b.graceT > 0) return true;
@@ -403,6 +432,54 @@ export class BossSystem {
     fishSys.active.push(b.fish);
     if (!b.fish.group.parent) fishSys.root.add(b.fish.group);
     return true;
+  }
+
+  /**
+   * Put a boss back together after an outside kill handed its mesh to the
+   * physics world. Reverses exactly what `killFish` did.
+   */
+  _reclaimEntry(b) {
+    const game = this.game;
+    const fishSys = game.get('fish');
+    const mgr = game.get('physfish');
+    const f = b.fish;
+    if (!f || !fishSys) return;
+
+    const pf = mgr?.list.find((x) => x.instance === b.instance);
+    if (pf) {
+      try {
+        const p = game.physics.getPosition(pf.entry);
+        if (p) f.position.set(p.x, p.y, p.z);
+      } catch { /* body may already be gone */ }
+      mgr.despawn(pf, true);
+      // `despawn` files the boss mesh in FishSystem's pool cache — take it back
+      // before a normal fish is ever handed a 19 m boss.
+      const key = fishSys.meshKeyFor(b.species, b.instance.variantId, 0);
+      const bucket = fishSys.meshCache.get(key);
+      if (bucket) {
+        const i = bucket.indexOf(b.mesh);
+        if (i >= 0) bucket.splice(i, 1);
+      }
+    }
+
+    if (b.mesh) {
+      b.mesh.position.set(0, 0, 0);
+      b.mesh.quaternion.identity();
+      b.mesh.scale.setScalar(1);
+      b.mesh.visible = true;
+      if (b.mesh.parent !== f.group) f.group.add(b.mesh);
+    }
+    f.mesh = b.mesh;
+    f.meshKey = '';
+    f.species = b.species;
+    f.instance = b.instance;
+    f.state = FISH_STATE.ROAM;
+    f.active = true;
+    f.knockV.set(0, 0, 0);
+    f.group.scale.setScalar(f.scale);
+    f.group.visible = true;
+    if (!f.group.parent) fishSys.root.add(f.group);
+    if (!fishSys.active.includes(f)) fishSys.active.push(f);
   }
 
   // ============================================================== update
@@ -459,10 +536,11 @@ export class BossSystem {
       const stormy = cond.weather === 'storm' && (wx === 'storm' || wx === 'heavy_storm');
       if (wx !== cond.weather && !stormy) return;
     }
-    // Only in deep-enough water, and never right on top of the player.
-    const surf = waterHeightAt(player.position.x, player.position.z);
-    const bed = worldHeight(player.position.x, player.position.z);
-    if (surf - bed < 3.0) return;
+    // There has to be water nearby that can actually hold the thing — but
+    // looking straight down would rule out every player standing on a dock.
+    const species = getSpecies(id);
+    const len = BOSS_LENGTH[id] ?? species?.length?.[1] ?? 6;
+    if (!this._deepWaterNear(player, len, _v)) return;
     let chance = cond.chance;
     if (this.defeated.has(id)) chance *= 0.35;      // rematches are rarer
     if (!rchance(chance)) return;
@@ -1163,7 +1241,10 @@ export class BossSystem {
     if (away < minStand) {
       // Horizontal push only: a player up on a dock must not lift the boss.
       _v.y = 0;
-      const flat = _v.length() || 1;
+      let flat = _v.length();
+      // Directly underneath (an erupting boss) has no horizontal direction to
+      // push along — pick one rather than leaving it inside the player.
+      if (flat < 1e-3) { _v.set(Math.cos(b._t), 0, Math.sin(b._t)); flat = 1; }
       _v.multiplyScalar(minStand / flat);
       const keepY = f.position.y;
       f.position.copy(player.position).add(_v);
@@ -1220,7 +1301,10 @@ export class BossSystem {
         mode: b.mode, mouth: b.mouth, aggro: b.aggro, speed: speedN,
         hpPct: b.hp / b.maxHp, hurt: b.hurt, phase: b.phaseIndex,
       });
-    } catch (e) { console.error('[Boss] animateBoss threw', e); }
+    } catch (e) {
+      // Once, not sixty times a second.
+      if (!b._animWarned) { b._animWarned = true; console.error('[Boss] animateBoss threw', e); }
+    }
 
     this._refreshWeakPointWorld(b);
   }

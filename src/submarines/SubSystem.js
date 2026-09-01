@@ -410,6 +410,9 @@ export class SubSystem {
     player.mode = 'sub';
     player.canMove = false;
     player.oxygen = player.maxOxygen;
+    // Interaction (order 65) boards on the same E press this system (order 79)
+    // would read a few systems later — swallow it until the key comes back up.
+    this._ignoreE = true;
     // Face the way the boat is pointing. The camera uses the FPS convention
     // (forward = -Z at yaw 0) while the hull uses +Z, hence the half turn.
     player.yaw = s.heading + Math.PI;
@@ -443,6 +446,7 @@ export class SubSystem {
     const game = this.game;
     const player = game.get('player');
     this.driving = null;
+    this._ignoreE = false;
     player.mode = 'walk';
     player.canMove = true;
 
@@ -556,7 +560,9 @@ export class SubSystem {
         this.cameraMode = (this.cameraMode + 1) % 2;
         game.audio.play('ui_click', { volume: 0.4 });
       }
-      if (input.justPressed('KeyE')) { this.disembark(); return; }
+      if (this._ignoreE) {
+        if (!input.rawDown('KeyE')) this._ignoreE = false;
+      } else if (input.justPressed('KeyE')) { this.disembark(); return; }
     }
 
     // Dead battery: no thrust, lights out, but you still steer as you drift.
@@ -730,7 +736,7 @@ export class SubSystem {
       const spot = this.spots[i];
       const cm = this.cones[i];
       spot.visible = on;
-      cm.visible = on && this.cameraMode === 1 ? true : on;
+      cm.visible = on;
       if (!on) { cm.material.opacity = 0; continue; }
       spot.distance = range * murk;
       spot.angle = cone;
@@ -1722,7 +1728,7 @@ function disposeDeep(o) {
 const SUB_HUD_CSS = `
 #sub-hud {
   position: absolute; inset: 0; opacity: 0; visibility: hidden;
-  transition: opacity .25s ease; pointer-events: none;
+  transition: opacity .25s ease; pointer-events: none; z-index: 2;
   font-family: var(--mono, ui-monospace, monospace);
 }
 #sub-hud.show { opacity: 1; visibility: visible; }

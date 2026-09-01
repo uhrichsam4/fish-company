@@ -58,7 +58,7 @@ function weakMat(hex) {
   const m = new THREE.MeshStandardMaterial({
     color: new THREE.Color(hex),
     emissive: new THREE.Color(hex),
-    emissiveIntensity: 2.2,
+    emissiveIntensity: 1.3,
     roughness: 0.34,
     metalness: 0.0,
   });
@@ -296,7 +296,7 @@ function addWeakPoint(parent, x, y, z, radius, colorHex, list, hp = 1) {
   // every angle and at range. That is the whole point of a weak point.
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({
     map: haloTexture(), color: new THREE.Color(colorHex),
-    transparent: true, opacity: 0.5, depthWrite: false,
+    transparent: true, opacity: 0.35, depthWrite: false,
     blending: THREE.AdditiveBlending,
   }));
   halo.scale.setScalar(radius * 5);
@@ -328,7 +328,7 @@ function relightWeakPoint(wp) {
   if (!wp || !wp.broken) return;
   wp.broken = false;
   wp.hp = wp.maxHp;
-  wp._mat.emissiveIntensity = 2.2;
+  wp._mat.emissiveIntensity = 1.3;
   wp._mat.color.setHex(wp._color);
   wp._mat.emissive.setHex(wp._color);
   wp._mat.needsUpdate = true;
@@ -1092,7 +1092,17 @@ export function buildBossMesh(speciesOrId, opts = {}) {
     wp.radius *= k;
   }
 
-  group.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false; } });
+  // Only the deforming body needs culling disabled (its bounding sphere goes
+  // stale as the wave runs through it); everything else has honest bounds and
+  // should be culled when the boss is behind you.
+  const bodyMesh = parts.body || null;
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = false;
+    o.receiveShadow = false;
+    o.frustumCulled = o !== bodyMesh;
+    if (o.frustumCulled && o.geometry && !o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+  });
 
   const state = { mouth: 0, aggro: 0, phase: 0, hpPct: 1, hurt: 0 };
   group.userData.parts = parts;
@@ -1130,10 +1140,12 @@ export function buildBossMesh(speciesOrId, opts = {}) {
       const w = weakPoints[i];
       if (w.broken) continue;
       const p = 0.5 + 0.5 * Math.sin(t * 3.2 + i * 1.7);
-      w._mat.emissiveIntensity = 1.8 + p * 2.0 + state.aggro * 1.4;
+      // Keep it hot enough to read, cool enough to keep its colour: ACES
+      // burns anything past ~2.2 straight to white.
+      w._mat.emissiveIntensity = 1.0 + p * 0.8 + state.aggro * 0.4;
       const hb = w._halo.userData.base ?? 1;
       w._halo.scale.setScalar(hb * (0.85 + p * 0.3));
-      w._halo.material.opacity = 0.34 + p * 0.26;
+      w._halo.material.opacity = 0.26 + p * 0.2;
     }
 
     if (anim) { try { anim(t, state, parts); } catch { /* detail anim optional */ } }

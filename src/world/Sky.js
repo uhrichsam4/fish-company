@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clamp01, lerp, smoothstep, damp } from '../util/math.js';
+import { waterHeightAt } from './waves.js';
 import { bus } from '../core/EventBus.js';
 
 /**
@@ -39,6 +40,11 @@ export class Sky {
       uHaze: { value: 0.35 },
       uMoonDir: { value: new THREE.Vector3(-0.4, 0.7, -0.3) },
       uExposure: { value: 1 },
+      // Blended toward the water colour when the camera is submerged; the sky
+      // dome ignores depth, so without this the sun disc glares through the
+      // sea and the horizon shows up underwater.
+      uSubmerged: { value: 0 },
+      uSubColor: { value: new THREE.Color(0x1f7f92) },
     };
 
     const geo = new THREE.SphereGeometry(2600, 32, 20);
@@ -60,19 +66,16 @@ export class Sky {
     // --- lights ---
     this.sun = new THREE.DirectionalLight(0xfff0d0, 2.6);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.setScalar(game.settings.shadowRes);
+    // Single cascade, so the box has to cover most of an island or its edge
+    // shows up as a hard vertical seam across the ground. 130 m at 4096 is a
+    // ~3.2 cm texel — comparable to the old tight box, without the seam.
+    this.shadowExtent = 130;
+    this._applyShadowSize(game.settings.shadowRes);
     this.sun.shadow.camera.near = 1;
-    this.sun.shadow.camera.far = 220;
-    // Tighter box: at 90 m the texel footprint was ~9 cm and terrain shadows
-    // broke into visible blotches.
-    const S = 58;
-    this.sun.shadow.camera.left = -S; this.sun.shadow.camera.right = S;
-    this.sun.shadow.camera.top = S; this.sun.shadow.camera.bottom = -S;
-    // The terrain is one enormous self-shadowing receiver; it needs a
-    // generous normal bias or sloped ground breaks into diagonal acne.
-    this.sun.shadow.bias = -0.0004;
-    this.sun.shadow.normalBias = 0.11;
-    this.sun.shadow.radius = 1.6;
+    this.sun.shadow.camera.far = 420;
+    this.sun.shadow.bias = -0.0006;
+    this.sun.shadow.normalBias = 0.04;
+    this.sun.shadow.radius = 3.4;
     this.sunTarget = new THREE.Object3D();
     game.scene.add(this.sunTarget);
     this.sun.target = this.sunTarget;
@@ -89,14 +92,43 @@ export class Sky {
     this.bounce.position.set(-0.3, -1, 0.2);
     game.scene.add(this.bounce);
 
+    this._waterAt = waterHeightAt;
     this.apply();
     return this;
+  }
+
+  /** Resize the shadow map and its frustum together. */
+  _applyShadowSize(res) {
+    const S = this.shadowExtent;
+    const cam = this.sun.shadow.camera;
+    cam.left = -S; cam.right = S; cam.top = S; cam.bottom = -S;
+    cam.updateProjectionMatrix();
+    // A wider box needs more texels to keep the same footprint.
+    const want = Math.min(4096, Math.max(1024, (res || 2048) * 2));
+    if (this.sun.shadow.mapSize.x !== want) {
+      this.sun.shadow.mapSize.setScalar(want);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
   }
 
   setTimeOfDay(t) { this.timeOfDay = ((t % 1) + 1) % 1; this.apply(); }
   setCloudiness(c, instant = false) { this._targetCloud = clamp01(c); if (instant) this.cloudiness = this._targetCloud; }
 
   update(dt, game) {
+    // Track submersion so the dome can hide itself under the water.
+    const camY = game.camera.position.y;
+    const surf = this._waterAt ? this._waterAt(game.camera.position.x, game.camera.position.z) : 0;
+    const sub = camY < surf ? clamp01((surf - camY) / 0.9) : 0;
+    this.uniforms.uSubmerged.value = damp(this.uniforms.uSubmerged.value, sub, 0.001, Math.max(dt, 1e-3));
+    if (sub > 0.001) {
+      const deep = game.get('ocean')?.uniforms.uDeepColor.value;
+      const shallow = game.get('ocean')?.uniforms.uShallowColor.value;
+      if (deep && shallow) {
+        this.uniforms.uSubColor.value.copy(shallow).lerp(deep, clamp01((surf - camY) / 45));
+      }
+    }
+
     if (!this.paused && dt > 0) {
       this.timeOfDay = (this.timeOfDay + dt / this.dayLengthSeconds) % 1;
     }
@@ -109,17 +141,24 @@ export class Sky {
     // Keep the shadow frustum tight around the camera, snapped to texel size
     // so shadows don't crawl as the player walks.
     const cam = game.camera;
-    const d = 70;
+    const d = 180;
+    const focusForLight = game.get('player')?.position || cam.position;
     this.sun.position.set(
-      cam.position.x + this.sunDir.x * d,
-      cam.position.y + this.sunDir.y * d,
-      cam.position.z + this.sunDir.z * d,
+      focusForLight.x + this.sunDir.x * d,
+      focusForLight.y + this.sunDir.y * d,
+      focusForLight.z + this.sunDir.z * d,
     );
-    const texel = (58 * 2) / (game.settings.shadowRes || 2048);
+    // Centre the box on the PLAYER's ground position rather than the camera:
+    // a camera looking down from height would otherwise drag the box off the
+    // ground the player is standing on. Snap to texel size so shadows don't
+    // crawl as they walk.
+    const player = game.get('player');
+    const focus = player ? player.position : cam.position;
+    const texel = (this.shadowExtent * 2) / (this.sun.shadow.mapSize.x || 2048);
     this.sunTarget.position.set(
-      Math.round(cam.position.x / texel) * texel,
-      Math.round(cam.position.y / texel) * texel,
-      Math.round(cam.position.z / texel) * texel,
+      Math.round(focus.x / texel) * texel,
+      Math.round(focus.y / texel) * texel,
+      Math.round(focus.z / texel) * texel,
     );
     this.sunTarget.updateMatrixWorld();
   }
@@ -168,10 +207,10 @@ export class Sky {
     this.sun.color.copy(u.uSunColor.value).lerp(_c(0xffffff), 0.25);
     this.sun.castShadow = this.game.settings.shadows && elev > -0.02;
 
-    this.hemi.intensity = lerp(0.18, 0.9, day) * (1 - storm * 0.35) + this.cloudiness * 0.12;
+    this.hemi.intensity = lerp(0.22, 1.15, day) * (1 - storm * 0.3) + this.cloudiness * 0.14;
     this.hemi.color.copy(u.uHorizon.value);
     this.hemi.groundColor.copy(_c(0x6b6152)).lerp(_c(0x161a22), night);
-    this.ambient.intensity = lerp(0.055, 0.19, day) + this.cloudiness * 0.05;
+    this.ambient.intensity = lerp(0.07, 0.28, day) + this.cloudiness * 0.06;
     this.bounce.intensity = lerp(0.05, 0.3, day);
 
     // --- scene fog / background ---
@@ -213,6 +252,8 @@ precision highp float;
 varying vec3 vDir;
 uniform vec3 uSunDir, uMoonDir, uZenith, uHorizon, uGround, uSunColor, uCloudColor, uCloudDark;
 uniform float uTime, uSunSize, uCloud, uStars, uHaze, uExposure;
+uniform float uSubmerged;
+uniform vec3 uSubColor;
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p){
@@ -281,6 +322,16 @@ void main() {
   }
 
   col *= uExposure;
+
+  // Underwater: collapse to the water colour, keeping only a soft glow toward
+  // the sun so "up" still reads as up.
+  if (uSubmerged > 0.001) {
+    float upGlow = pow(clamp(up * 0.5 + 0.5, 0.0, 1.0), 3.0);
+    vec3 sub = uSubColor * (0.55 + upGlow * 0.85);
+    sub += uSunColor * pow(max(dot(d, uSunDir), 0.0), 26.0) * 0.10 * upGlow;
+    col = mix(col, sub, uSubmerged);
+  }
+
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>

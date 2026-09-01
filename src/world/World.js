@@ -106,7 +106,7 @@ export class World {
     s.group.name = `region:${id}`;
     this.root.add(s.group);
 
-    const t = buildRegionTerrain(def, this.game.physics, { cell: def.trench ? 8 : 3.0 });
+    const t = buildRegionTerrain(def, this.game.physics);
     s.terrain = t;
     const mesh = new THREE.Mesh(t.geometry, this.terrainMaterial);
     mesh.position.set(def.x, 0, def.z);
@@ -242,7 +242,7 @@ export class World {
       b.position.set(sp.x, sp.y - 0.15, sp.z);
       b.rotation.y = sp.rot;
       b.scale.setScalar(sp.scale * 0.9);
-      setShadows(b);
+      setShadows(b, false);
       group.add(b);
     }
 
@@ -265,12 +265,14 @@ export class World {
       r.position.set(sp.x, sp.y - 0.22 * sp.scale * size, sp.z);
       r.rotation.set(rrng() * 0.35, sp.rot, rrng() * 0.35);
       r.scale.setScalar(sp.scale);
+      // Small rocks don't earn a shadow-map slot.
+      if (sp.scale * size < 0.9) r.userData.noCast = true;
       // Break up the uniform grey a little per instance.
       const tint = 0.82 + rrng() * 0.34;
       r.traverse?.((o) => {
         if (o.isMesh && o.material?.color) { o.material = o.material.clone(); o.material.color.multiplyScalar(tint); }
       });
-      setShadows(r);
+      setShadows(r, !r.userData.noCast);
       group.add(r);
       // Only genuinely large rocks block movement.
       const worldSize = sp.scale * size;
@@ -569,7 +571,7 @@ export class World {
       if (!o) o = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), this.flatPropMaterial);
       o.position.set(sp.x, sp.y + 0.05, sp.z);
       o.rotation.y = sp.rot;
-      setShadows(o);
+      setShadows(o, false);
       group.add(o);
     }
 
@@ -637,9 +639,21 @@ export class World {
       }
     }
 
-    // Night lamps + campfire flicker.
+    // Animate the terrain's underwater caustics.
+    const tm = this.terrainMaterial?.userData?.uniforms;
     const sky = game.get('sky');
     const night = sky ? 1 - sky.dayFactor : 0;
+    if (tm) {
+      tm.uCausticTime.value += dt;
+      tm.uSunUp.value = sky ? Math.max(0, sky.dayFactor) : 1;
+      const ocean = game.get('ocean');
+      tm.uWaterY.value = ocean ? ocean.seaLevel : 0;
+      // Weather and quality both dial it back.
+      const weather = game.get('weather');
+      tm.uCausticStrength.value = (game.quality === 'low' ? 0 : 0.95)
+        * (1 - (weather?.intensity ?? 0) * 0.7);
+    }
+
     for (const s of this.regions.values()) {
       if (!s.active) continue;
       if (s.lamps) for (const l of s.lamps) l.intensity = night * 7.5;
@@ -680,9 +694,16 @@ function countMeshes(root) {
 
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
 
-function setShadows(obj) {
-  obj.traverse?.((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; }
+/**
+ * @param {THREE.Object3D} obj
+ * @param {boolean} cast Whether this prop casts a shadow. Small, numerous
+ *   props (bushes, beach litter, pebbles) are set false: at any shadow-map
+ *   resolution that covers an island they contribute a dense field of hard
+ *   low-res streaks rather than readable shadows.
+ */
+function setShadows(obj, cast = true) {
+  obj.traverse?.((o) => { if (o.isMesh) { o.castShadow = cast; o.receiveShadow = true; } });
+  if (obj.isMesh) { obj.castShadow = cast; obj.receiveShadow = true; }
 }
 
 function disposeGroup(g) {

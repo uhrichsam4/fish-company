@@ -48,8 +48,11 @@ export function worldHeight(x, z) {
       const ang = Math.atan2(z - r.z, x - r.x);
       const gully = Math.pow(Math.abs(Math.sin(ang * 5.5 + fbm2(x * 0.01, z * 0.01, 2) * 6)), 2.2);
       const erosion = -gully * r.peak * 0.16 * Math.pow(clamp01(t * 1.3), 1.1) * (1 - t * 0.5);
-      const detail = (valueNoise2(x * 0.09, z * 0.09) - 0.5) * 1.3 * (1 - t * 0.5)
-        + (valueNoise2(x * 0.26 + 12, z * 0.26 - 8) - 0.5) * 0.42;
+      // Terrain is sampled on a ~3 m grid, so any height term finer than
+      // ~12 m wavelength aliases into a large-scale beat pattern — that was
+      // the field of hard diagonal streaks across one half of every island.
+      // Sub-grid detail belongs in the material's normal map, not the mesh.
+      const detail = (valueNoise2(x * 0.045, z * 0.045) - 0.5) * 1.5 * (1 - t * 0.5);
       land = dome * r.peak + ridge + relief + erosion + detail;
       // Beach: a narrow apron with a berm crest, not a long flat ramp. The
       // beach width varies around the island so it isn't a uniform ring.
@@ -58,8 +61,10 @@ export function worldHeight(x, z) {
         const bt = clamp01((t - beachStart) / (1 - beachStart));
         land *= smootherstep(1 - bt) * 0.86 + 0.14;
         land += Math.sin(bt * Math.PI) * 0.75;
-        // Wind ripples across the dry sand.
-        land += Math.sin(bt * 46 + fbm2(x * 0.02, z * 0.02, 2) * 9) * 0.075 * (1 - bt);
+        // Wind ripples across the dry sand. `bt` spans the beach band, so 46
+        // cycles across a ~30 m beach is ~0.65 m per ripple — far below the
+        // grid. Keep it to a handful of broad ridges.
+        land += Math.sin(bt * 7 + fbm2(x * 0.02, z * 0.02, 2) * 9) * 0.11 * (1 - bt);
       }
     }
 
@@ -119,8 +124,10 @@ function terrainColor(x, z, h, slope, biome, out) {
     _c1.setHex(p.wet);
     const t = clamp01((-h) / 30);
     out.copy(_c1).multiplyScalar(lerp(1.0, 0.34, t));
-    const grain = valueNoise2(x * 0.22, z * 0.22) * 0.14 - 0.07;
-    out.offsetHSL(0, 0, grain * 0.5);
+    // Low frequency ONLY. Vertices are ~3 m apart, so anything finer than
+    // ~12 m aliases into large hard-edged polygonal blotches. Fine grain is
+    // the splat material's job, in the fragment shader.
+    out.offsetHSL(0, 0, (valueNoise2(x * 0.028, z * 0.028) - 0.5) * 0.09);
     return out;
   }
   const beach = clamp01((h - -0.4) / 2.4);
@@ -140,10 +147,69 @@ function terrainColor(x, z, h, slope, biome, out) {
     _c2.setHex(p.high);
     out.lerp(_c2, clamp01((h - 30) / 40));
   }
-  const grain = (valueNoise2(x * 0.16 + 4.2, z * 0.16 - 1.7) - 0.5) * 0.16
-              + (valueNoise2(x * 0.03, z * 0.03) - 0.5) * 0.12;
-  out.offsetHSL(grain * 0.03, 0, grain);
+  // Same rule as the seabed: only variation coarser than the vertex spacing
+  // belongs in vertex colours.
+  const grain = (valueNoise2(x * 0.055 + 4.2, z * 0.055 - 1.7) - 0.5) * 0.09
+              + (valueNoise2(x * 0.016, z * 0.016) - 0.5) * 0.13;
+  out.offsetHSL(grain * 0.04, 0, grain);
   return out;
+}
+
+/**
+ * Base spacing of the one global terrain lattice, in metres.
+ *
+ * Region footprints overlap — Crash reaches 250 m from the origin and Harbour
+ * reaches 400 m from (-400, 400), so they share a 250 x 250 m corner, and seven
+ * other pairs do the same. Every region samples the same `worldHeight`, so an
+ * overlap means two near-identical surfaces fighting for the depth buffer: a
+ * field of dark angular streaks with a razor-straight edge along the rect
+ * boundary. `terrainOwner` below hands each cell to exactly one region; that
+ * only tiles without cracks if every region's vertices land on the same
+ * lattice, which is what this constant and the snapping in `gridFor` are for.
+ */
+export const TERRAIN_CELL = 3.2;
+
+/**
+ * Grid a region's terrain occupies, on the shared lattice. Derived from the
+ * region alone: every region must be able to work out its neighbours' grids
+ * without those neighbours being loaded, and get the same answer they will.
+ */
+function gridFor(region) {
+  // Every region steps at the same spacing. A coarser trench grid was tempting
+  // but it puts its cell centres somewhere the island grids have no vertex, and
+  // the ownership test then leaves slivers neither region draws.
+  const cell = TERRAIN_CELL;
+  let segs = clamp(Math.round(region.reach * 2 / cell / 2) * 2, 48, 260);
+  const size = segs * cell;
+  const x0 = Math.round((region.x - size / 2) / cell) * cell;
+  const z0 = Math.round((region.z - size / 2) / cell) * cell;
+  return { cell, segs, size, x0, z0, x1: x0 + size, z1: z0 + size };
+}
+
+/**
+ * Which region should draw the ground at (x, z)?
+ *
+ * Only regions whose footprint covers the point compete, so a region never
+ * loses ground no other region would draw; among those the nearest centre wins.
+ * Because every region's cells sit on the same lattice, all of them ask this
+ * question about the same points and get the same answer — each cell is claimed
+ * exactly once, leaving no seam and no double-draw.
+ */
+function terrainOwner(x, z, grids) {
+  // Snap to the lattice first. Two regions reach the same cell centre by adding
+  // different offsets to different origins, and the last-ulp disagreement that
+  // leaves is enough to make them pick different winners for one cell.
+  const cx = (Math.round(x / TERRAIN_CELL - 0.5) + 0.5) * TERRAIN_CELL;
+  const cz = (Math.round(z / TERRAIN_CELL - 0.5) + 0.5) * TERRAIN_CELL;
+  let best = -1, bestD = Infinity;
+  for (let k = 0; k < grids.length; k++) {
+    const g = grids[k];
+    if (!g || cx < g.x0 || cx > g.x1 || cz < g.z0 || cz > g.z1) continue;
+    const r = REGIONS[k];
+    const d = (cx - r.x) * (cx - r.x) + (cz - r.z) * (cz - r.z);
+    if (d < bestD) { bestD = d; best = k; }
+  }
+  return best;
 }
 
 /**
@@ -151,14 +217,22 @@ function terrainColor(x, z, h, slope, biome, out) {
  * Heightfield layout note: Rapier stores heights column-major with (nrows+1)
  * rows, i.e. heights[i + j*(nrows+1)] maps to local (x_i, z_j).
  */
-export function buildRegionTerrain(region, phys, opts = {}) {
-  const reach = region.reach;
-  const size = reach * 2;
-  const targetCell = opts.cell ?? 3.2;
-  let segs = Math.round(size / targetCell);
-  segs = clamp(Math.round(segs / 2) * 2, 48, 220);
-  const cell = size / segs;
+export function buildRegionTerrain(region, phys) {
+  const grid = gridFor(region);
+  const { cell, segs, size } = grid;
   const n = segs + 1;
+
+  // Footprints of every region that overlaps this one, for the ownership test.
+  // Built from static region data, so two regions never disagree about a cell
+  // regardless of which of them is streamed in.
+  const selfIdx = REGIONS.findIndex((r) => r.id === region.id);
+  const grids = REGIONS.map((r, k) => {
+    if (k === selfIdx) return grid;
+    const g = gridFor(r);
+    const clear = g.x0 > grid.x1 || g.x1 < grid.x0 || g.z0 > grid.z1 || g.z1 < grid.z0;
+    return clear ? null : g;
+  });
+  const contested = selfIdx >= 0 && grids.some((g, k) => g && k !== selfIdx);
 
   const positions = new Float32Array(n * n * 3);
   const colors = new Float32Array(n * n * 3);
@@ -167,7 +241,7 @@ export function buildRegionTerrain(region, phys, opts = {}) {
   const heights = new Float32Array(n * n);
   const col = new THREE.Color();
 
-  const x0 = region.x - reach, z0 = region.z - reach;
+  const { x0, z0 } = grid;
   let minH = Infinity, maxH = -Infinity;
 
   for (let j = 0; j < n; j++) {
@@ -205,10 +279,17 @@ export function buildRegionTerrain(region, phys, opts = {}) {
     }
   }
 
+  // Emit only the cells this region owns. Cells inside an overlapping
+  // neighbour's footprint that sit closer to that neighbour are its to draw —
+  // without this the two meshes z-fight over identical ground.
   const indices = new Uint32Array(segs * segs * 6);
   let ii = 0;
   for (let j = 0; j < segs; j++) {
     for (let i = 0; i < segs; i++) {
+      if (contested) {
+        const cx = x0 + (i + 0.5) * cell, cz = z0 + (j + 0.5) * cell;
+        if (terrainOwner(cx, cz, grids) !== selfIdx) continue;
+      }
       const a = j * n + i, b = a + 1, c = (j + 1) * n + i, d = c + 1;
       indices[ii++] = a; indices[ii++] = c; indices[ii++] = b;
       indices[ii++] = b; indices[ii++] = c; indices[ii++] = d;
@@ -220,7 +301,7 @@ export function buildRegionTerrain(region, phys, opts = {}) {
   geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-  geo.setIndex(new THREE.BufferAttribute(indices, 1));
+  geo.setIndex(new THREE.BufferAttribute(indices.slice(0, ii), 1));
   geo.computeBoundingSphere();
 
   // --- physics heightfield ---
@@ -230,9 +311,12 @@ export function buildRegionTerrain(region, phys, opts = {}) {
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) hf[i + j * n] = heights[j * n + i];
     }
+    // Collision keeps the full rect even where the mesh yields to a neighbour:
+    // the surfaces are identical, so overlapping heightfields agree, and a
+    // neighbour that has not streamed in can never leave a hole to fall through.
     body = phys.addBody({
       type: 'fixed',
-      position: { x: region.x, y: 0, z: region.z },
+      position: { x: x0 + size / 2, y: 0, z: z0 + size / 2 },
       shape: {
         kind: 'heightfield', nrows: segs, ncols: segs, heights: hf,
         scale: new THREE.Vector3(size, 1, size),

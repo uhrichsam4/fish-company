@@ -17,13 +17,16 @@ const _c2 = new THREE.Color();
  * between is interpolated. 0–50 m is still daylight, 200 m is the last of the
  * blue, past 500 m there is nothing at all except whatever you brought.
  */
+// NB: densities are FogExp2. Underwater visibility should be tens of metres,
+// not hundreds — the first pass used above-water values and the seabed
+// rendered as bright dry sand with no water between it and the camera.
 const DEPTH_STOPS = [
-  { d: 0,    fog: 0x2f7fa8, density: 0.019, light: 1.00, water: { shallow: 0x2fbfae, deep: 0x07406e, horizon: 0x4d8fb5 }, tint: 'rgba(30,120,150,0)' },
-  { d: 50,   fog: 0x14567a, density: 0.030, light: 0.62, water: { shallow: 0x1f8ea8, deep: 0x052c50, horizon: 0x2a6a90 }, tint: 'rgba(16,84,120,0.20)' },
-  { d: 200,  fog: 0x07253c, density: 0.048, light: 0.24, water: { shallow: 0x0e5570, deep: 0x02121f, horizon: 0x123045 }, tint: 'rgba(6,38,62,0.46)' },
-  { d: 500,  fog: 0x02101c, density: 0.072, light: 0.055, water: { shallow: 0x05283a, deep: 0x000508, horizon: 0x061520 }, tint: 'rgba(2,14,26,0.72)' },
-  { d: 1200, fog: 0x01070d, density: 0.088, light: 0.012, water: { shallow: 0x021420, deep: 0x000203, horizon: 0x02090f }, tint: 'rgba(0,5,11,0.86)' },
-  { d: 3000, fog: 0x000305, density: 0.10,  light: 0.0,   water: { shallow: 0x010a10, deep: 0x000000, horizon: 0x010508 }, tint: 'rgba(0,2,5,0.92)' },
+  { d: 0,    fog: 0x2f7fa8, density: 0.055, light: 1.00, water: { shallow: 0x2fbfae, deep: 0x07406e, horizon: 0x4d8fb5 }, tint: 'rgba(30,120,150,0)' },
+  { d: 50,   fog: 0x14567a, density: 0.072, light: 0.62, water: { shallow: 0x1f8ea8, deep: 0x052c50, horizon: 0x2a6a90 }, tint: 'rgba(16,84,120,0.20)' },
+  { d: 200,  fog: 0x07253c, density: 0.092, light: 0.24, water: { shallow: 0x0e5570, deep: 0x02121f, horizon: 0x123045 }, tint: 'rgba(6,38,62,0.46)' },
+  { d: 500,  fog: 0x02101c, density: 0.105, light: 0.055, water: { shallow: 0x05283a, deep: 0x000508, horizon: 0x061520 }, tint: 'rgba(2,14,26,0.72)' },
+  { d: 1200, fog: 0x01070d, density: 0.115, light: 0.012, water: { shallow: 0x021420, deep: 0x000203, horizon: 0x02090f }, tint: 'rgba(0,5,11,0.86)' },
+  { d: 3000, fog: 0x000305, density: 0.125, light: 0.0,   water: { shallow: 0x010a10, deep: 0x000000, horizon: 0x010508 }, tint: 'rgba(0,2,5,0.92)' },
 ];
 
 /** Deep-water habitat tags the seeded fauna is drawn from. */
@@ -372,15 +375,17 @@ export class DeepSea {
     if (!root) return;
     const el = document.createElement('div');
     el.id = 'deepsea-tint';
+    // z-index -1 keeps the tint above the canvas but BEHIND every HUD element
+    // in #ui-root — a depth vignette must not dim the instruments.
     el.style.cssText = 'position:absolute;inset:0;pointer-events:none;opacity:0;'
-      + 'transition:background-color .5s linear, opacity .5s linear;z-index:1;'
+      + 'transition:background-color .5s linear, opacity .5s linear;z-index:-1;'
       + 'background:radial-gradient(ellipse at center, rgba(0,0,0,0) 12%, rgba(0,3,8,.9) 96%);';
     root.appendChild(el);
     this.tintEl = el;
     const wash = document.createElement('div');
     wash.id = 'deepsea-wash';
     wash.style.cssText = 'position:absolute;inset:0;pointer-events:none;opacity:0;'
-      + 'transition:opacity .4s linear;z-index:1;background-color:rgba(6,38,62,0);';
+      + 'transition:opacity .4s linear;z-index:-1;background-color:rgba(6,38,62,0);';
     root.appendChild(wash);
     this.washEl = wash;
   }
@@ -817,8 +822,8 @@ export class DeepSea {
   /** Dev/debug read-out — how much of the frame this system is costing. */
   get costMs() { return this._budget.ms; }
 
-  save() { return null; }
-  load() { /* purely presentational; nothing to restore */ }
+  // No save()/load(): everything here is presentation derived from depth, so
+  // there is nothing worth writing into the save file.
 }
 
 // --------------------------------------------------------------------------

@@ -285,7 +285,10 @@ export function installTestHarness(game) {
         if (T._surveyOff) { T._surveyOff(); T._surveyOff = null; }
         return 'released';
       }
-      T._surveyPose = { x, y, z, yaw, pitch };
+      // The caller means "put the CAMERA here"; the player's eye sits
+      // `eyeHeight` above their feet, so every underwater survey was actually
+      // taken 1.6 m higher than requested — i.e. at the surface.
+      T._surveyPose = { x, y: y - (game.get('player')?.eyeHeight ?? 1.62), z, yaw, pitch };
       p.canMove = false;
       p.mode = 'frozen';
       const hold = () => {
@@ -324,7 +327,11 @@ export function installTestHarness(game) {
       const w = opts.width, h = opts.height;
       const prev = { w: r.domElement.width, h: r.domElement.height };
       if (w && h) { r.setSize(w, h, false); game.camera.aspect = w / h; game.camera.updateProjectionMatrix(); }
-      // Draw and read back in one go.
+      // Draw and read back in one go. Render twice: the first pass warms
+      // shadow maps and any lazily-compiled program, and on a canvas without
+      // preserveDrawingBuffer a single forced render can read back partially
+      // composited content from the previous frame.
+      r.render(game.scene, game.camera);
       r.render(game.scene, game.camera);
       for (const s of game.systems) { try { s.postRender?.(game); } catch { /* */ } }
       const url = r.domElement.toDataURL('image/png');

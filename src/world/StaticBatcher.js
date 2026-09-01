@@ -35,7 +35,9 @@ export function batchStatic(root, opts = {}) {
     // Group by VISUAL SIGNATURE, not material identity. Prop builders create a
     // fresh MeshStandardMaterial per instance, so keying on uuid produced
     // hundreds of one-member groups and batched nothing.
-    const key = materialSignature(mat);
+    // Batch shadow casters separately from non-casters, so a merge can't
+    // promote a bush into a shadow caster (or demote a building).
+    const key = `${materialSignature(mat)}|s${o.castShadow ? 1 : 0}`;
     let g = groups.get(key);
     if (!g) { g = { material: mat, geos: [], sources: [] }; groups.set(key, g); }
     g.geos.push(o);
@@ -77,7 +79,7 @@ export function batchStatic(root, opts = {}) {
       mat.__owned = true;
     }
     const mesh = new THREE.Mesh(out, mat);
-    mesh.castShadow = true;
+    mesh.castShadow = g.sources[0].castShadow !== false;
     mesh.receiveShadow = true;
     mesh.matrixAutoUpdate = false;
     mesh.name = `batch:${merged}`;
