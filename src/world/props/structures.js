@@ -206,6 +206,62 @@ export function buildDock(rng, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// DOCK STEPS
+// ---------------------------------------------------------------------------
+
+/**
+ * A flight of timber steps up onto a dock.
+ *
+ * Local +Z points up the flight (seaward, matching buildDock's axis) and the
+ * origin sits at the foot, on the ground, so the caller places it at beach
+ * level and the top tread lands exactly on `rise`.
+ *
+ * @param {object} opts {rise, width, count, tread}
+ */
+export function buildDockSteps(rng, opts = {}) {
+  rng = asRng(rng);
+  const rise = Math.max(0.3, opts.rise ?? 1.8);
+  const W = opts.width ?? 2.2;
+  const count = Math.max(2, opts.count ?? Math.ceil(rise / 0.26));
+  const tread = opts.tread ?? 0.4;
+  const r = rise / count;
+  const b = bag();
+
+  for (let i = 0; i < count; i++) {
+    const top = (i + 1) * r;
+    const z = i * tread;
+    // Tread: slight overhang past the riser so the nosing reads as a step.
+    const t = woodPlank(rng, W, 0.07, tread + 0.06, WOOD.deck, { grain: 'x', grainFreq: 5 });
+    xf(t, { z: z + tread / 2, y: top - 0.035, ry: rng.gauss(0, 0.006) });
+    b.main.push(t);
+    // Riser closing the front of the step.
+    const ri = woodPlank(rng, W * 0.98, r, 0.055, WOOD.plank, { grain: 'x' });
+    xf(ri, { z, y: top - r / 2 });
+    b.main.push(ri);
+  }
+
+  // Stringers down each side, following the slope.
+  const run = count * tread;
+  const slope = Math.atan2(rise, run);
+  const len = Math.hypot(rise, run);
+  for (const sx of [-1, 1]) {
+    const st = woodPlank(rng, 0.1, 0.26, len, WOOD.dark, { grain: 'z' });
+    xf(st, { x: sx * (W / 2 + 0.05), z: run / 2, y: rise / 2 - 0.16, rx: -slope });
+    b.main.push(st);
+  }
+
+  // Short posts at the foot so the flight is visibly anchored in the sand.
+  for (const sx of [-1, 1]) {
+    const post = woodPlank(rng, 0.13, 0.7, 0.13, WOOD.post, { grain: 'y' });
+    xf(post, { x: sx * (W / 2 + 0.05), z: 0.05, y: 0.1 });
+    b.main.push(post);
+  }
+
+  const g = assemble(b, opts, 'dockSteps');
+  return finish(g, 'dockSteps', { rise, width: W, count, tread, run });
+}
+
+// ---------------------------------------------------------------------------
 // SHACK
 // ---------------------------------------------------------------------------
 

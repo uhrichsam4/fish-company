@@ -447,6 +447,56 @@ export class World {
         shape: { kind: 'box', hx: a.dock.width / 2, hy: 0.2, hz: a.dock.length / 2, friction: 0.98 },
         tag: 'dock', events: false, userData: { surface: 'wood' },
       }));
+
+      // ---- steps up onto the deck ----
+      // The shore end of the deck is a sheer ~2 m wall above the sand, and the
+      // character controller only autosteps 0.52 m, so without these you
+      // simply cannot get onto your own dock on foot.
+      //
+      // The flight hangs off the deck edge and runs 2.4 m down rather than
+      // being seated on sampled ground: worldHeight() and the terrain
+      // heightfield collider disagree by over a metre on the beach slope, so
+      // anything placed against the analytic height floats or buries itself.
+      // Running past the sand means whichever tread meets it becomes the
+      // bottom step, and the rest is harmlessly under the beach.
+      const stepRise = 2.4;
+      const stepCount = 9;
+      const stepTread = 0.38;               // > the controller's 0.28 min width
+      const stepWidth = Math.min(2.4, a.dock.width * 0.6);
+      const run = stepCount * stepTread;
+      const ox = Math.cos(a.dock.angle), oz = Math.sin(a.dock.angle);
+      const edgeX = a.dock.x - ox * (a.dock.length / 2);
+      const edgeZ = a.dock.z - oz * (a.dock.length / 2);
+      const footX = edgeX - ox * run, footZ = edgeZ - oz * run;
+      const footY = a.dock.y - stepRise;
+
+      const steps = P?.buildDockSteps?.(makeRNG(hashStr(def.id + 'docksteps')), {
+        rise: stepRise, width: stepWidth, count: stepCount, tread: stepTread,
+      });
+      if (steps) {
+        steps.position.set(footX, footY, footZ);
+        steps.rotation.y = dockYaw;         // local +Z runs up the flight, seaward
+        setShadows(steps);
+        group.add(steps);
+      }
+
+      // One block per tread, each running from its own top down below the
+      // flight, so the staircase is solid instead of a ladder of gaps.
+      const stepQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dockYaw);
+      for (let i = 0; i < stepCount; i++) {
+        const top = footY + ((i + 1) * stepRise) / stepCount;
+        const bottom = footY - 0.2;
+        const along = i * stepTread + stepTread / 2;
+        s.bodies.push(this.game.physics.addBody({
+          type: 'fixed',
+          position: { x: footX + ox * along, y: (top + bottom) / 2, z: footZ + oz * along },
+          rotation: stepQuat,
+          shape: {
+            kind: 'box', hx: stepWidth / 2, hy: (top - bottom) / 2, hz: stepTread / 2, friction: 0.98,
+          },
+          tag: 'dock', events: false, userData: { surface: 'wood' },
+        }));
+      }
     }
 
     // ---- merchant shack (shop) ----
