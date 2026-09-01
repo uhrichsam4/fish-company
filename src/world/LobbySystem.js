@@ -3,6 +3,10 @@ import { bus } from '../core/EventBus.js';
 import { clamp01 } from '../util/math.js';
 import { REGION_BY_ID } from '../data/regions.js';
 import { worldHeight } from './Terrain.js';
+import * as Props from './props/index.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { makeRNG } from '../util/math.js';
+import { hashStr } from './World.js';
 
 /**
  * The multiplayer lobby: four start pads on Lobby Island.
@@ -65,6 +69,7 @@ export class LobbySystem {
       this.pads.push(this._makePad(i, x, y, z));
     }
 
+    this._buildScene(def);
     this._buildUI();
     bus.on('game:newgame', () => this.leave());
 
@@ -123,42 +128,155 @@ export class LobbySystem {
   _makePad(i, x, y, z) {
     const color = PAD_COLORS[i % PAD_COLORS.length];
     const group = new THREE.Group();
-    group.position.set(x, y + 0.04, z);
+    group.position.set(x, y, z);
 
-    // Flat disc, slightly proud of the sand so it reads from across the island.
-    const disc = new THREE.Mesh(
-      new THREE.CircleGeometry(PAD_RADIUS, 40),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.34, depthWrite: false, toneMapped: false }),
+    // Dressed stone apron, so the pad reads as built rather than painted on.
+    const apron = new THREE.Mesh(
+      new THREE.CylinderGeometry(PAD_RADIUS + 1.1, PAD_RADIUS + 1.25, 0.26, 30),
+      new THREE.MeshStandardMaterial({ color: 0xd9d3c2, roughness: 0.95 }),
     );
+    apron.position.y = 0.13;
+    apron.receiveShadow = true;
+    group.add(apron);
+
+    const kerb = new THREE.Mesh(
+      new THREE.TorusGeometry(PAD_RADIUS + 0.5, 0.16, 6, 32),
+      new THREE.MeshStandardMaterial({ color: 0xb8b1a0, roughness: 0.9 }),
+    );
+    kerb.rotation.x = -Math.PI / 2;
+    kerb.position.y = 0.28;
+    group.add(kerb);
+
+    const glowMat = (o) => new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: o, depthWrite: false, toneMapped: false,
+    });
+
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(PAD_RADIUS, 40), glowMat(0.55));
     disc.rotation.x = -Math.PI / 2;
+    disc.position.y = 0.28;
     group.add(disc);
 
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(PAD_RADIUS - 0.45, PAD_RADIUS, 56),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1, depthWrite: false, toneMapped: false }),
-    );
-    ring.rotation.x = -Math.PI / 2;
-    group.add(ring);
+    // Concentric rings: the bullseye is what makes it read as "stand here".
+    const rings = [];
+    for (const [r0, r1, op] of [[PAD_RADIUS - 0.3, PAD_RADIUS, 1], [PAD_RADIUS * 0.62, PAD_RADIUS * 0.74, 0.8]]) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 48), glowMat(op));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.3;
+      group.add(ring);
+      rings.push(ring);
+    }
 
-    // A soft column so a pad is visible from ground level, not just from above.
-    const beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(PAD_RADIUS * 0.92, PAD_RADIUS * 0.92, 5, 24, 1, true),
-      new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
-      }),
-    );
-    beam.position.y = 2.5;
-    group.add(beam);
+    // Light column. Tapered rather than a straight cylinder: a cylinder ends
+    // in a hard disc edge against the sky and reads as a frosted pillar, and
+    // additive blending across a doubled surface blows the colour out to
+    // white. Narrowing towards the top fades it out on its own.
+    const beams = [];
+    for (const [rad, h, op] of [[PAD_RADIUS * 0.92, 13, 0.055], [PAD_RADIUS * 0.5, 11, 0.085]]) {
+      const beam = new THREE.Mesh(
+        new THREE.CylinderGeometry(rad * 0.22, rad, h, 26, 1, true),
+        new THREE.MeshBasicMaterial({
+          color, transparent: true, opacity: op, depthWrite: false,
+          side: THREE.DoubleSide, toneMapped: false,
+        }),
+      );
+      beam.position.y = h / 2 + 0.3;
+      group.add(beam);
+      beams.push(beam);
+    }
 
     this.root.add(group);
     return {
-      id: i, x, y, z, color, group, ring, disc, beam,
-      /** null until someone picks a size. */
-      size: null,
-      members: [],
-      timer: 0,
-      hostIsLocal: false,
+      id: i, x, y, z, color, group, disc, rings, beams,
+      ring: rings[0], beam: beams[0],
+      size: null, members: [], timer: 0, hostIsLocal: false,
     };
+  }
+
+  /**
+   * Everything on the plaza that is not a pad: the statue players orient by,
+   * the paths between the pads, and enough dressing that the island reads as a
+   * built gathering place rather than an empty field with markers on it.
+   */
+  _buildScene(def) {
+    const rng = makeRNG(hashStr('lobby-dressing'));
+    const cx = def.x, cz = def.z;
+    const cy = worldHeight(cx, cz);
+    const place = (obj, x, z, o = {}) => {
+      if (!obj) return null;
+      obj.position.set(x, o.y != null ? o.y : worldHeight(x, z), z);
+      if (o.rot != null) obj.rotation.y = o.rot;
+      if (o.scale) obj.scale.setScalar(o.scale);
+      obj.traverse?.((n) => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } });
+      this.root.add(obj);
+      return obj;
+    };
+
+    // ---- paths from the centre out to each pad ----
+    const tileMat = new THREE.MeshStandardMaterial({ color: 0xcfc8b6, roughness: 0.95 });
+    const tiles = [];
+    for (const pad of this.pads) {
+      const dx = pad.x - cx, dz = pad.z - cz;
+      const len = Math.hypot(dx, dz);
+      const ux = dx / len, uz = dz / len;
+      const steps = Math.floor(len / 1.5);
+      for (let i = 2; i < steps; i++) {
+        const t = i * 1.5;
+        // Wander slightly so it looks laid by hand, not extruded.
+        const off = (rng() - 0.5) * 0.7;
+        const px = cx + ux * t - uz * off;
+        const pz = cz + uz * t + ux * off;
+        const g = new THREE.BoxGeometry(1.25 + rng() * 0.3, 0.12, 1.25 + rng() * 0.3);
+        g.rotateY(Math.atan2(uz, ux) + (rng() - 0.5) * 0.3);
+        g.translate(px, worldHeight(px, pz) + 0.06, pz);
+        tiles.push(g);
+      }
+    }
+    if (tiles.length) {
+      const merged = mergeGeometries(tiles, false);
+      if (merged) {
+        const mesh = new THREE.Mesh(merged, tileMat);
+        mesh.receiveShadow = true;
+        this.root.add(mesh);
+      }
+      for (const g of tiles) g.dispose();
+    }
+
+    // ---- centrepiece ----
+    place(Props.buildFishStatue?.(rng, {}), cx, cz, { y: cy, scale: 1.7 });
+    place(Props.buildSignpost?.(rng, {}), cx + 5.6, cz - 3.4, { rot: -0.7 });
+
+    // ---- banners between the pads, marking the plaza edge ----
+    const bannerColors = [0x3d7fa6, 0xe0b23f, 0x3d7fa6, 0xe0b23f];
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      const bx = cx + Math.cos(a) * (PAD_RING - 1);
+      const bz = cz + Math.sin(a) * (PAD_RING - 1);
+      place(Props.buildBanner?.(rng, { color: bannerColors[i] }), bx, bz, { rot: -a + Math.PI / 2 });
+    }
+
+    // ---- dressing ring: crates, barrels, nets and fencing ----
+    const dressing = [
+      ['buildCrate', 1], ['buildBarrel', 1], ['buildFishCrate', 1],
+      ['buildRopeCoil', 1], ['buildCrate', 1], ['buildBarrel', 1],
+    ];
+    for (let i = 0; i < 14; i++) {
+      const a = rng() * Math.PI * 2;
+      const r = PAD_RING + 6 + rng() * 9;
+      const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+      if (worldHeight(x, z) < 1.2) continue;
+      const [name] = dressing[i % dressing.length];
+      place(Props[name]?.(rng, {}), x, z, { rot: rng() * Math.PI * 2 });
+    }
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + 0.4;
+      const r = PAD_RING + 12;
+      const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+      if (worldHeight(x, z) < 1.4) continue;
+      place(Props.buildRopeFence?.(rng, { span: 5 }), x, z, { rot: -a });
+    }
+
+    // A stall by the plaza so arrivals have somewhere to walk towards.
+    place(Props.buildTent?.(rng, {}), cx - PAD_RING - 3, cz + 4, { rot: 1.1 });
   }
 
   // ----------------------------------------------------------------------- UI
@@ -338,8 +456,12 @@ export class LobbySystem {
       const live = pad.size != null;
       const pulse = live ? 0.55 + 0.45 * Math.abs(Math.sin(t * Math.PI)) : 0.55 + 0.2 * Math.sin(t * 1.6 + pad.id);
       pad.ring.material.opacity = pulse;
-      pad.disc.material.opacity = live ? 0.5 : 0.34;
-      pad.beam.material.opacity = live ? 0.28 : 0.16;
+      pad.disc.material.opacity = live ? 0.72 : 0.55;
+      for (const [k, beam] of pad.beams.entries()) {
+        const base = k === 0 ? 0.055 : 0.085;
+        beam.material.opacity = base * (live ? 1.8 : 1) * (0.85 + 0.15 * Math.sin(t * 1.4 + pad.id));
+      }
+      for (const r of pad.rings) r.material.opacity = pulse;
 
       // Offline, this client runs the clock. Online, the server does and its
       // snapshots overwrite pad.timer -- ticking here too would race it and

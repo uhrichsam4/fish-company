@@ -262,6 +262,151 @@ export function buildDockSteps(rng, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// LOBBY LANDMARKS
+// ---------------------------------------------------------------------------
+
+/** Pale dressed stone for the lobby plaza. */
+const STONE = { light: 0xd9d3c2, mid: 0xb8b1a0, dark: 0x8d8779, wet: 0x7d8f96 };
+
+/**
+ * The fish statue at the centre of the lobby: a round stepped basin with a
+ * pedestal and a stylised fish above it. This is the thing players orient by,
+ * so it is built tall enough to see over the palms from anywhere on the plaza.
+ */
+export function buildFishStatue(rng, opts = {}) {
+  rng = asRng(rng);
+  const R = opts.radius ?? 4.2;
+  const b = bag();
+
+  // Two stone steps, then the basin wall and its water.
+  for (const [r, y, h, c] of [[R, 0, 0.34, STONE.mid], [R * 0.82, 0.34, 0.3, STONE.light]]) {
+    const step = cyl(r, r * 1.02, h, 26);
+    xf(step, { y: y + h / 2 });
+    b.main.push(paint(step, c, { rng, faceJitter: 0.05 }));
+  }
+  const wall = cyl(R * 0.62, R * 0.64, 0.42, 24);
+  xf(wall, { y: 0.85 });
+  b.main.push(paint(wall, STONE.light, { rng, faceJitter: 0.06 }));
+  const water = cyl(R * 0.57, R * 0.57, 0.06, 24);
+  xf(water, { y: 1.0 });
+  b.main.push(paint(water, 0x49c9d8, { rng, faceJitter: 0.03 }));
+
+  // Pedestal.
+  const ped = cyl(0.42, 0.58, 1.5, 12);
+  xf(ped, { y: 1.75 });
+  b.main.push(paint(ped, STONE.mid, { rng, faceJitter: 0.06 }));
+  const cap = cyl(0.62, 0.5, 0.18, 12);
+  xf(cap, { y: 2.58 });
+  b.main.push(paint(cap, STONE.light, { rng, faceJitter: 0.05 }));
+
+  // Fish: an ellipsoid body with a forked tail and fins, nose up and arcing.
+  const FISH = opts.fishColor ?? 0x3f8fd6;
+  const belly = opts.bellyColor ?? 0xbfe2f5;
+  const body = sph(1.0, 12, 9);
+  body.scale(1.55, 0.82, 0.62);
+  xf(body, { y: 3.75, rz: 0.38 });
+  b.main.push(paint(body, FISH, { rng, faceJitter: 0.05 }));
+
+  const under = sph(0.82, 10, 7);
+  under.scale(1.35, 0.5, 0.5);
+  xf(under, { y: 3.5, rz: 0.38 });
+  b.main.push(paint(under, belly, { rng, faceJitter: 0.04 }));
+
+  for (const sgn of [-1, 1]) {
+    const tail = cone(0.62, 1.0, 5);
+    xf(tail, { x: -1.42, y: 3.36 + sgn * 0.3, rz: Math.PI / 2 + sgn * 0.55 });
+    b.main.push(paint(tail, FISH, { rng, faceJitter: 0.05 }));
+  }
+  for (const sgn of [-1, 1]) {
+    const fin = cone(0.34, 0.62, 4);
+    xf(fin, { y: 3.66, z: sgn * 0.44, rx: sgn * 1.15, rz: 0.3 });
+    b.main.push(paint(fin, FISH, { rng, faceJitter: 0.05 }));
+  }
+  const dorsal = cone(0.4, 0.72, 4);
+  xf(dorsal, { x: 0.1, y: 4.42, rz: 0.25 });
+  b.main.push(paint(dorsal, FISH, { rng, faceJitter: 0.05 }));
+
+  // Eyes read from a long way off and are what make it friendly rather than
+  // taxidermy, so they get real geometry instead of a texture.
+  for (const sgn of [-1, 1]) {
+    const white = sph(0.2, 8, 6);
+    xf(white, { x: 1.02, y: 4.02, z: sgn * 0.36 });
+    b.main.push(paint(white, 0xf7fbff, { rng, faceJitter: 0.02 }));
+    const pupil = sph(0.1, 6, 5);
+    xf(pupil, { x: 1.16, y: 4.02, z: sgn * 0.4 });
+    b.main.push(paint(pupil, 0x11202b, { rng, faceJitter: 0.02 }));
+  }
+
+  return finish(assemble(b, opts, 'fishStatue'), 'fishStatue', { radius: R, height: 5 });
+}
+
+/** Tall banner on a pole, for marking the plaza edges. */
+export function buildBanner(rng, opts = {}) {
+  rng = asRng(rng);
+  const H = opts.height ?? 4.4;
+  const cloth = opts.color ?? PAINT.blue;
+  const b = bag();
+
+  const pole = cyl(0.075, 0.095, H, 7);
+  xf(pole, { y: H / 2 });
+  b.main.push(paint(pole, WOOD.post, { rng, faceJitter: 0.06 }));
+
+  const arm = cyl(0.055, 0.055, 1.15, 6);
+  xf(arm, { y: H - 0.25, z: 0.5, rx: Math.PI / 2 });
+  b.main.push(paint(arm, WOOD.dark, { rng, faceJitter: 0.05 }));
+
+  // Cloth with a notched tail, built from two tapering slabs.
+  const w = 1.0, len = 2.3;
+  const main = box(0.05, len, w);
+  xf(main, { y: H - 0.3 - len / 2, z: 0.5 });
+  b.main.push(paint(main, cloth, { rng, faceJitter: 0.07, dirShade: 0.14 }));
+  for (const sgn of [-1, 1]) {
+    const tip = cone(w * 0.36, 0.62, 3);
+    xf(tip, { y: H - 0.3 - len - 0.2, z: 0.5 + sgn * w * 0.26, rx: Math.PI });
+    b.main.push(paint(tip, cloth, { rng, faceJitter: 0.07 }));
+  }
+  // Emblem: a pale disc, readable at distance without needing a texture.
+  const emblem = cyl(0.3, 0.3, 0.03, 12);
+  xf(emblem, { x: 0.05, y: H - 1.15, z: 0.5, rz: Math.PI / 2 });
+  b.main.push(paint(emblem, 0xeef6fb, { rng, faceJitter: 0.03 }));
+
+  return finish(assemble(b, opts, 'banner'), 'banner', { height: H });
+}
+
+/** A run of rope strung between short posts. */
+export function buildRopeFence(rng, opts = {}) {
+  rng = asRng(rng);
+  const span = opts.span ?? 4.5;
+  const posts = Math.max(2, opts.posts ?? 3);
+  const H = opts.height ?? 1.0;
+  const b = bag();
+  const step = span / (posts - 1);
+
+  for (let i = 0; i < posts; i++) {
+    const z = -span / 2 + i * step;
+    const p = cyl(0.085, 0.105, H, 7);
+    xf(p, { z, y: H / 2, rx: rng.gauss(0, 0.02) });
+    b.main.push(paint(p, WOOD.post, { rng, faceJitter: 0.07 }));
+    const capTop = sph(0.1, 7, 5);
+    xf(capTop, { z, y: H });
+    b.main.push(paint(capTop, WOOD.post, { rng, faceJitter: 0.05 }));
+  }
+  // Rope in two sagging segments per gap, which reads as a catenary without
+  // needing a curve.
+  for (let i = 0; i < posts - 1; i++) {
+    const z0 = -span / 2 + i * step;
+    const sag = 0.16;
+    for (const [a, bz, dy] of [[z0, z0 + step / 2, -sag], [z0 + step / 2, z0 + step, sag]]) {
+      const len = Math.hypot(bz - a, sag);
+      const r = cyl(0.028, 0.028, len, 5);
+      xf(r, { z: (a + bz) / 2, y: H - 0.14 - (dy < 0 ? 0 : sag) + sag / 2, rx: Math.atan2(dy, bz - a) + Math.PI / 2 });
+      b.main.push(paint(r, 0xc8b48a, { rng, faceJitter: 0.06 }));
+    }
+  }
+  return finish(assemble(b, opts, 'ropeFence'), 'ropeFence', { span, height: H });
+}
+
+// ---------------------------------------------------------------------------
 // SHACK
 // ---------------------------------------------------------------------------
 
