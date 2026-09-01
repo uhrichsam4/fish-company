@@ -107,11 +107,16 @@ export async function run() {
     S('subs: tab renders', company.activeTab === 'subs' && company.bodyEl.textContent.trim().length > 40,
       company.bodyEl.textContent.trim().length);
 
+    // The shipyard sits below the owned subs, and a live re-render replaces the
+    // node every 250 ms — scroll first, then re-query, then click.
+    company.bodyEl.querySelector('[data-action=buySub]')?.scrollIntoView({ block: 'center' });
+    await T.sleep(160);
     const buy = [...company.bodyEl.querySelectorAll('[data-action=buySub]')].find((b) => !b.disabled);
     if (buy) {
       const before = subs.owned.length;
-      T.realClick(buy); await T.sleep(400);
-      S('subs: buying adds a sub', subs.owned.length === before + 1, { before, after: subs.owned.length });
+      const r = T.realClick(buy);
+      await T.sleep(400);
+      S('subs: buying adds a sub', subs.owned.length === before + 1, { before, after: subs.owned.length, click: r });
     }
     // Anything the player cannot buy has to say why, or the shop is a dead end.
     const locked = [...company.bodyEl.querySelectorAll('.card.locked')];
@@ -145,7 +150,8 @@ export async function run() {
     ui.show('subExpedition', { id: sub?.id }); await T.sleep(320);
     const ed = ui.get('subExpedition');
     T.realClick(ed.el.querySelector('[data-action=pickBand][data-id=shelf]')); await T.sleep(200);
-    const pilotRow = ed.el.querySelector('[data-action=toggleCrew]');
+    const pilot = workers?.workers.find((w) => w.role === 'subpilot' || w.role === 'captain');
+    const pilotRow = pilot && ed.el.querySelector(`[data-action=toggleCrew][data-id="${pilot.id}"]`);
     if (pilotRow) { T.realClick(pilotRow); await T.sleep(200); }
     const launch = ed.el.querySelector('[data-action=launch]');
     S('subExpedition: dive unlocks once the plan is legal', !launch.disabled, ed.footEl.textContent.trim());

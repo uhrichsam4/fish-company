@@ -266,6 +266,68 @@ const DRESSERS = {
     scatterTideline(def, group, rng, 24, (r) => Props.buildRock?.(r, { size: lerp(0.5, 1.6, r()), style: 'flat', biome: 'arctic' }));
   },
 
+  // --------------------------------------------------------------- The Abyss
+  //
+  // There is no island here, so there is no shore to dress and no dock to build
+  // around. What a player actually sees is the surface they sail to and the
+  // trench rim they descend past — DeepSea.js streams the vents and wrecks
+  // further down. Everything here hangs off the rim: the shelf where the
+  // seabed falls away, and the water directly above it.
+  abyss({ def, rng, group }) {
+    const rimR = def.reach * 0.86;   // where the bowl meets the open seabed
+
+    // Marker buoys in a wide ring on the surface, so the approach reads as a
+    // place someone has been rather than empty water.
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * TAU + rng() * 0.4;
+      const r = rimR * lerp(0.94, 1.06, rng());
+      place(group, Props.buildBuoy?.(rng, {}), def.x + Math.cos(a) * r, def.z + Math.sin(a) * r,
+        { y: 0, rot: rng() * TAU });
+    }
+
+    // Spires and broken slabs along the rim, largest where it is steepest.
+    const rim = scatterOnSeabed(def, 46, {
+      seed: hash(def.id + 'rim'), minDepth: 40, maxDepth: 260, scaleMin: 1.4, scaleMax: 4.2,
+    });
+    for (const p of rim) {
+      const r = makeRNG((p.rng * 1e9) | 0);
+      const tall = r() < 0.45;
+      place(group, tall
+        ? Props.buildSeaStack?.(r, { height: p.scale * 9, biome: 'abyss' })
+        : Props.buildRockCluster?.(r, { size: p.scale * 2.4, biome: 'abyss' }),
+      p.x, p.z, { y: p.y, rot: p.rot, tilt: r.gauss(0, 0.13), roll: r.gauss(0, 0.13) });
+    }
+
+    // Tube worms and cold-seep growth on the shallower shoulder.
+    const growth = scatterOnSeabed(def, 60, {
+      seed: hash(def.id + 'growth'), minDepth: 30, maxDepth: 150, scaleMin: 0.6, scaleMax: 1.9,
+    });
+    for (const p of growth) {
+      place(group, Props.buildCoral?.(makeRNG((p.rng * 1e9) | 0), { biome: 'abyss' }),
+        p.x, p.z, { y: p.y, rot: p.rot, scale: p.scale });
+    }
+
+    // Things that went down here. They sit on the shoulder, not the floor —
+    // a wreck two kilometres down is a wreck nobody ever sees.
+    for (let i = 0; i < 3; i++) {
+      const a = rng() * TAU;
+      const r = rimR * lerp(0.55, 0.8, rng());
+      const x = def.x + Math.cos(a) * r, z = def.z + Math.sin(a) * r;
+      place(group, Props.buildWreckedBoat?.(rng, {}), x, z,
+        { y: worldHeight(x, z) + 0.5, rot: a + rng.gauss(0, 0.8), roll: rng.gauss(0, 0.5), scale: lerp(1.6, 3.2, rng()) });
+    }
+
+    // Somebody's abandoned survey rig, half over the edge.
+    const ra = rng() * TAU;
+    const rx = def.x + Math.cos(ra) * rimR * 0.92, rz = def.z + Math.sin(ra) * rimR * 0.92;
+    place(group, Props.buildAntenna?.(rng, { height: 14 }), rx, rz, { y: worldHeight(rx, rz), tilt: 0.4 });
+    for (let i = 0; i < 5; i++) {
+      const bx = rx + rng.gauss(0, 9), bz = rz + rng.gauss(0, 9);
+      place(group, Props.buildBarrel?.(rng, {}), bx, bz,
+        { y: worldHeight(bx, bz) + 0.3, rot: rng() * TAU, tilt: rng.gauss(0, 0.5) });
+    }
+  },
+
   // --------------------------------------------------------- Deep Sea Station
   station({ def, anchors, rng, group }) {
     const a = anchors;

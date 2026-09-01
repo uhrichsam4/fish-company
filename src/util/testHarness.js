@@ -156,7 +156,12 @@ export function installTestHarness(game) {
       const inv = game.get('inventory');
       inv.setHotbarIndex(0);
       await frames(2);
-      if (f.state !== 'idle') { f.cancel(); await frames(3); }
+      // cancel() winds the line back in rather than snapping to idle, so a cast
+      // issued right after it fails on a state the system is still leaving.
+      if (f.state !== 'idle') {
+        f.cancel();
+        await T.waitFor(() => f.state === 'idle', 4000, 'rod back to idle');
+      }
       T.aimAtWater();
       await frames(2);
       await T.holdMouse(0, chargeMs);
