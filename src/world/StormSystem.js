@@ -1,6 +1,7 @@
 import { bus } from '../core/EventBus.js';
 import { clamp, clamp01, lerp, damp, rrange } from '../util/math.js';
 import { waveState, WAVE_SETS, waterHeightAt, waterVelocityAt } from './waves.js';
+import { worldHeight as worldHeightAt } from './Terrain.js';
 
 /**
  * Sea state above and beyond the weather: storm surge, rogue waves and
@@ -130,8 +131,110 @@ export class StormSystem {
 
   // ------------------------------------------------------------------- update
 
+  /**
+   * Lightning. WEATHER_STATES carry a `lightning` rate per state and nothing
+   * ever read it -- Effects.lightning() existed but had no caller, so storms
+   * flashed no bolts at all.
+   *
+   * Strikes land near the player because a bolt nobody sees is wasted work,
+   * but never on them. Thunder is delayed by distance at the speed of sound,
+   * which is what makes a far strike read as far.
+   */
+  _updateLightning(dt, game) {
+    const w = game.get('weather');
+    const rate = w?.current?.lightning ?? 0;
+    if (rate <= 0) { this.boltTimer = rrange(4, 10); return; }
+
+    this.boltTimer = (this.boltTimer ?? rrange(4, 10)) - dt * rate * 6;
+    if (this.boltTimer > 0) return;
+    this.boltTimer = rrange(5, 16);
+
+    const player = game.get('player');
+    if (!player) return;
+    const ang = Math.random() * Math.PI * 2;
+    const dist = rrange(35, 170);
+    const x = player.position.x + Math.cos(ang) * dist;
+    const z = player.position.z + Math.sin(ang) * dist;
+    const groundY = Math.max(worldHeightAt(x, z), 0);
+
+    const fx = game.get('fx');
+    // lightning() does its own screen flash and impact pop; emitting another
+    // here would double it.
+    fx?.lightning?.({ x, y: groundY + 240, z }, { x, y: groundY, z }, { duration: 0.14, width: 0.5 });
+
+    // Thunder arrives at the speed of sound, so distance is audible.
+    const delay = (dist / 343) * 1000;
+    setTimeout(() => {
+      game.audio?.play(dist < 70 ? 'thunder1' : dist < 130 ? 'thunder2' : 'thunder3', {
+        volume: clamp(1.1 - dist / 190, 0.25, 1), rate: rrange(0.85, 1.05),
+      });
+      if (dist < 60) bus.emit('player:shake', clamp01(1 - dist / 60) * 0.35);
+    }, delay);
+
+    this._strikeDamage(game, x, z, groundY);
+  }
+
+  /** A direct hit splits a tree or wrecks whatever was standing there. */
+  _strikeDamage(game, x, z, groundY) {
+    const trees = game.get('trees');
+    if (trees) {
+      for (const t of trees.trees.values()) {
+        if (t.felledAt) continue;
+        if (Math.hypot(t.x - x, t.z - z) > 7) continue;
+        trees.fell(t, game);
+        bus.emit('toast', { text: '⚡ Lightning split a tree.', kind: 'error', duration: 3200 });
+        break;                                   // one tree per bolt
+      }
+    }
+    const build = game.get('build');
+    if (build) {
+      for (const p of [...build.pieces.values()]) {
+        if (p.detached) continue;
+        if (Math.hypot(p.x - x, p.z - z) > 5) continue;
+        build.damage(p, p.maxHealth * 0.55, { x: 0, y: 0, z: 0 });
+      }
+    }
+  }
+
+  /**
+   * Wind pushes loose dynamic bodies -- dropped fish, detached debris.
+   *
+   * Runs at 4 Hz over awake bodies only, and only in genuinely windy weather.
+   * Applying an impulse to everything every frame is exactly the "do not
+   * destroy performance" case: a sleeping crate does not need convincing that
+   * it is still on the ground.
+   */
+  _updateWind(dt, game) {
+    const wind = this.windSpeed;
+    if (wind < 1.4) return;
+    this._windT = (this._windT || 0) + dt;
+    if (this._windT < 0.25) return;
+    const step = this._windT;
+    this._windT = 0;
+
+    // Weather.windDir is a normalised Vector2, not an angle.
+    const dir = game.get('weather')?.windDir;
+    const dx = dir?.x ?? 1, dz = dir?.y ?? 0.3;
+    const gust = (wind - 1.4) * (0.75 + 0.45 * Math.sin(game.time * 0.7));
+    const fx = dx * gust * step * 3.2;
+    const fz = dz * gust * step * 3.2;
+
+    const phys = game.physics;
+    const push = (entry, mass) => {
+      if (!entry?.body || entry.body.isSleeping()) return;
+      const k = clamp(mass, 0.2, 12);
+      phys.addImpulse(entry, fx * k, 0, fz * k);
+    };
+    for (const pf of game.get('physfish')?.list || []) {
+      if (pf.held || pf.submerged > 0.5) continue;   // only what the wind can reach
+      push(pf.entry, pf.mass * 0.12);
+    }
+  }
+
   update(dt) {
     if (dt <= 0) return;
+    this._updateLightning(dt, this.game);
+    this._updateWind(dt, this.game);
 
     // ---- sustained surge, driven by storm intensity ----
     const target = this.intensity * this.intensity * SURGE_MAX;

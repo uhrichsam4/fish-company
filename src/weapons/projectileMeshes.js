@@ -207,6 +207,26 @@ export function buildBeam() {
   return g;
 }
 
+/**
+ * Rifle round: a short bright tracer rather than a modelled bullet. At 210
+ * m/s it is never on screen long enough to read as an object, so what matters
+ * is that the streak points the way it travelled.
+ */
+function buildBullet() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    geo('bullet.body', () => new THREE.CylinderGeometry(0.012, 0.02, 0.55, 6).rotateX(Math.PI / 2)),
+    mat('bullet.mat', () => new THREE.MeshBasicMaterial({
+      color: 0xffd9a0, transparent: true, opacity: 0.9,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+    })),
+  );
+  g.add(body);
+  g.renderOrder = 12;
+  g.userData.length = 0.55;
+  return g;
+}
+
 /** Cone volume shown while a suction weapon is firing. */
 export function buildSuctionCone() {
   const g = new THREE.Group();
@@ -229,6 +249,7 @@ export function buildProjectileMesh(kind) {
     case 'heavy_harpoon': return buildHarpoon(1.7);
     case 'net': return buildNet();
     case 'beam': return buildBeam();
+    case 'bullet': return buildBullet();
     default: return buildSpear();
   }
 }
