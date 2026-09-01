@@ -198,8 +198,43 @@ export class WeaponSystem {
     // High rate-of-fire weapons are full auto; everything else is semi.
     const wants = (stats.rate ?? 1) >= 3 ? input.mouseDown(0) : input.mousePressed(0);
     if (!wants || this.cooldown > 0) return;
+
+    // Processing a fish is a strike the player aims and throws, not something
+    // the game does for them on pickup: look down into your own bucket with a
+    // spear or knife in hand and hit it. Consumes the click so the same swing
+    // does not also launch a spear into the sand.
+    if (this._tryProcessCatch(game, item, stats, player)) return;
     if (this.ammoInMag <= 0) { this._startReload(game, stats); return; }
     this._fire(game, item, stats, player);
+  }
+
+  /**
+   * @returns {boolean} true if the swing was spent on the bucket.
+   */
+  _tryProcessCatch(game, item, stats, player) {
+    const bucket = game.get('bucket');
+    if (!bucket) return false;
+    // Only close-quarters tools; a harpoon gun is not a filleting implement.
+    const melee = (stats.range ?? 99) <= 40 && /spear|knife|harpoon/i.test(`${item.id} ${stats.projectile || ''}`);
+    if (!melee) return false;
+    if (player.pitch > -0.5) return false;              // must actually be looking down at it
+    const target = bucket.firstAlive();
+    if (!target) return false;
+
+    bucket.process(target.index);
+    this.swingT = 0.22;
+    this.cooldown = Math.max(this.cooldown, 0.35);
+    const pos = player.position.clone();
+    game.audio?.play('spear_thrust', { volume: 0.5, rate: 1.0, position: pos });
+    game.audio?.play('spear_fish_hit', { volume: 0.6, rate: 0.98, position: pos });
+    bus.emit('player:shake', 0.06);
+    bus.emit('fx:sparkle', { position: pos, count: 5, color: '#9fb7c4' });
+    const left = bucket.aliveCount;
+    bus.emit('toast', {
+      text: left ? `Processed — ${left} still flopping.` : 'Whole catch processed.',
+      kind: left ? '' : 'success', duration: 2200,
+    });
+    return true;
   }
 
   _setAiming(on, player) {

@@ -165,7 +165,7 @@ export class PhysicalFishManager {
         const settled = _v2.copy(phys.getVelocity(pf.entry)).length() < 2;
         if (settled || pf.life > AUTO_STORE_MAX) {
           if (this.absorb(pf, 'inventory', { styleMult: pf.styleMult || 1 })) {
-            game.audio?.play('pickup', { volume: 0.6, rate: 1.2 });
+            game.audio?.play('fish_into_bucket', { volume: 0.7, rate: 1.0, position: p.clone() });
             bus.emit('fx:sparkle', { position: p.clone(), count: 8, color: '#5ddb6a' });
             continue;
           }

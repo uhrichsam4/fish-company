@@ -18,9 +18,24 @@
  */
 
 const A = 'assets/audio/';
+const G = `${A}generated/`;
 
 export const AUDIO_MANIFEST = {
   sfx: {
+    // -- bucket / processing -------------------------------------------
+    // Generated with tools/genAudio.mjs and cached on disk; the game never
+    // calls ElevenLabs at play time. The directory is gitignored, so a fresh
+    // clone has none of these -- AudioManager already falls back to its synth
+    // for anything that fails to load, so the game runs either way.
+    bucket_pick_up: { url: `${G}bucket_pick_up.mp3`, volume: 0.55 },
+    bucket_set_down: { url: `${G}bucket_set_down.mp3`, volume: 0.6 },
+    bucket_carry: { url: `${G}bucket_carry.mp3`, volume: 0.28 },
+    fish_into_bucket: { url: `${G}fish_into_bucket.mp3`, volume: 0.7 },
+    fish_flop_bucket: { url: `${G}fish_flop_bucket.mp3`, volume: 0.45 },
+    spear_thrust: { url: `${G}spear_thrust.mp3`, volume: 0.6 },
+    spear_fish_hit: { url: `${G}spear_fish_hit.mp3`, volume: 0.65 },
+    bucket_sell: { url: `${G}bucket_sell.mp3`, volume: 0.8 },
+
     // -- casting / line ------------------------------------------------
     cast_whoosh: { url: `${A}cast_whoosh.ogg`, volume: 0.8 },
     splash_small: { url: `${A}splash_small.ogg`, volume: 0.55 },

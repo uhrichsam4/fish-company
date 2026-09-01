@@ -789,3 +789,28 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 /* Keep the hint clear of the fishing HUD (bottom: 132px + ~44px tall) once the
    narrow-screen rule moves it down. */
 @media (max-width: 980px) { .tut-hint { bottom: 190px; } }
+
+
+/* ---- bucket readout ------------------------------------------------- */
+.hud-bucket {
+  position: fixed; top: 52px; right: 14px; z-index: 30;
+  width: 178px; padding: 10px 12px;
+  background: rgba(13,23,33,.78); border: 1px solid var(--line);
+  border-radius: 12px; backdrop-filter: blur(6px);
+  font-family: var(--font); color: var(--ink);
+  opacity: 0; transform: translateY(-6px);
+  transition: opacity .22s ease, transform .22s ease;
+  pointer-events: none;
+}
+.hud-bucket.show { opacity: 1; transform: none; }
+.hud-bucket .hb-head { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
+.hud-bucket .hb-head b { font-weight: 800; color: var(--ink); }
+.hud-bucket .hb-head i { font-style: normal; float: right; color: var(--accent); font-size: 10.5px; letter-spacing: .04em; }
+.hud-bucket .hb-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 700; }
+.hud-bucket .hb-row em { font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--warn); }
+.hud-bucket .hb-row.sub { font-size: 11.5px; font-weight: 600; color: var(--ink-faint); margin-top: 5px; }
+.hud-bucket .hb-row.sub b { color: var(--gold); font-weight: 800; }
+.hud-bucket .hb-bar { height: 5px; margin-top: 6px; border-radius: 3px; background: var(--bg-3); overflow: hidden; }
+.hud-bucket .hb-bar i { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
+.hud-bucket .hb-bar.warn i { background: var(--warn); }
+.hud-bucket .hb-bar.full i { background: var(--danger); }

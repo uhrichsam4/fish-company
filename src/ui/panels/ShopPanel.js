@@ -108,11 +108,19 @@ export class ShopPanel extends Panel {
         g.audio.play('ui_click', { volume: 0.5 });
         this.render();
       } else if (act === 'sellall') {
-        const res = inv.sellAll();
-        if (res.count) {
-          g.audio.play('cash_register', { volume: 0.8 });
-          bus.emit('toast', { text: `Sold ${res.count} fish for ${formatMoneyExact(res.total)}`, kind: 'gold' });
-        } else bus.emit('toast', { text: 'Nothing to sell', kind: 'warn' });
+        // Route through the bucket so the seller-proximity rule applies: the
+        // catch has to be carried here, not sold from across the island.
+        const bucket = g.get('bucket');
+        // bucket.sell() reports its own result (including refusing at range),
+        // so only the fallback path needs to announce anything.
+        if (bucket) bucket.sell();
+        else {
+          const res = inv.sellAll();
+          if (res.count) {
+            g.audio.play('cash_register', { volume: 0.8 });
+            bus.emit('toast', { text: `Sold ${res.count} fish for ${formatMoneyExact(res.total)}`, kind: 'gold' });
+          } else bus.emit('toast', { text: 'Nothing to sell', kind: 'warn' });
+        }
         this.render();
       }
     });

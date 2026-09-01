@@ -297,6 +297,31 @@ export class HUD {
     this.smBar.style.width = `${clamp01(timeLeft) * 100}%`;
   }
 
+  /**
+   * Bucket readout. Deliberately terse -- count, load, and only the alive
+   * tally when there is something still flopping to deal with.
+   */
+  setBucket(b) {
+    if (!this._bucketEl) {
+      const el = document.createElement('div');
+      el.className = 'hud-bucket';
+      (document.getElementById('ui-root') || document.body).appendChild(el);
+      this._bucketEl = el;
+    }
+    const el = this._bucketEl;
+    if (!b || !b.count) { el.classList.remove('show'); return; }
+    el.classList.add('show');
+    const full = b.weight / Math.max(1, b.capacity);
+    const sig = `${b.count}|${b.alive}|${b.weight.toFixed(1)}|${b.capacity}|${b.value}`;
+    if (sig === this._bucketSig) return;      // rebuilding every frame throws away the transition
+    this._bucketSig = sig;
+    el.innerHTML = `
+      <div class="hb-head">🪣 <b>Bucket</b>${b.carried ? '<i>carried</i>' : ''}</div>
+      <div class="hb-row"><span>${b.count} fish</span>${b.alive ? `<em>${b.alive} alive</em>` : ''}</div>
+      <div class="hb-bar ${full > 0.92 ? 'full' : full > 0.7 ? 'warn' : ''}"><i style="width:${Math.min(100, full * 100)}%"></i></div>
+      <div class="hb-row sub"><span>${formatWeight(b.weight)} / ${formatWeight(b.capacity)}</span><b>${formatMoneyExact(b.value)}</b></div>`;
+  }
+
   setStorage(used, cap, count) {
     if (cap == null) { this.storageEl.textContent = ''; return; }
     const pct = clamp01(used / cap);
