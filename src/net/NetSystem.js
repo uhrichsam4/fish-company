@@ -267,9 +267,28 @@ export class NetSystem {
       case 'welcome':
         this.id = m.id;
         this.code = m.code;
-        bus.emit('net:welcome', { id: m.id, code: m.code });
+        this.stormSeed = m.stormSeed;
+        bus.emit('net:welcome', { id: m.id, code: m.code, stormSeed: m.stormSeed });
         if (m.pads) bus.emit('net:pads', { pads: m.pads });
+        // Catch up on structures built and broken before this client joined.
+        if (m.pieces?.length) bus.emit('net:worldPieces', { pieces: m.pieces });
+        if (m.damaged?.length) bus.emit('net:worldDamage', { damaged: m.damaged });
         this._renderUI();
+        break;
+
+      case 'build':
+        if (m.by !== this.id) bus.emit('net:pieceBuilt', { piece: m.piece });
+        break;
+
+      case 'unbuild':
+        if (m.by !== this.id) bus.emit('net:pieceRemoved', { id: m.id });
+        break;
+
+      case 'damage':
+        // Applies to everyone including the reporter: the server's number is
+        // the number, so whoever reported the impact does not end up a step
+        // ahead of the rest.
+        bus.emit('net:pieceDamaged', m);
         break;
 
       case 'players':

@@ -75,6 +75,42 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// ------------------------------------------------------------- world state
+
+/**
+ * Authoritative destruction state.
+ *
+ * Damage cannot be client-decided. Every client runs the same storm, so each
+ * would independently conclude a wall broke at a slightly different moment and
+ * they would disagree about which pieces still exist. The server owns the
+ * storm seed and the piece ledger; clients report *impacts* and the server
+ * decides what they did.
+ *
+ * Only pieces that have been touched are tracked. An untouched structure is
+ * identical on every client from the build events alone, so storing 200
+ * healthy planks would be storing nothing.
+ */
+const world = {
+  /** Shared storm seed so every client rolls the same weather. */
+  stormSeed: (Math.random() * 0xffffffff) >>> 0,
+  /** id -> {health, stage, detached} for pieces that have taken damage. */
+  damaged: new Map(),
+  /** Build pieces placed this session, so a joiner sees existing structures. */
+  pieces: new Map(),
+};
+
+function applyDamage(id, amount, byId) {
+  const rec = world.damaged.get(id) || { health: null, detached: false };
+  const piece = world.pieces.get(id);
+  const max = piece?.maxHealth ?? 100;
+  if (rec.health == null) rec.health = max;
+  if (rec.detached) return null;
+  rec.health = Math.max(0, rec.health - amount);
+  rec.detached = rec.health <= 0;
+  world.damaged.set(id, rec);
+  return { id, health: rec.health, detached: rec.detached, by: byId };
+}
+
 // ------------------------------------------------------------------ game state
 
 /** @type {Map<string, object>} id -> client */
@@ -155,7 +191,14 @@ wss.on('connection', (ws) => {
   };
   clients.set(id, client);
 
-  send(ws, 'welcome', { id, code: client.code, pads: padView(), countdown: COUNTDOWN });
+  send(ws, 'welcome', {
+    id, code: client.code, pads: padView(), countdown: COUNTDOWN,
+    stormSeed: world.stormSeed,
+    // Existing structures and their damage, so a joiner does not see a
+    // pristine village that everyone else watched fall over.
+    pieces: [...world.pieces.values()],
+    damaged: [...world.damaged.entries()].map(([pid, r]) => ({ id: pid, ...r })),
+  });
 
   ws.on('message', (raw) => {
     let m;
@@ -180,6 +223,31 @@ wss.on('connection', (ws) => {
       case 'ping':
         send(ws, 'pong', { now: Date.now() });
         break;
+
+      // ---- world building and destruction ----
+      case 'build': {
+        // Placement is trusted (it costs the placer resources locally), but
+        // it is relayed so everyone sees the same structure.
+        if (!m.piece?.id) break;
+        world.pieces.set(m.piece.id, m.piece);
+        broadcast('build', { piece: m.piece, by: id });
+        break;
+      }
+      case 'unbuild': {
+        if (!m.id) break;
+        world.pieces.delete(m.id);
+        world.damaged.delete(m.id);
+        broadcast('unbuild', { id: m.id, by: id });
+        break;
+      }
+      case 'impact': {
+        // A client says "a wave/lightning/axe hit piece X for N". The server
+        // decides what that did, so every client learns the same outcome from
+        // one place rather than each computing its own.
+        const res = applyDamage(m.id, Math.max(0, +m.amount || 0), id);
+        if (res) broadcast('damage', res);
+        break;
+      }
 
       case 'padJoin': {
         const pad = pads[m.pad | 0];

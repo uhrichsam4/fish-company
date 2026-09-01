@@ -101,6 +101,35 @@ export class BuildSystem {
     bus.on('build:select', ({ id }) => { if (PIECE_BY_ID[id]) this.selected = id; });
     bus.on('build:material', ({ id }) => { if (MATERIALS[id]) this.material = id; });
     bus.on('game:newgame', () => this.clearAll());
+
+    // ---- authoritative multiplayer state ----
+    bus.on('net:pieceDamaged', ({ id, health, detached }) => {
+      const p = this.pieces.get(id);
+      if (!p) return;
+      this._applyingRemote = true;
+      // Apply the server's number rather than re-deriving it, then let the
+      // local damage path handle staging and detachment consistently.
+      const delta = p.health - health;
+      if (delta > 0) this.damage(p, delta);
+      if (detached && !p.detached) this.detach(p);
+      this._applyingRemote = false;
+    });
+    bus.on('net:pieceBuilt', ({ piece }) => this._applyRemoteBuild(piece));
+    bus.on('net:worldPieces', ({ pieces }) => { for (const p of pieces) this._applyRemoteBuild(p); });
+    bus.on('net:worldDamage', ({ damaged }) => {
+      for (const d of damaged) {
+        const p = this.pieces.get(d.id);
+        if (!p) continue;
+        this._applyingRemote = true;
+        if (d.detached) this.detach(p);
+        else if (d.health != null && d.health < p.health) this.damage(p, p.health - d.health);
+        this._applyingRemote = false;
+      }
+    });
+    bus.on('net:pieceRemoved', ({ id }) => {
+      const p = this.pieces.get(id);
+      if (p) this.remove(p, false);
+    });
     return this;
   }
 
@@ -241,6 +270,14 @@ export class BuildSystem {
 
     this.game.audio?.play('crate_break', { volume: 0.3, rate: 0.75, position: mesh.position.clone() });
     bus.emit('build:placed', { piece });
+    if (!this._applyingRemote) {
+      this.net?._send('build', {
+        piece: {
+          id: piece.id, type: defId, material: useMat,
+          x: pos.x, y: pos.y, z: pos.z, r: rotation, maxHealth: piece.maxHealth,
+        },
+      });
+    }
     this._recalcFrom(piece);
     return piece;
   }
@@ -255,8 +292,30 @@ export class BuildSystem {
     this._removeMesh(piece);
     this.pieces.delete(piece.id);
     this.game.audio?.play('crate_break', { volume: 0.35, rate: 1.1 });
+    if (!this._applyingRemote) this.net?._send('unbuild', { id: piece.id });
     this._recalcAll();
     return true;
+  }
+
+  /** Rebuild a piece someone else placed, without re-broadcasting it. */
+  _applyRemoteBuild(s) {
+    if (!s?.id || this.pieces.has(s.id)) return;
+    const def = PIECE_BY_ID[s.type];
+    if (!def) return;
+    this._applyingRemote = true;
+    const mat = MATERIALS[s.material] || MATERIALS.wood;
+    const mesh = this._makeMesh(def, s.material);
+    mesh.position.set(s.x, s.y, s.z);
+    mesh.rotation.y = s.r || 0;
+    this.root.add(mesh);
+    this.pieces.set(s.id, {
+      id: s.id, type: s.type, def, material: s.material || 'wood',
+      x: s.x, y: s.y, z: s.z, rotation: s.r || 0,
+      mesh, health: mat.health, maxHealth: mat.health,
+      stage: 'healthy', detached: false, supported: true,
+    });
+    this._recalcAll();
+    this._applyingRemote = false;
   }
 
   _removeMesh(p) {
@@ -313,8 +372,23 @@ export class BuildSystem {
    * @param {number} amount
    * @param {{x,y,z}} [dir] impulse direction for the debris
    */
+  /** The net system, when one is loaded and connected. */
+  get net() {
+    const n = this.game.get('net');
+    return n?.online ? n : null;
+  }
+
   damage(piece, amount, dir = null) {
     if (!piece || piece.detached) return;
+    // Online, the server owns the ledger. Every client runs the same storm,
+    // so each would independently decide a wall broke at a slightly different
+    // moment and they would disagree about what is still standing. Report the
+    // impact and wait to be told the result.
+    const net = this.net;
+    if (net && !this._applyingRemote) {
+      net._send('impact', { id: piece.id, amount });
+      return;
+    }
     const mat = MATERIALS[piece.material] || MATERIALS.wood;
     piece.health -= amount;
     const frac = clamp01(piece.health / piece.maxHealth);
