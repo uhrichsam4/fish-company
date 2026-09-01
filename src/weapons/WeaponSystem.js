@@ -277,6 +277,7 @@ export class WeaponSystem {
     const hit = game.physics.raycast(_eye, _fwd, reach, HIT_MASK, null);
     if (hit) dist = Math.max(1.5, hit.distance);
     const fishSys = game.get('fish');
+    let target = null;
     if (fishSys) {
       for (const fish of fishSys.active) {
         if (!fish.active || fish.state === FISH_STATE.HOOKED) continue;
@@ -287,9 +288,20 @@ export class WeaponSystem {
         const rad = Math.max(0.6, fish.scale * 0.8) + along * 0.02;
         if (cx * cx + cy * cy + cz * cz > rad * rad) continue;
         dist = along;
+        target = fish;
       }
     }
-    return out.copy(_eye).addScaledVector(_fwd, dist);
+    out.copy(_eye).addScaledVector(_fwd, dist);
+    if (target) {
+      // Lead a moving fish by most of its travel during the shot's flight.
+      // A full lead would be an aimbot; none at all means a fish that is
+      // simply swimming dodges every shot you place perfectly on it.
+      const speed = Math.max(6, stats.speed ?? 30);
+      const under = target.position.y < waterHeightAt(target.position.x, target.position.z);
+      const flight = Math.min(1.2, dist / (speed * (under ? 0.5 : 0.9)));
+      out.addScaledVector(target.velocity, flight * 0.7);
+    }
+    return out;
   }
 
   /**
@@ -585,12 +597,9 @@ export class WeaponSystem {
         if (worldHit) hitDist = worldHit.distance;
       }
       let fishHit = null;
-      if (fishSys) {
-        const n = this._sweepFish(p, fishSys, _c, segLen);
-        for (let k = 0; k < n; k++) {
-          if (this._hits[k].t < hitDist) { hitDist = this._hits[k].t; fishHit = this._hits[k].f; }
-          break;
-        }
+      if (fishSys && this._sweepFish(p, fishSys, _c, segLen) > 0 && this._hits[0].t < hitDist) {
+        hitDist = this._hits[0].t;
+        fishHit = this._hits[0].f;
       }
 
       if (fishHit) {

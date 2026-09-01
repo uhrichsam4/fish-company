@@ -251,6 +251,43 @@ export function installTestHarness(game) {
       if (on) { game.physics.enabled = false; } else { game.physics.enabled = true; }
     },
     hideUI(v = true) { bus.emit('hud:visible', !v); document.getElementById('click-to-play')?.classList.add('hidden'); },
+
+    /**
+     * Grab the framebuffer and POST it to tools/shotserver.mjs, which writes a
+     * PNG under tools/shots/. The read has to happen inside the same task as
+     * the draw call because the context isn't created with
+     * preserveDrawingBuffer, so we re-render explicitly and read immediately.
+     */
+    async capture(name = 'shot', opts = {}) {
+      const r = game.renderer;
+      const w = opts.width, h = opts.height;
+      const prev = { w: r.domElement.width, h: r.domElement.height };
+      if (w && h) { r.setSize(w, h, false); game.camera.aspect = w / h; game.camera.updateProjectionMatrix(); }
+      // Draw and read back in one go.
+      r.render(game.scene, game.camera);
+      for (const s of game.systems) { try { s.postRender?.(game); } catch { /* */ } }
+      const url = r.domElement.toDataURL('image/png');
+      if (w && h) {
+        r.setSize(prev.w, prev.h, false);
+        game.camera.aspect = prev.w / prev.h;
+        game.camera.updateProjectionMatrix();
+      }
+      try {
+        const res = await fetch('http://localhost:5181/', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, data: url }),
+        });
+        const j = await res.json();
+        return j.file;
+      } catch (e) { return `capture failed: ${e.message}`; }
+    },
+
+    /** Pose the camera, wait a beat, and capture. */
+    async shot(name, x, y, z, yaw, pitch, settleMs = 700) {
+      T.survey(x, y, z, yaw, pitch);
+      await sleep(settleMs);
+      return T.capture(name);
+    },
   };
 
   // Keep simulating while the automation tab is backgrounded.

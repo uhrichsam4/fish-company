@@ -9,6 +9,8 @@ import { clamp, clamp01, lerp, damp, makeRNG } from '../util/math.js';
 import { setStatus } from '../core/Game.js';
 import * as Props from './props/index.js';
 import { batchStatic } from './StaticBatcher.js';
+import { dressRegion } from './RegionDressing.js';
+import { createTerrainMaterial } from './TerrainMaterial.js';
 
 /**
  * Owns terrain, seabed, region streaming and static decoration.
@@ -35,10 +37,7 @@ export class World {
 
   async init(game) {
 
-    this.terrainMaterial = new THREE.MeshStandardMaterial({
-      vertexColors: true, roughness: 0.96, metalness: 0.0,
-      flatShading: false, side: THREE.FrontSide,
-    });
+    this.terrainMaterial = createTerrainMaterial(game.assets, { scale: 0.34, detail: 0.85, normalStrength: 0.9 });
     this.propMaterial = this.props?.makeSharedPropMaterial?.()
       || new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.03 });
     this.flatPropMaterial = this.props?.makeFlatPropMaterial?.()
@@ -49,7 +48,7 @@ export class World {
     game.scene.add(this.root);
 
     setStatus('sculpting the ocean floor…');
-    const { texture, minH, maxH } = await buildHeightTexture(1024, WORLD_EXTENT, (p) => {
+    const { texture, minH, maxH } = await buildHeightTexture(1536, WORLD_EXTENT, (p) => {
       setStatus(`sculpting the ocean floor… ${Math.round(p * 100)}%`);
     });
     this.heightTexture = texture;
@@ -208,7 +207,7 @@ export class World {
     if (def.trench) { await this.decorateTrench(s, rng); return; }
 
     // ---- vegetation ----
-    const treeCount = { tropical: 46, jungle: 78, rocky: 20, industrial: 12, storm: 18, arctic: 16, station: 0, abyss: 0 }[biome] ?? 20;
+    const treeCount = { tropical: 74, jungle: 128, rocky: 34, industrial: 20, storm: 30, arctic: 26, station: 4, abyss: 0 }[biome] ?? 30;
     const treeSpots = scatterOnLand(def, treeCount, {
       seed: hashStr(def.id + 'trees'), minH: 2.0, maxH: def.peak * 0.82,
       maxSlope: 0.5, minSpacing: 6.5, rMax: def.radius * 0.92,
@@ -233,8 +232,8 @@ export class World {
     group.add(treeGroup);
 
     // ---- bushes / ground cover ----
-    const bushSpots = scatterOnLand(def, treeCount * 1.6, {
-      seed: hashStr(def.id + 'bush'), minH: 1.4, maxSlope: 0.6, minSpacing: 3.0, rMax: def.radius * 0.97,
+    const bushSpots = scatterOnLand(def, treeCount * 2.1, {
+      seed: hashStr(def.id + 'bush'), minH: 1.1, maxSlope: 0.66, minSpacing: 2.4, rMax: def.radius * 1.0,
     });
     for (const sp of bushSpots) {
       const brng = makeRNG((sp.rng * 1e9) | 0);
@@ -248,26 +247,60 @@ export class World {
     }
 
     // ---- rocks ----
-    const rockSpots = scatterOnLand(def, 40, {
-      seed: hashStr(def.id + 'rocks'), minH: -1.4, maxSlope: 1.0, minSpacing: 5.0, rMax: def.radius * 1.12,
-      scaleMin: 0.5, scaleMax: 2.6,
+    // Rocks: mostly small boulders. `size` and `scale` multiply, so both are
+    // kept modest — the first pass produced 7 m grey monoliths all over the
+    // island.
+    const rockSpots = scatterOnLand(def, 82, {
+      seed: hashStr(def.id + 'rocks'), minH: -1.6, maxSlope: 1.0, minSpacing: 3.2, rMax: def.radius * 1.16,
+      scaleMin: 0.32, scaleMax: 1.15,
     });
     for (const sp of rockSpots) {
       const rrng = makeRNG((sp.rng * 1e9) | 0);
-      let r = P?.buildRock?.(rrng, { size: lerp(0.6, 2.8, sp.rng), style: sp.rng > 0.8 ? 'pillar' : 'boulder', biome });
+      // Style mix: mostly boulders, some flat slabs, rare small pillars.
+      const roll = rrng();
+      const style = roll < 0.62 ? 'boulder' : roll < 0.86 ? 'flat' : roll < 0.96 ? 'shard' : 'pillar';
+      const size = style === 'pillar' ? lerp(0.5, 1.1, rrng()) : lerp(0.35, 1.5, rrng());
+      let r = P?.buildRock?.(rrng, { size, style, biome });
       if (!r) r = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), this.flatPropMaterial);
-      r.position.set(sp.x, sp.y - 0.3 * sp.scale, sp.z);
-      r.rotation.set(rrng() * 0.4, sp.rot, rrng() * 0.4);
+      r.position.set(sp.x, sp.y - 0.22 * sp.scale * size, sp.z);
+      r.rotation.set(rrng() * 0.35, sp.rot, rrng() * 0.35);
       r.scale.setScalar(sp.scale);
+      // Break up the uniform grey a little per instance.
+      const tint = 0.82 + rrng() * 0.34;
+      r.traverse?.((o) => {
+        if (o.isMesh && o.material?.color) { o.material = o.material.clone(); o.material.color.multiplyScalar(tint); }
+      });
       setShadows(r);
       group.add(r);
-      // Big rocks get colliders so they block movement.
-      if (sp.scale > 1.5) {
+      // Only genuinely large rocks block movement.
+      const worldSize = sp.scale * size;
+      if (worldSize > 1.1) {
         s.bodies.push(this.game.physics.addBody({
-          type: 'fixed', position: { x: sp.x, y: sp.y + sp.scale * 0.4, z: sp.z },
-          shape: { kind: 'ball', r: sp.scale * 0.95 }, tag: 'rock', events: false,
+          type: 'fixed', position: { x: sp.x, y: sp.y + worldSize * 0.35, z: sp.z },
+          shape: { kind: 'ball', r: worldSize * 0.85 }, tag: 'rock', events: false,
         }));
       }
+    }
+
+    // A handful of deliberately large landmark rocks, placed on high ground so
+    // they read as part of the island rather than litter.
+    const boulders = scatterOnLand(def, biome === 'rocky' ? 9 : 5, {
+      seed: hashStr(def.id + 'boulders'), minH: 3.5, maxSlope: 0.55, minSpacing: 22, rMax: def.radius * 0.8,
+      scaleMin: 1.0, scaleMax: 1.7,
+    });
+    for (const sp of boulders) {
+      const brng = makeRNG((sp.rng * 1e9) | 0);
+      const b = P?.buildRockCluster?.(brng, { size: 2.2, count: 3 }) || P?.buildRock?.(brng, { size: 2.4, style: 'boulder', biome });
+      if (!b) continue;
+      b.position.set(sp.x, sp.y - 0.5, sp.z);
+      b.rotation.y = sp.rot;
+      b.scale.setScalar(sp.scale);
+      setShadows(b);
+      group.add(b);
+      s.bodies.push(this.game.physics.addBody({
+        type: 'fixed', position: { x: sp.x, y: sp.y + sp.scale, z: sp.z },
+        shape: { kind: 'ball', r: sp.scale * 2.0 }, tag: 'rock', events: false,
+      }));
     }
 
     // ---- underwater decoration ----
@@ -307,7 +340,60 @@ export class World {
       }
     }
 
+    this.buildGroundCover(s, def);
     await this.buildStructures(s, rng);
+    dressRegion(this, s, def, this.getAnchors(def.id));
+  }
+
+  /**
+   * Instanced ground cover. One InstancedMesh per region keeps hundreds of
+   * grass/shell clumps at a single draw call.
+   */
+  buildGroundCover(s, def) {
+    const P = this.props;
+    if (def.biome === 'abyss' || def.biome === 'station') return;
+    const isGreen = ['tropical', 'jungle', 'rocky', 'storm'].includes(def.biome);
+    let geo = null;
+    try { geo = P?.buildGrassTuft?.(makeRNG(hashStr(def.id + 'grass')), { biome: def.biome }); }
+    catch (e) { console.warn('[World] grass tuft failed', e.message); }
+    if (geo && geo.isGroup) {
+      // Some builders return a Group; take its first geometry.
+      const m = geo.children.find((c) => c.isMesh);
+      geo = m?.geometry || null;
+    }
+    if (!geo || !geo.attributes) {
+      geo = new THREE.PlaneGeometry(0.5, 0.6);
+      geo.translate(0, 0.3, 0);
+    }
+    const spots = scatterOnLand(def, isGreen ? 520 : 260, {
+      seed: hashStr(def.id + 'cover'), minH: isGreen ? 1.6 : 0.4, maxSlope: 0.55,
+      minSpacing: 1.0, rMax: def.radius * 0.98, scaleMin: 0.7, scaleMax: 1.5,
+    });
+    if (!spots.length) return;
+    const mat = new THREE.MeshStandardMaterial({
+      color: isGreen ? 0x6fa84a : 0xc9bd9a, roughness: 1, metalness: 0,
+      side: THREE.DoubleSide, alphaTest: 0.35, vertexColors: !!geo.attributes.color,
+    });
+    mat.__owned = true;
+    const inst = new THREE.InstancedMesh(geo, mat, spots.length);
+    inst.castShadow = false;
+    inst.receiveShadow = true;
+    inst.userData.noBatch = true;
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const sc = new THREE.Vector3();
+    const pos = new THREE.Vector3();
+    for (let i = 0; i < spots.length; i++) {
+      const sp = spots[i];
+      pos.set(sp.x, sp.y - 0.05, sp.z);
+      q.setFromAxisAngle(UP_AXIS, sp.rot);
+      sc.setScalar(sp.scale);
+      m4.compose(pos, q, sc);
+      inst.setMatrixAt(i, m4);
+    }
+    inst.instanceMatrix.needsUpdate = true;
+    inst.frustumCulled = false;
+    s.group.add(inst);
   }
 
   async buildStructures(s, rng) {
@@ -459,8 +545,8 @@ export class World {
     }
 
     // ---- scattered beach debris ----
-    const debrisSpots = scatterOnLand(def, 24, {
-      seed: hashStr(def.id + 'debris'), minH: 0.1, maxH: 4.5, maxSlope: 0.35, minSpacing: 4, rMax: def.radius * 1.05,
+    const debrisSpots = scatterOnLand(def, 46, {
+      seed: hashStr(def.id + 'debris'), minH: 0.05, maxH: 5.0, maxSlope: 0.4, minSpacing: 2.8, rMax: def.radius * 1.08,
     });
     for (const sp of debrisSpots) {
       const drng = makeRNG((sp.rng * 1e9) | 0);
@@ -583,6 +669,8 @@ function countMeshes(root) {
   root.traverse((o) => { if (o.isMesh) n++; });
   return n;
 }
+
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
 
 function setShadows(obj) {
   obj.traverse?.((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });

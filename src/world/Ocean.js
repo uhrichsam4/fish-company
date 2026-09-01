@@ -333,10 +333,43 @@ varying float vCrest;
 varying float vDist;
 varying float vRipple;
 
+uniform sampler2D uHeightMap;
+uniform vec4 uHeightRange;
+uniform vec2 uHeightScale;
+uniform float uSeaLevel;
+
 vec3 unpackNormal(vec4 c) { return c.rgb * 2.0 - 1.0; }
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash21(i), hash21(i + vec2(1, 0)), u.x),
+             mix(hash21(i + vec2(0, 1)), hash21(i + vec2(1, 1)), u.x), u.y);
+}
+
+// Per-fragment water depth. Interpolating this from the vertex stage produced
+// hard triangle edges in the shoreline foam.
+float depthAt(vec2 wp) {
+#if USE_HEIGHTMAP
+  vec2 uv = (wp - uHeightRange.xy) / uHeightRange.zw;
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 60.0;
+  float terrain = uHeightScale.x + texture2D(uHeightMap, uv).r * uHeightScale.y;
+  return uSeaLevel - terrain;
+#else
+  return 40.0;
+#endif
+}
 
 void main() {
   float waterCol_t;
+  // Fragment-accurate depth near the shore; the interpolated value is fine
+  // further out and much cheaper.
+  float fragDepth = vDist < 300.0 ? depthAt(vWorldPos.xz) : vDepth;
   vec3 viewDir = normalize(uCameraPos - vWorldPos);
   vec3 N = normalize(vNormal);
 
@@ -351,7 +384,7 @@ void main() {
     N = normalize(N + vec3(detail.x, 0.0, detail.y) * (0.55 * fade * uWindStrength));
   }
 
-  float depthFade = clamp(vDepth / 34.0, 0.0, 1.0);
+  float depthFade = clamp(fragDepth / 34.0, 0.0, 1.0);
   waterCol_t = pow(depthFade, 1.45);
   vec3 waterCol = mix(uShallowColor, uDeepColor, waterCol_t);
 
@@ -372,8 +405,20 @@ void main() {
   col += uSunColor * (spec * 2.4 + wide * 0.16) * uSparkle;
 
   // Foam: shoreline band + wave crests + ripple rings.
-  float shoreFoam = smoothstep(1.6, 0.15, vDepth) * 0.9;
-  shoreFoam += smoothstep(3.2, 1.6, vDepth) * 0.25;
+  // Wave-phase-driven shoreline: the foam edge advances and retreats with the
+  // swell instead of sitting at a fixed contour.
+  float surge = sin(uTime * 0.55 + vWorldPos.x * 0.045 + vWorldPos.z * 0.037) * 0.42
+              + sin(uTime * 0.31 - vWorldPos.x * 0.021 + vWorldPos.z * 0.029) * 0.28;
+  // Break the depth up with noise before thresholding: the heightmap is only
+  // ~2 m/texel, and a hard threshold on it produced a visibly stair-stepped
+  // foam line along the beach.
+  float foamNoise = vnoise(vWorldPos.xz * 0.55 + uTime * 0.03) * 0.62
+                  + vnoise(vWorldPos.xz * 1.9 - uTime * 0.05) * 0.3
+                  + vnoise(vWorldPos.xz * 6.0) * 0.14;
+  float noisyDepth = fragDepth + (foamNoise - 0.53) * 1.15;
+  float edge = 1.35 + surge * uAmplitude;
+  float shoreFoam = smoothstep(edge, edge - 0.85, noisyDepth) * 0.9;
+  shoreFoam += smoothstep(edge + 1.4, edge, noisyDepth) * 0.18;
   float crestFoam = smoothstep(0.45, 0.95, vCrest) * clamp(uAmplitude, 0.0, 1.6);
   float rippleFoam = clamp(vRipple * 3.0, 0.0, 1.0);
   float foamAmt = clamp(shoreFoam + crestFoam * 0.85 + rippleFoam * 0.6, 0.0, 1.0);
@@ -385,8 +430,8 @@ void main() {
   }
 
   // Alpha: opaque offshore, translucent at the water's edge.
-  float alpha = mix(0.62, 1.0, clamp(vDepth / 2.2, 0.0, 1.0));
-  alpha = max(alpha, foamAmt * 0.9);
+  float alpha = mix(0.5, 1.0, clamp(fragDepth / 2.6, 0.0, 1.0));
+  alpha = max(alpha, foamAmt * 0.82);
   alpha *= uOpacity;
 
   if (uUnderwater > 0.5) {

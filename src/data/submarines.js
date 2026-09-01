@@ -35,7 +35,7 @@ export const SUBMARINES = [
 
     speed: 6.4, turnRate: 0.85, ascendRate: 3.2,
     crushDepth: 220, hullStrength: 140,
-    battery: 100, batteryUse: 1.5,
+    battery: 100, batteryUse: 0.22,
     oxygen: 2400, cargo: 90, crew: 1,
     lightRange: 26, lightCone: 0.50,
     sonarRange: 70, sonarDetail: 1,
@@ -64,7 +64,7 @@ export const SUBMARINES = [
 
     speed: 5.6, turnRate: 0.62, ascendRate: 2.8,
     crushDepth: 900, hullStrength: 420,
-    battery: 280, batteryUse: 2.4,
+    battery: 280, batteryUse: 0.34,
     oxygen: 5400, cargo: 380, crew: 3,
     lightRange: 46, lightCone: 0.55,
     sonarRange: 150, sonarDetail: 2,
@@ -97,7 +97,7 @@ export const SUBMARINES = [
 
     speed: 4.8, turnRate: 0.44, ascendRate: 2.2,
     crushDepth: 1800, hullStrength: 1200,
-    battery: 760, batteryUse: 3.8,
+    battery: 760, batteryUse: 0.55,
     oxygen: 10800, cargo: 1800, crew: 6,
     lightRange: 72, lightCone: 0.62,
     sonarRange: 260, sonarDetail: 3,
@@ -133,7 +133,7 @@ export const SUBMARINES = [
 
     speed: 7.2, turnRate: 0.55, ascendRate: 3.6,
     crushDepth: 3000, hullStrength: 3600,
-    battery: 2200, batteryUse: 5.2,
+    battery: 2200, batteryUse: 0.92,
     oxygen: 25200, cargo: 6000, crew: 10,
     lightRange: 120, lightCone: 0.70,
     sonarRange: 520, sonarDetail: 5,

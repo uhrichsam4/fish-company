@@ -7,6 +7,12 @@ import { PausePanel } from './panels/PausePanel.js';
 import { MapPanel } from './panels/MapPanel.js';
 import { FleetEditorPanel } from './panels/FleetEditorPanel.js';
 import { BoatUpgradePanel } from './panels/BoatUpgradePanel.js';
+import { ContractsPanel } from './panels/ContractsPanel.js';
+import { ProcessingPanel } from './panels/ProcessingPanel.js';
+import { QuestPanel } from './panels/QuestPanel.js';
+import { WorkerGearPanel } from './panels/WorkerGearPanel.js';
+import { Tutorial } from './Tutorial.js';
+import { Waypoints } from './Waypoints.js';
 
 /** Owns every modal panel and the global keybinds that open them. */
 export class UIManager {
@@ -26,6 +32,10 @@ export class UIManager {
     this.register('map', new MapPanel(game));
     this.register('fleetEditor', new FleetEditorPanel(game));
     this.register('boatUpgrade', new BoatUpgradePanel(game));
+    this.register('contracts', new ContractsPanel(game));
+    this.register('processing', new ProcessingPanel(game));
+    this.register('quests', new QuestPanel(game));
+    this.register('workerGear', new WorkerGearPanel(game));
 
     // Panels may be stateful systems in their own right (Atlas tracks discovery).
     for (const [id, p] of this.panels) {
@@ -33,11 +43,36 @@ export class UIManager {
       if (p.name) game.systemsByName.set(p.name, p);
     }
 
+    // Tutorial + waypoints are HUD-layer systems owned by the UI. They are not
+    // pushed onto game.systems: init runs inside Game.initSystems' own loop
+    // over that array, and mutating it there would re-enter a system. Driving
+    // them from update() keeps ordering deterministic; they still answer to
+    // game.get(name) and take part in the save.
+    this.extras = [];
+    for (const Cls of [Tutorial, Waypoints]) {
+      try {
+        const sys = new Cls(game);
+        await sys.init?.(game);
+        game.systemsByName.set(sys.name, sys);
+        if (typeof sys.save === 'function') game.save.register(sys.name, () => sys.save(), (d) => sys.load(d));
+        this.extras.push(sys);
+      } catch (e) { console.error('[UI] extra system failed', e); }
+    }
+
     bus.on('interact:shop', (d) => this.show('shop', d));
     bus.on('interact:sell', (d) => this.sellHere(d));
     bus.on('interact:hire', (d) => this.show('company', { tab: 'hire', ...d }));
     bus.on('ui:show', ({ id, data }) => this.show(id, data));
     bus.on('ui:close', () => this.closeAll());
+
+    // Company-panel link-outs. CompanyPanel forwards every data-action as
+    // `company:<action>`, so these route its buttons at the right panel
+    // without that file needing to know these panels exist.
+    bus.on('company:equipWorker', ({ id }) => this.show('workerGear', { id }));
+    bus.on('company:contracts', (d) => this.show('contracts', d));
+    bus.on('company:processing', (d) => this.show('processing', d));
+    bus.on('company:quests', (d) => this.show('quests', d));
+    bus.on('interact:contracts', (d) => this.show('contracts', d));
     return this;
   }
 
@@ -114,6 +149,18 @@ export class UIManager {
       if (input.rawPressed('KeyM')) this.toggle('map');
       if (input.rawPressed('KeyC')) { /* reserved for crouch */ }
       if (input.rawPressed('KeyO')) this.toggle('company');
+      if (input.rawPressed('KeyJ')) this.toggle('quests');
+      if (input.rawPressed('KeyK')) this.toggle('contracts');
+      if (input.rawPressed('KeyP')) this.toggle('processing');
+    }
+
+    // HUD-layer systems the UI owns (see init).
+    if (this.extras) {
+      for (const s of this.extras) {
+        if (!s.update) continue;
+        try { s.update(dt, game); }
+        catch (e) { console.error(`[UI] "${s.name}" update threw:`, e); }
+      }
     }
 
     // Panels that need live data refresh at 4 Hz while open.

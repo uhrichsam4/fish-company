@@ -440,7 +440,9 @@ export function buildSubInterior(def) {
   const g = new THREE.Group();
   g.name = `sub-interior:${def.id}`;
 
-  const shell = m('#1c232b', 0.85, 0.15, { side: THREE.BackSide });
+  const shell = m('#252e37', 0.85, 0.12, {
+    side: THREE.BackSide, emissive: 0x0b1218, emissiveIntensity: 1.0,
+  });
   const panel = new THREE.MeshStandardMaterial({
     color: 0x232c36, roughness: 0.7, metalness: 0.25,
     emissive: 0x0d1a22, emissiveIntensity: 1.0,
@@ -451,28 +453,36 @@ export function buildSubInterior(def) {
     color: c, emissive: c, emissiveIntensity: i, roughness: 0.4, metalness: 0,
   });
 
-  // ---- hull shell around the head (inside-out sphere-ish capsule) -------
+  // ---- hull shell around the head -------------------------------------
+  // An inside-out sphere band with a wedge cut out of the FRONT so the pilot
+  // can actually see through the viewport. In THREE's sphere parameterisation
+  // phi = PI/2 points along +Z, so the gap is centred there.
+  const GAP = 0.78;   // half-angle of the forward opening, radians
   const cabin = new THREE.Mesh(
-    new THREE.SphereGeometry(1.5, 14, 8, 0, TAU, Math.PI * 0.12, Math.PI * 0.76),
+    new THREE.SphereGeometry(
+      1.42, 16, 8,
+      Math.PI / 2 + GAP, TAU - GAP * 2,
+      Math.PI * 0.08, Math.PI * 0.84,
+    ),
     shell,
   );
   cabin.position.set(0, -0.05, -0.35);
-  cabin.scale.set(1, 0.92, 1.35);
+  cabin.scale.set(1, 0.92, 1.3);
   g.add(cabin);
 
   // ---- viewport frame --------------------------------------------------
-  const frame = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.075, 6, 20), trim);
-  frame.position.set(0, -0.02, 0.95);
+  const frame = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.055, 5, 16), trim);
+  frame.position.set(0, -0.02, 1.22);
   g.add(frame);
-  const frameInner = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.035, 5, 18), m('#0f1519', 0.9, 0.2));
-  frameInner.position.set(0, -0.02, 0.99);
+  const frameInner = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.028, 4, 14), m('#0f1519', 0.9, 0.2));
+  frameInner.position.set(0, -0.02, 1.26);
   g.add(frameInner);
   // Bolt heads around the port.
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * TAU;
-    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.05, 5), trim);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TAU;
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.05, 4), trim);
     bolt.rotation.x = Math.PI / 2;
-    bolt.position.set(Math.cos(a) * 0.86, -0.02 + Math.sin(a) * 0.86, 0.93);
+    bolt.position.set(Math.cos(a) * 0.80, -0.02 + Math.sin(a) * 0.80, 1.20);
     g.add(bolt);
   }
 
@@ -481,15 +491,15 @@ export function buildSubInterior(def) {
     new THREE.CylinderGeometry(0.95, 1.02, 0.36, 16, 1, true, -Math.PI * 0.42, Math.PI * 0.84),
     panel,
   );
-  console_.rotation.x = -0.34;
-  console_.position.set(0, -0.62, 0.42);
+  console_.rotation.x = -0.36;
+  console_.position.set(0, -0.70, 0.34);
   g.add(console_);
   const consoleLip = new THREE.Mesh(
     new THREE.CylinderGeometry(1.03, 1.03, 0.05, 16, 1, true, -Math.PI * 0.42, Math.PI * 0.84),
     trim,
   );
-  consoleLip.rotation.x = -0.34;
-  consoleLip.position.set(0, -0.46, 0.47);
+  consoleLip.rotation.x = -0.36;
+  consoleLip.position.set(0, -0.53, 0.42);
   g.add(consoleLip);
 
   // ---- gauges ----------------------------------------------------------
@@ -506,8 +516,8 @@ export function buildSubInterior(def) {
     needle.position.z = 0.004;
     needle.position.y = 0.028;
     gg.add(needle);
-    gg.position.set(Math.sin(a) * 0.86, -0.5 + Math.cos(a) * 0.02, 0.52 + Math.cos(a) * 0.1);
-    gg.rotation.set(-0.5, -a, 0);
+    gg.position.set(Math.sin(a) * 0.80, -0.40 + Math.cos(a) * 0.02, 0.66 + Math.cos(a) * 0.10);
+    gg.rotation.set(-0.55, -a, 0);
     gg.userData.needle = needle;
     g.add(gg);
     gauges.push(gg);
@@ -515,10 +525,10 @@ export function buildSubInterior(def) {
 
   // ---- indicator strip -------------------------------------------------
   const strip = [];
-  for (let i = 0; i < 8; i++) {
-    const led = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.02, 0.012), glow(i < 5 ? 0x4fe8d0 : 0xffa23a, 1.4));
-    led.position.set(lerp(-0.34, 0.34, i / 7), -0.34, 0.78);
-    led.rotation.x = -0.34;
+  for (let i = 0; i < 6; i++) {
+    const led = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, 0.012), glow(i < 4 ? 0x4fe8d0 : 0xffa23a, 1.4));
+    led.position.set(lerp(-0.30, 0.30, i / 5), -0.27, 0.86);
+    led.rotation.x = -0.36;
     g.add(led);
     strip.push(led);
   }
@@ -529,12 +539,12 @@ export function buildSubInterior(def) {
     const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.9, 6), pipeMat);
     pipe.rotation.x = Math.PI / 2;
     pipe.rotation.z = s * 0.12;
-    pipe.position.set(s * (0.95 + (i % 2) * 0.1), 0.42 - (i % 2) * 0.22, -0.25);
+    pipe.position.set(s * (1.16 + (i % 2) * 0.09), 0.46 - (i % 2) * 0.26, -0.55);
     g.add(pipe);
     const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.07, 6), trim);
     collar.rotation.x = Math.PI / 2;
     collar.position.copy(pipe.position);
-    collar.position.z += 0.4;
+    collar.position.z -= 0.35;
     g.add(collar);
   }
   // Overhead conduit + a grab rail.
@@ -558,12 +568,12 @@ export function buildSubInterior(def) {
     grip.position.set(s * 0.22, 0.1, 0.08);
     yoke.add(grip);
   }
-  yoke.position.set(0, -0.44, 0.62);
+  yoke.position.set(0, -0.52, 0.66);
   g.add(yoke);
 
   // ---- cabin light so the shell reads in total darkness ----------------
-  const cabinLight = new THREE.PointLight(0x7fd8e8, 1.25, 4.5, 2);
-  cabinLight.position.set(0, 0.55, -0.1);
+  const cabinLight = new THREE.PointLight(0x8fe0f0, 4.0, 7.0, 2);
+  cabinLight.position.set(0, 0.62, -0.25);
   g.add(cabinLight);
 
   g.traverse((o) => {

@@ -41,11 +41,26 @@ export function worldHeight(x, z) {
     if (t < 1.0) {
       // Island body: dome + ridges, flattening near the waterline.
       const dome = Math.pow(1 - t * t, 1.35);
-      const ridge = (fbm2(x * 0.018, z * 0.018, 4) - 0.45) * r.peak * 0.55 * Math.pow(1 - t, 0.7);
-      const detail = (valueNoise2(x * 0.09, z * 0.09) - 0.5) * 1.1 * (1 - t * 0.6);
-      land = dome * r.peak + ridge + detail;
-      // Beach shelf: gentle grade in the last 12% of the radius.
-      if (t > 0.86) land *= smootherstep((1 - t) / 0.14) * 0.92 + 0.08;
+      const ridge = (fbm2(x * 0.014, z * 0.014, 4) - 0.44) * r.peak * 0.85 * Math.pow(1 - t, 0.55);
+      // Mid-scale relief: gullies and shoulders so hillsides aren't smooth domes.
+      const relief = (fbm2(x * 0.038 + 5.1, z * 0.038 - 3.3, 3) - 0.5) * r.peak * 0.34 * Math.pow(1 - t, 0.35);
+      // Erosion channels radiating from the peak.
+      const ang = Math.atan2(z - r.z, x - r.x);
+      const gully = Math.pow(Math.abs(Math.sin(ang * 5.5 + fbm2(x * 0.01, z * 0.01, 2) * 6)), 2.2);
+      const erosion = -gully * r.peak * 0.16 * Math.pow(clamp01(t * 1.3), 1.1) * (1 - t * 0.5);
+      const detail = (valueNoise2(x * 0.09, z * 0.09) - 0.5) * 1.3 * (1 - t * 0.5)
+        + (valueNoise2(x * 0.26 + 12, z * 0.26 - 8) - 0.5) * 0.42;
+      land = dome * r.peak + ridge + relief + erosion + detail;
+      // Beach: a narrow apron with a berm crest, not a long flat ramp. The
+      // beach width varies around the island so it isn't a uniform ring.
+      const beachStart = 0.90 - fbm2(x * 0.006 + 21, z * 0.006 - 13, 2) * 0.09;
+      if (t > beachStart) {
+        const bt = clamp01((t - beachStart) / (1 - beachStart));
+        land *= smootherstep(1 - bt) * 0.86 + 0.14;
+        land += Math.sin(bt * Math.PI) * 0.75;
+        // Wind ripples across the dry sand.
+        land += Math.sin(bt * 46 + fbm2(x * 0.02, z * 0.02, 2) * 9) * 0.075 * (1 - bt);
+      }
     }
 
     // Underwater shelf sloping from the shore out to the deep.
@@ -166,8 +181,10 @@ export function buildRegionTerrain(region, phys, opts = {}) {
       positions[idx * 3] = wx - region.x;
       positions[idx * 3 + 1] = h;
       positions[idx * 3 + 2] = wz - region.z;
-      uvs[idx * 2] = i / segs;
-      uvs[idx * 2 + 1] = j / segs;
+      // World-space UVs: the splat material tiles by world position, and the
+      // ocean's foam lookup wants a stable mapping too.
+      uvs[idx * 2] = wx * 0.05;
+      uvs[idx * 2 + 1] = wz * 0.05;
     }
   }
 

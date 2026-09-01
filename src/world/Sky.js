@@ -62,13 +62,17 @@ export class Sky {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.setScalar(game.settings.shadowRes);
     this.sun.shadow.camera.near = 1;
-    this.sun.shadow.camera.far = 260;
-    const S = 90;
+    this.sun.shadow.camera.far = 220;
+    // Tighter box: at 90 m the texel footprint was ~9 cm and terrain shadows
+    // broke into visible blotches.
+    const S = 58;
     this.sun.shadow.camera.left = -S; this.sun.shadow.camera.right = S;
     this.sun.shadow.camera.top = S; this.sun.shadow.camera.bottom = -S;
-    this.sun.shadow.bias = -0.0009;
-    this.sun.shadow.normalBias = 0.045;
-    this.sun.shadow.radius = 2.4;
+    // The terrain is one enormous self-shadowing receiver; it needs a
+    // generous normal bias or sloped ground breaks into diagonal acne.
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.11;
+    this.sun.shadow.radius = 1.6;
     this.sunTarget = new THREE.Object3D();
     game.scene.add(this.sunTarget);
     this.sun.target = this.sunTarget;
@@ -102,7 +106,8 @@ export class Sky {
     this.mesh.position.copy(game.camera.position);
     this.mesh.updateMatrix();
 
-    // Keep the shadow frustum tight around the camera.
+    // Keep the shadow frustum tight around the camera, snapped to texel size
+    // so shadows don't crawl as the player walks.
     const cam = game.camera;
     const d = 70;
     this.sun.position.set(
@@ -110,7 +115,12 @@ export class Sky {
       cam.position.y + this.sunDir.y * d,
       cam.position.z + this.sunDir.z * d,
     );
-    this.sunTarget.position.copy(cam.position);
+    const texel = (58 * 2) / (game.settings.shadowRes || 2048);
+    this.sunTarget.position.set(
+      Math.round(cam.position.x / texel) * texel,
+      Math.round(cam.position.y / texel) * texel,
+      Math.round(cam.position.z / texel) * texel,
+    );
     this.sunTarget.updateMatrixWorld();
   }
 

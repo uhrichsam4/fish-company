@@ -32,6 +32,9 @@ const _box = new THREE.Box3();
 const _matCache = new Map();
 
 function mat(hex, { rough = 0.72, metal = 0.05, glow = 0, emissive = null, side = null, transparent = false, opacity = 1 } = {}) {
+  // The scene has no environment map, so anything metallic renders black.
+  // Keep metalness low and let colour + roughness do the work.
+  metal = Math.min(metal, 0.18);
   const key = `${hex}|${rough}|${metal}|${glow}|${emissive}|${side}|${opacity}`;
   let m = _matCache.get(key);
   if (m) return m;
@@ -82,6 +85,9 @@ const ring = () => geo('ring', () => new THREE.TorusGeometry(0.5, 0.13, 4, 8)); 
 const plate = () => geo('plate', () => new THREE.CylinderGeometry(0.5, 0.42, 0.16, 6));
 const disc = () => geo('disc', () => new THREE.CircleGeometry(0.5, 10));
 
+/** Mark a node (and its subtree) as animated, so it survives the merge pass. */
+function dyn(o) { o.userData.dynamic = true; return o; }
+
 function put(parent, g, m, pos, rot = [0, 0, 0], scale = [1, 1, 1]) {
   const o = new THREE.Mesh(g, m);
   o.position.set(pos[0], pos[1], pos[2]);
@@ -90,6 +96,51 @@ function put(parent, g, m, pos, rot = [0, 0, 0], scale = [1, 1, 1]) {
   else o.scale.set(scale[0], scale[1], scale[2]);
   parent.add(o);
   return o;
+}
+
+// ---------------------------------------------------------------------------
+// Body profile sampler
+//
+// `buildFishMesh` hands back `spineSegments` — the lathe rings of the body in
+// normalised space. Everything bolted onto a boss is placed against that
+// profile instead of guessed coordinates, so scars sit on skin, teeth sit on
+// the jaw line and barnacles do not vanish inside the animal.
+// ---------------------------------------------------------------------------
+function bodyProfile(base) {
+  const segs = (base?.userData?.spineSegments || []).slice().sort((a, b) => b.x - a.x);
+  const fallback = { y: 0, ry: 0.09, rz: 0.09 };
+  const at = (x) => {
+    if (!segs.length) return fallback;
+    if (x >= segs[0].x) return { y: segs[0].y, ry: segs[0].radiusY, rz: segs[0].radiusZ };
+    const last = segs[segs.length - 1];
+    if (x <= last.x) return { y: last.y, ry: last.radiusY, rz: last.radiusZ };
+    for (let i = 1; i < segs.length; i++) {
+      if (x >= segs[i].x) {
+        const a = segs[i - 1], b = segs[i];
+        const t = (a.x - x) / Math.max(1e-5, a.x - b.x);
+        return {
+          y: lerp(a.y, b.y, t),
+          ry: lerp(a.radiusY, b.radiusY, t),
+          rz: lerp(a.radiusZ, b.radiusZ, t),
+        };
+      }
+    }
+    return fallback;
+  };
+  return {
+    segs,
+    at,
+    nose: segs.length ? segs[0].x : 0.5,
+    tail: segs.length ? segs[segs.length - 1].x : -0.5,
+    /** Y of the back at x, pushed out by `k` radii. */
+    top: (x, k = 1) => { const p = at(x); return p.y + p.ry * k; },
+    /** Y of the belly at x. */
+    bot: (x, k = 1) => { const p = at(x); return p.y - p.ry * k; },
+    /** Half-width at x. */
+    side: (x, k = 1) => at(x).rz * k,
+    /** Centre-line Y at x. */
+    mid: (x) => at(x).y,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -199,19 +250,44 @@ function addHarpoon(parent, mShaft, mHead, pos, dir, len = 0.13) {
  * Glowing weak point. Returns the descriptor BossSystem consumes.
  * The pip is a bright core + a socket ring so it reads at distance.
  */
+let _haloTex = null;
+function haloTexture() {
+  if (_haloTex) return _haloTex;
+  if (typeof document === 'undefined') return null;   // headless build/test
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  rg.addColorStop(0, 'rgba(255,255,255,0.85)');
+  rg.addColorStop(0.22, 'rgba(255,255,255,0.34)');
+  rg.addColorStop(0.55, 'rgba(255,255,255,0.10)');
+  rg.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = rg;
+  g.fillRect(0, 0, 64, 64);
+  _haloTex = new THREE.CanvasTexture(c);
+  return _haloTex;
+}
+
 function addWeakPoint(parent, x, y, z, radius, colorHex, list, hp = 1) {
   const g = new THREE.Group();
   g.position.set(x, y, z);
   const m = weakMat(colorHex);
-  const core = put(g, sphere(), m, [0, 0, 0], [0, 0, 0], radius * 2);
-  const socket = put(g, ring(), mat(0x14161a, { rough: 0.9 }), [0, 0, 0], [Math.PI / 2, 0, 0], radius * 3.1);
-  // Flat halo so the point is visible even edge-on.
-  const halo = put(g, disc(), new THREE.MeshBasicMaterial({
-    color: new THREE.Color(colorHex), transparent: true, opacity: 0.42,
-    depthWrite: false, side: THREE.DoubleSide,
-  }), [0, 0, 0], [0, 0, 0], radius * 5.2);
+  const core = put(g, sphere(), m, [0, 0, 0], [0, 0, 0], radius * 3.0);
+  // Dark socket ring around the core, facing outward from the body.
+  const socket = put(g, ring(), mat(0x0f1114, { rough: 0.95 }), [0, 0, 0],
+    [Math.abs(z) > 0.01 ? 0 : Math.PI / 2, 0, 0], radius * 4.4);
+  // Billboard halo: always faces the camera, so a weak point reads from
+  // every angle and at range. That is the whole point of a weak point.
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: haloTexture(), color: new THREE.Color(colorHex),
+    transparent: true, opacity: 0.55, depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  }));
+  halo.scale.setScalar(radius * 6);
   halo.userData.isHalo = true;
-  parent.add(g);
+  halo.userData.base = radius * 6;
+  g.add(halo);
+  parent.add(dyn(g));
   const wp = {
     object3d: g, localPos: new THREE.Vector3(x, y, z), radius,
     broken: false, hp, maxHp: hp,
@@ -229,7 +305,8 @@ function darkenWeakPoint(wp) {
   wp._mat.emissive.setHex(0x000000);
   wp._mat.needsUpdate = true;
   wp._halo.visible = false;
-  wp._core.scale.multiplyScalar(0.62);
+  wp._core.scale.multiplyScalar(0.55);
+  wp._socket.material = mat(0x2a1c14, { rough: 1 });
 }
 
 function relightWeakPoint(wp) {
@@ -241,7 +318,7 @@ function relightWeakPoint(wp) {
   wp._mat.emissive.setHex(wp._color);
   wp._mat.needsUpdate = true;
   wp._halo.visible = true;
-  wp._core.scale.multiplyScalar(1 / 0.62);
+  wp._core.scale.multiplyScalar(1 / 0.55);
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +326,29 @@ function relightWeakPoint(wp) {
 // group that already contains the base fish mesh at 1.0 length, and returns
 // { weakPoints, anim } with `anim(t, state, parts)` doing the boss motion.
 // ---------------------------------------------------------------------------
+
+/**
+ * Boss recolours. The stock species palettes are tuned for a 40 cm fish seen
+ * at 3 m; blown up to 20 m the accent takes over and the whole animal turns
+ * into a bright toy. These darken the flesh and pull the accent back so it
+ * stays a highlight — the original accent is still used, undimmed, for the
+ * glowing weak points and boss-specific emissive parts.
+ */
+const BOSS_PALETTE = {
+  'dock-eater':     { main: '#2c332b', belly: '#5c684a', fin: '#171b16', accent: '#5d8a3a', eye: '#c8ff3a' },
+  'king-crab-boss': { main: '#6d2f22', belly: '#a88361', fin: '#3d160f', accent: '#b06a3a', eye: '#f2e05a' },
+  'the-hammer':     { main: '#3c464e', belly: '#c3c6bd', fin: '#191e23', accent: '#8a4136', eye: '#ffd23a' },
+  'stormfin':       { main: '#1c2f5c', belly: '#9fb2c8', fin: '#3b2878', accent: '#4c8fb8', eye: '#ffe14a' },
+  'frostjaw':       { main: '#41586e', belly: '#b9cddb', fin: '#25384c', accent: '#6ea8c4', eye: '#e8f8ff' },
+  'abyss-mouth':    { main: '#120a1a', belly: '#241428', fin: '#07040c', accent: '#8c2440', eye: '#ffd0dc' },
+};
+
+/** A species clone whose colours suit a 20 m animal. */
+function bossSpecies(species) {
+  const o = BOSS_PALETTE[species.id];
+  if (!o) return species;
+  return { ...species, colors: { ...species.colors, ...o } };
+}
 
 /** Palette shortcuts from the species colours. */
 function pal(species) {
@@ -264,7 +364,7 @@ function pal(species) {
 }
 
 // --------------------------------------------------------------- dock-eater
-function buildDockEater(host, species, rng, wps) {
+function buildDockEater(host, species, rng, wps, B) {
   const C = pal(species);
   const mBody = mat(C.dark, { rough: 0.86 });
   const mWood = mat(C.wood, { rough: 0.95 });
@@ -279,65 +379,66 @@ function buildDockEater(host, species, rng, wps) {
 
   // --- dock planks jammed into its back, still bolted together -------------
   const raft = new THREE.Group();
-  raft.position.set(-0.02, 0.115, 0);
+  raft.position.set(-0.02, B.top(-0.02) + 0.012, 0);
   raft.rotation.z = -0.14;
-  for (let i = 0; i < 4; i++) {
-    put(raft, box(), mWood, [0, 0.008 * i, (i - 1.5) * 0.052], [0, 0.05 * (i - 1.5), 0],
-      [0.30 - i * 0.012, 0.016, 0.046]);
+  for (let i = 0; i < 5; i++) {
+    put(raft, box(), mWood, [0, 0.010 * i, (i - 2) * 0.055], [0, 0.05 * (i - 2), 0],
+      [0.34 - i * 0.014, 0.020, 0.050]);
   }
-  put(raft, box(), mMetal, [0.06, 0.026, 0], [0, 0, 0.1], [0.012, 0.05, 0.19]);
-  detail.add(raft);
+  put(raft, box(), mMetal, [0.06, 0.034, 0], [0, 0, 0.1], [0.014, 0.058, 0.24]);
+  // a snapped piling still bolted to the decking
+  put(raft, box(), mWood, [-0.10, 0.10, 0.06], [0.2, 0.3, 0.45], [0.030, 0.20, 0.030]);
+  detail.add(dyn(raft));
 
   // --- mooring rope wrapped round the head, trailing behind ---------------
   for (let i = 0; i < 7; i++) {
-    const a = i * 0.9;
-    put(detail, ring(), mRope, [0.22 - i * 0.012, 0.02 * Math.cos(a), 0], [0, 0, Math.PI / 2],
-      [0.115 - i * 0.004, 0.115 - i * 0.004, 0.115 - i * 0.004]);
+    const x = 0.30 - i * 0.020;
+    const r = (B.side(x) + 0.014) * 2;
+    put(detail, ring(), mRope, [x, B.mid(x), 0], [0, 0, Math.PI / 2], [r, r, r]);
   }
   const ropeTail = new THREE.Group();
-  ropeTail.position.set(-0.36, 0.02, 0.05);
-  for (let i = 0; i < 8; i++) {
-    put(ropeTail, cyl5(), mRope, [-i * 0.028, -i * 0.012 - Math.sin(i) * 0.006, Math.sin(i * 0.8) * 0.02],
-      [0, 0, Math.PI / 2 + i * 0.06], [0.009, 0.03, 0.009]);
+  ropeTail.position.set(B.tail + 0.02, 0.02, 0.05);
+  for (let i = 0; i < 9; i++) {
+    put(ropeTail, cyl5(), mRope, [-i * 0.030, -i * 0.014 - Math.sin(i) * 0.006, Math.sin(i * 0.8) * 0.024],
+      [0, 0, Math.PI / 2 + i * 0.06], [0.010, 0.033, 0.010]);
   }
-  detail.add(ropeTail);
+  detail.add(dyn(ropeTail));
 
   // --- chain and shackle hanging off the jaw ------------------------------
-  addChain(detail, mMetal, [0.30, -0.03, 0.04], [-0.25, -0.96, 0], 7, 0.011);
+  addChain(detail, mMetal, [0.34, B.bot(0.34) + 0.01, 0.05], [-0.25, -0.96, 0], 9, 0.014);
 
   // --- barnacle crust along the flanks ------------------------------------
-  addBarnacles(detail, mCrust, rng, 26, (r) => {
-    const t = r();
-    const side = r() < 0.5 ? 1 : -1;
+  addBarnacles(detail, mCrust, rng, 34, (r) => {
+    const x = lerp(0.34, B.tail + 0.1, r());
+    const up = r() * 2 - 1;
     return {
-      x: lerp(0.30, -0.34, t),
-      y: lerp(0.05, -0.06, r()),
-      z: side * (0.055 + r() * 0.028) * (1 - Math.abs(t - 0.4)),
+      x,
+      y: B.mid(x) + up * B.at(x).ry * 0.75,
+      z: (r() < 0.5 ? 1 : -1) * B.side(x) * (0.82 + r() * 0.2) * Math.sqrt(Math.max(0, 1 - up * up)),
+      s: 0.014 + r() * 0.024,
     };
   });
 
   // --- broken teeth in a wide catfish maw ---------------------------------
-  addTeeth(detail, mBone, 13, (t) => ({
-    x: 0.365 - Math.abs(t - 0.5) * 0.10,
-    y: -0.028,
-    z: (t - 0.5) * 0.14,
-    rz: Math.PI + (t - 0.5) * 0.5,
-  }), { size: 0.030, broken: 0.4, rng });
-  addTeeth(detail, mBone, 9, (t) => ({
-    x: 0.352 - Math.abs(t - 0.5) * 0.09,
-    y: -0.062,
-    z: (t - 0.5) * 0.11,
-  }), { size: 0.024, broken: 0.5, rng, down: false });
+  const jawX = 0.435;
+  addTeeth(detail, mBone, 15, (t) => {
+    const x = jawX - Math.abs(t - 0.5) * 0.09;
+    return { x, y: B.mid(x) - B.at(x).ry * 0.30, z: (t - 0.5) * B.side(jawX) * 1.9, rz: Math.PI + (t - 0.5) * 0.5 };
+  }, { size: 0.038, broken: 0.4, rng });
+  addTeeth(detail, mBone, 11, (t) => {
+    const x = jawX - 0.012 - Math.abs(t - 0.5) * 0.08;
+    return { x, y: B.mid(x) - B.at(x).ry * 0.92, z: (t - 0.5) * B.side(jawX) * 1.6 };
+  }, { size: 0.030, broken: 0.5, rng, down: false });
 
   // --- scars ---------------------------------------------------------------
-  addScar(detail, mBody, 0.10, 0.05, 0.062, 0.20, 0.3);
-  addScar(detail, mBody, -0.05, -0.02, -0.066, 0.15, -0.5);
-  addScar(detail, mBody, 0.18, 0.03, -0.060, 0.09, 0.9);
+  addScar(detail, mBody, 0.10, B.mid(0.10) + 0.03, B.side(0.10) * 0.96, 0.22, 0.3, 0.014);
+  addScar(detail, mBody, -0.05, B.mid(-0.05) - 0.02, -B.side(-0.05) * 0.96, 0.17, -0.5, 0.013);
+  addScar(detail, mBody, 0.20, B.mid(0.20) + 0.02, -B.side(0.20) * 0.96, 0.10, 0.9, 0.011);
 
   // --- weak points: two swollen gill sacs and a glowing gullet ------------
-  addWeakPoint(detail, 0.175, -0.008, 0.070, 0.030, C.accent, wps);
-  addWeakPoint(detail, 0.175, -0.008, -0.070, 0.030, C.accent, wps);
-  addWeakPoint(detail, 0.315, -0.048, 0.0, 0.028, C.accent, wps);
+  addWeakPoint(detail, 0.21, B.mid(0.21) + 0.01, B.side(0.21) * 0.92, 0.036, C.accent, wps);
+  addWeakPoint(detail, 0.21, B.mid(0.21) + 0.01, -B.side(0.21) * 0.92, 0.036, C.accent, wps);
+  addWeakPoint(detail, 0.36, B.bot(0.36) + 0.012, 0, 0.034, C.accent, wps);
 
   const jawGrp = new THREE.Group();
 
@@ -353,7 +454,7 @@ function buildDockEater(host, species, rng, wps) {
 }
 
 // ----------------------------------------------------------- king-crab-boss
-function buildIronshell(host, species, rng, wps) {
+function buildIronshell(host, species, rng, wps, B) {
   const C = pal(species);
   const mShell = mat(C.dark, { rough: 0.62, metal: 0.15 });
   const mPlate = mat(0x7a3325, { rough: 0.5, metal: 0.3 });
@@ -365,54 +466,58 @@ function buildIronshell(host, species, rng, wps) {
   host.add(detail);
 
   // --- riveted armour plating over the carapace ---------------------------
-  addPlates(detail, mPlate, 7, (t, i) => ({
-    x: lerp(0.20, -0.24, t),
-    y: 0.085 - Math.abs(t - 0.45) * 0.05,
-    z: (i % 3 - 1) * 0.10,
-    rz: 0.1 + (i % 3 - 1) * 0.18,
-    rx: (i % 2 ? 0.2 : -0.2),
-  }), (t) => 0.15 - t * 0.04, 0.05);
+  addPlates(detail, mPlate, 8, (t, i) => {
+    const x = lerp(0.22, -0.30, t);
+    return {
+      x, y: B.top(x) + 0.012,
+      z: (i % 3 - 1) * B.side(x) * 0.42,
+      rz: 0.1 + (i % 3 - 1) * 0.18,
+      rx: (i % 2 ? 0.2 : -0.2),
+    };
+  }, (t) => 0.17 - t * 0.04, 0.05);
   // rivets
-  for (let i = 0; i < 14; i++) {
-    put(detail, blob(), mMetal, [
-      lerp(0.21, -0.23, rng()), 0.10 + rng() * 0.02, (rng() - 0.5) * 0.26,
-    ], [0, 0, 0], 0.011);
+  for (let i = 0; i < 16; i++) {
+    const x = lerp(0.22, -0.30, rng());
+    put(detail, blob(), mMetal, [x, B.top(x) + 0.02, (rng() - 0.5) * B.side(x) * 1.1], [0, 0, 0], 0.013);
   }
 
   // --- snagged crab-pot cage riding the shell -----------------------------
   const cage = new THREE.Group();
-  cage.position.set(-0.14, 0.115, 0.02);
+  cage.position.set(-0.14, B.top(-0.14) + 0.03, 0.02);
   cage.rotation.set(0.25, 0.4, 0.15);
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * TAU;
-    put(cage, cyl5(), mRust, [Math.cos(a) * 0.07, 0.05, Math.sin(a) * 0.07], [0, 0, 0], [0.006, 0.10, 0.006]);
+    put(cage, cyl5(), mRust, [Math.cos(a) * 0.085, 0.06, Math.sin(a) * 0.085], [0, 0, 0], [0.007, 0.12, 0.007]);
   }
-  for (const y of [0.0, 0.05, 0.10]) {
-    put(cage, ring(), mRust, [0, y, 0], [Math.PI / 2, 0, 0], [0.20, 0.20, 0.20]);
+  for (const y of [0.0, 0.06, 0.12]) {
+    put(cage, ring(), mRust, [0, y, 0], [Math.PI / 2, 0, 0], [0.24, 0.24, 0.24]);
   }
-  // one wall bent out of shape
-  put(cage, box(), mRust, [0.06, 0.05, 0.03], [0.3, 0.4, 0.5], [0.005, 0.09, 0.07]);
-  detail.add(cage);
+  put(cage, box(), mRust, [0.07, 0.06, 0.04], [0.3, 0.4, 0.5], [0.006, 0.11, 0.085]);
+  detail.add(dyn(cage));
 
   // --- chains dragging from the shell -------------------------------------
-  addChain(detail, mMetal, [-0.18, 0.06, 0.09], [-0.5, -0.85, 0.1], 8, 0.013);
-  addChain(detail, mMetal, [-0.15, 0.05, -0.11], [-0.3, -0.94, -0.1], 6, 0.012);
+  addChain(detail, mMetal, [-0.18, B.top(-0.18) - 0.01, B.side(-0.18) * 0.7], [-0.5, -0.85, 0.1], 9, 0.015);
+  addChain(detail, mMetal, [-0.15, B.top(-0.15) - 0.02, -B.side(-0.15) * 0.75], [-0.3, -0.94, -0.1], 7, 0.014);
 
   // --- barnacle crust on the shoulders ------------------------------------
-  addBarnacles(detail, mCrust, rng, 30, (r) => ({
-    x: lerp(0.24, -0.28, r()),
-    y: 0.02 + r() * 0.09,
-    z: (r() - 0.5) * 0.34,
-  }));
+  addBarnacles(detail, mCrust, rng, 36, (r) => {
+    const x = lerp(0.24, -0.32, r());
+    const up = r();
+    return {
+      x, y: lerp(B.mid(x), B.top(x), up) + 0.008,
+      z: (r() - 0.5) * B.side(x) * 1.7,
+      s: 0.014 + r() * 0.026,
+    };
+  });
 
   // --- big scar across the shell, and a cracked plate ---------------------
-  addScar(detail, mShell, 0.02, 0.10, 0.05, 0.24, 0.5, 0.016);
-  put(detail, box(), mShell, [0.10, 0.10, -0.13], [0.3, 0.2, 0.4], [0.09, 0.012, 0.05]);
+  addScar(detail, mShell, 0.02, B.top(0.02) + 0.008, B.side(0.02) * 0.35, 0.26, 0.5, 0.018);
+  put(detail, box(), mShell, [0.10, B.top(0.10), -B.side(0.10) * 0.6], [0.3, 0.2, 0.4], [0.10, 0.014, 0.06]);
 
   // --- weak points: the joint sockets, exposed where plating is missing ---
-  addWeakPoint(detail, 0.08, 0.035, 0.155, 0.030, C.accent, wps);
-  addWeakPoint(detail, 0.08, 0.035, -0.155, 0.030, C.accent, wps);
-  addWeakPoint(detail, 0.235, 0.075, 0.0, 0.030, C.accent, wps);   // eye-stalk base
+  addWeakPoint(detail, 0.06, B.mid(0.06) + 0.02, B.side(0.06) * 0.96, 0.038, C.accent, wps);
+  addWeakPoint(detail, 0.06, B.mid(0.06) + 0.02, -B.side(0.06) * 0.96, 0.038, C.accent, wps);
+  addWeakPoint(detail, 0.26, B.top(0.26) + 0.012, 0, 0.036, C.accent, wps);   // eye-stalk base
 
   return {
     anim(t, s, parts) {
@@ -430,7 +535,7 @@ function buildIronshell(host, species, rng, wps) {
 }
 
 // ---------------------------------------------------------------- the-hammer
-function buildTheHammer(host, species, rng, wps) {
+function buildTheHammer(host, species, rng, wps, B) {
   const C = pal(species);
   const mSkin = mat(C.dark, { rough: 0.78 });
   const mScar = mat(0xb8a99a, { rough: 0.62 });
@@ -443,58 +548,59 @@ function buildTheHammer(host, species, rng, wps) {
 
   // --- three harpoons still buried in the flank, ropes trailing ----------
   const harpoons = [];
-  harpoons.push(addHarpoon(detail, mMetal, mMetal, [0.02, 0.055, 0.052], [-0.25, 0.9, 0.35], 0.16));
-  harpoons.push(addHarpoon(detail, mMetal, mMetal, [-0.10, 0.030, -0.058], [-0.5, 0.7, -0.5], 0.13));
-  harpoons.push(addHarpoon(detail, mMetal, mMetal, [0.12, 0.020, -0.048], [0.1, 0.6, -0.8], 0.10));
-  for (let i = 0; i < 6; i++) {
-    put(detail, cyl5(), mRope, [0.02 - i * 0.03, 0.19 - i * 0.012, 0.07 + i * 0.008],
-      [0, 0, 1.2], [0.005, 0.035, 0.005]);
+  const hp = (x, up, side, dir, len) => harpoons.push(dyn(addHarpoon(detail, mMetal, mMetal,
+    [x, lerp(B.mid(x), B.top(x), up), B.side(x) * side], dir, len)));
+  hp(0.02, 0.55, 0.55, [-0.25, 0.9, 0.35], 0.20);
+  hp(-0.12, 0.25, -0.75, [-0.5, 0.7, -0.5], 0.17);
+  hp(0.14, 0.10, -0.70, [0.1, 0.6, -0.8], 0.13);
+  for (let i = 0; i < 7; i++) {
+    put(detail, cyl5(), mRope, [0.02 - i * 0.034, B.top(0.02) + 0.16 - i * 0.014, B.side(0.02) * 0.6 + i * 0.010],
+      [0, 0, 1.2], [0.006, 0.038, 0.006]);
   }
 
   // --- long white scars, the signature of a shark nobody has killed ------
-  addScar(detail, mScar, 0.10, 0.02, 0.060, 0.24, 0.22, 0.011);
-  addScar(detail, mScar, -0.04, 0.05, 0.056, 0.16, -0.35, 0.009);
-  addScar(detail, mScar, 0.06, -0.03, -0.060, 0.28, 0.12, 0.012);
-  addScar(detail, mScar, 0.24, 0.04, 0.030, 0.10, 0.8, 0.008);
-  addScar(detail, mScar, 0.24, 0.04, -0.030, 0.10, -0.8, 0.008);
+  const scarAt = (x, up, side, len, ang, w) =>
+    addScar(detail, mScar, x, lerp(B.mid(x), up > 0 ? B.top(x) : B.bot(x), Math.abs(up)),
+      B.side(x) * side * 0.97, len, ang, w);
+  scarAt(0.10, 0.2, 1, 0.26, 0.22, 0.013);
+  scarAt(-0.04, 0.55, 1, 0.18, -0.35, 0.011);
+  scarAt(0.06, -0.3, -1, 0.30, 0.12, 0.014);
+  scarAt(0.26, 0.35, 1, 0.11, 0.8, 0.010);
+  scarAt(0.26, 0.35, -1, 0.11, -0.8, 0.010);
 
   // --- a semicircular bite taken out of the dorsal ------------------------
-  put(detail, sphere(), mat(0x101418, { rough: 1 }), [-0.02, 0.135, 0], [0, 0, 0], [0.075, 0.055, 0.05]);
-  addTeeth(detail, mBone, 7, (t) => ({
-    x: -0.055 + t * 0.075, y: 0.125, z: 0.0, rz: Math.PI * 0.5 * (t - 0.5),
-  }), { size: 0.020, broken: 0.6, rng, down: false });
+  put(detail, sphere(), mat(0x0d1116, { rough: 1 }), [-0.02, B.top(-0.02) + 0.05, 0], [0, 0, 0], [0.085, 0.07, 0.055]);
+  addTeeth(detail, mBone, 8, (t) => ({
+    x: -0.062 + t * 0.085, y: B.top(-0.02) + 0.035, z: 0.0, rz: Math.PI * 0.5 * (t - 0.5),
+  }), { size: 0.024, broken: 0.6, rng, down: false });
 
   // --- ragged tail: a bite out of the upper lobe --------------------------
-  put(detail, box(), mat(0x0e1216, { rough: 1 }), [-0.455, 0.095, 0], [0, 0, 0.5], [0.05, 0.05, 0.02]);
+  put(detail, box(), mat(0x0b0f13, { rough: 1 }), [B.tail - 0.02, 0.11, 0], [0, 0, 0.5], [0.055, 0.055, 0.022]);
 
   // --- exposed ribs where the flank has been stripped ---------------------
-  addRibs(detail, mBone, 5, (t) => ({
-    x: lerp(-0.05, -0.20, t),
-    y: -0.028 + t * 0.012,
-    z: 0.052,
-    rz: 0.35 + t * 0.35,
-    len: 0.075 - t * 0.016,
-  }), { r: 0.007 });
+  addRibs(detail, mBone, 6, (t) => {
+    const x = lerp(-0.04, -0.22, t);
+    return { x, y: B.mid(x) - B.at(x).ry * 0.35, z: B.side(x) * 0.9, rz: 0.35 + t * 0.35,
+      len: Math.max(0.03, B.at(x).ry * 1.5) };
+  }, { r: 0.008 });
 
-  // --- teeth: three rows, plenty snapped -----------------------------------
+  // --- teeth: two rows, plenty snapped -----------------------------------
+  const jx = 0.36;
   for (let row = 0; row < 2; row++) {
-    addTeeth(detail, mBone, 15, (t) => ({
-      x: 0.325 - Math.abs(t - 0.5) * 0.11 - row * 0.022,
-      y: -0.010 - row * 0.004,
-      z: (t - 0.5) * 0.12,
-      rz: Math.PI + (t - 0.5) * 0.4,
-    }), { size: 0.026 - row * 0.005, broken: 0.32, rng });
+    addTeeth(detail, mBone, 15, (t) => {
+      const x = jx - row * 0.030 - Math.abs(t - 0.5) * 0.09;
+      return { x, y: B.mid(x) - B.at(x).ry * 0.28, z: (t - 0.5) * B.side(jx) * 1.85, rz: Math.PI + (t - 0.5) * 0.4 };
+    }, { size: 0.032 - row * 0.006, broken: 0.32, rng });
   }
-  addTeeth(detail, mBone, 12, (t) => ({
-    x: 0.318 - Math.abs(t - 0.5) * 0.10,
-    y: -0.052,
-    z: (t - 0.5) * 0.10,
-  }), { size: 0.022, broken: 0.4, rng, down: false });
+  addTeeth(detail, mBone, 12, (t) => {
+    const x = jx - 0.014 - Math.abs(t - 0.5) * 0.08;
+    return { x, y: B.mid(x) - B.at(x).ry * 0.95, z: (t - 0.5) * B.side(jx) * 1.5 };
+  }, { size: 0.026, broken: 0.4, rng, down: false });
 
   // --- weak points: gill rakers and the scarred snout --------------------
-  addWeakPoint(detail, 0.150, -0.020, 0.062, 0.028, C.accent, wps);
-  addWeakPoint(detail, 0.150, -0.020, -0.062, 0.028, C.accent, wps);
-  addWeakPoint(detail, 0.300, 0.045, 0.0, 0.026, C.accent, wps);
+  addWeakPoint(detail, 0.17, B.mid(0.17) - 0.01, B.side(0.17) * 0.95, 0.034, C.accent, wps);
+  addWeakPoint(detail, 0.17, B.mid(0.17) - 0.01, -B.side(0.17) * 0.95, 0.034, C.accent, wps);
+  addWeakPoint(detail, 0.34, B.top(0.34) + 0.008, 0, 0.032, C.accent, wps);
 
   return {
     anim(t, s, parts) {
@@ -509,7 +615,7 @@ function buildTheHammer(host, species, rng, wps) {
 }
 
 // ------------------------------------------------------------------ stormfin
-function buildStormfin(host, species, rng, wps) {
+function buildStormfin(host, species, rng, wps, B) {
   const C = pal(species);
   const mDark = mat(0x18244a, { rough: 0.5, metal: 0.2 });
   const mVolt = mat(C.accent, { rough: 0.25, glow: 2.4 });
@@ -520,55 +626,58 @@ function buildStormfin(host, species, rng, wps) {
   host.add(detail);
 
   // --- storm veins: glowing filaments running nose to tail ---------------
-  const veins = [];
   for (let k = 0; k < 3; k++) {
-    const zOff = (k - 1) * 0.045;
-    for (let i = 0; i < 9; i++) {
-      const t = i / 8;
-      const v = put(detail, blob(), mVolt, [
-        lerp(0.30, -0.36, t),
-        lerp(0.055, 0.02, t) + Math.sin(t * 7 + k) * 0.018,
-        zOff + Math.sin(t * 5 + k * 2) * 0.02,
-      ], [0, 0, 0], 0.014 + (1 - t) * 0.008);
-      veins.push(v);
+    const up = (k - 1) * 0.45;
+    for (let i = 0; i < 10; i++) {
+      const t = i / 9;
+      const x = lerp(0.34, B.tail + 0.06, t);
+      const side = Math.cos(t * 5 + k * 2) * 0.9;
+      put(detail, blob(), mVolt, [
+        x,
+        lerp(B.mid(x), up > 0 ? B.top(x) : B.bot(x), Math.abs(up)) + Math.sin(t * 7 + k) * 0.012,
+        B.side(x) * side,
+      ], [0, 0, 0], 0.015 + (1 - t) * 0.010);
     }
   }
 
   // --- torn sail dorsal: a row of spines with gaps -----------------------
   const sail = new THREE.Group();
-  for (let i = 0; i < 11; i++) {
-    const t = i / 10;
-    if (i === 4 || i === 7) continue;   // torn away
-    const h = (0.10 + Math.sin(t * Math.PI) * 0.11) * (1 - t * 0.35);
-    put(sail, cone4(), mSail, [lerp(0.20, -0.16, t), 0.075 + h * 0.5, 0],
-      [0, 0, -0.12], [0.012, h, 0.03]);
+  for (let i = 0; i < 12; i++) {
+    const t = i / 11;
+    if (i === 4 || i === 8) continue;   // torn away
+    const x = lerp(0.26, -0.20, t);
+    const h = (0.12 + Math.sin(t * Math.PI) * 0.16) * (1 - t * 0.3);
+    put(sail, cone4(), mSail, [x, B.top(x) + h * 0.5, 0], [0, 0, -0.12], [0.013, h, 0.032]);
   }
-  detail.add(sail);
+  detail.add(dyn(sail));
 
   // --- lightning-rod bill with metal ferrules ----------------------------
+  const billTip = B.nose + 0.14;
   for (let i = 0; i < 4; i++) {
-    put(detail, ring(), mMetal, [0.40 + i * 0.035, 0.008, 0], [0, 0, Math.PI / 2],
-      [0.030 - i * 0.005, 0.030 - i * 0.005, 0.030 - i * 0.005]);
+    const r = 0.034 - i * 0.006;
+    put(detail, ring(), mMetal, [B.nose - 0.05 + i * 0.045, B.mid(B.nose) + 0.004, 0], [0, 0, Math.PI / 2], [r, r, r]);
   }
-  const tip = put(detail, cone6(), mVolt, [0.505, 0.008, 0], [0, 0, -Math.PI / 2], [0.016, 0.05, 0.016]);
+  const tip = dyn(put(detail, cone6(), mVolt, [billTip, B.mid(B.nose) + 0.004, 0], [0, 0, -Math.PI / 2], [0.018, 0.06, 0.018]));
 
   // --- arc nodes: little floating electrodes that spark ------------------
   const arcs = [];
   for (let i = 0; i < 5; i++) {
     const t = i / 4;
-    const a = put(detail, blob(), mVolt, [lerp(0.24, -0.28, t), 0.20 + Math.sin(t * 3) * 0.03,
-      (i % 2 ? 1 : -1) * 0.07], [0, 0, 0], 0.02);
+    const x = lerp(0.22, -0.26, t);
+    const a = dyn(put(detail, blob(), mVolt,
+      [x, B.top(x) + 0.16 + Math.sin(t * 3) * 0.04, (i % 2 ? 1 : -1) * 0.08], [0, 0, 0], 0.022));
     arcs.push(a);
   }
 
   // --- scarring where lightning has hit it before ------------------------
-  addScar(detail, mat(0xcfe4ff, { rough: 0.4, glow: 0.6 }), 0.05, 0.06, 0.055, 0.18, 0.4, 0.009);
-  addScar(detail, mat(0xcfe4ff, { rough: 0.4, glow: 0.6 }), -0.10, 0.02, -0.058, 0.14, -0.6, 0.008);
+  const mBurn = mat(0xcfe4ff, { rough: 0.4, glow: 0.6 });
+  addScar(detail, mBurn, 0.06, B.mid(0.06) + 0.02, B.side(0.06) * 0.96, 0.20, 0.4, 0.011);
+  addScar(detail, mBurn, -0.10, B.mid(-0.10), -B.side(-0.10) * 0.96, 0.16, -0.6, 0.010);
 
   // --- weak points: three storm nodes along the spine --------------------
-  addWeakPoint(detail, 0.185, 0.088, 0.0, 0.030, C.accent, wps);
-  addWeakPoint(detail, -0.020, 0.098, 0.0, 0.030, C.accent, wps);
-  addWeakPoint(detail, -0.215, 0.070, 0.0, 0.028, C.accent, wps);
+  addWeakPoint(detail, 0.20, B.top(0.20) + 0.012, 0, 0.036, C.accent, wps);
+  addWeakPoint(detail, -0.02, B.top(-0.02) + 0.012, 0, 0.036, C.accent, wps);
+  addWeakPoint(detail, -0.24, B.top(-0.24) + 0.010, 0, 0.033, C.accent, wps);
 
   return {
     anim(t, s, parts) {
@@ -590,7 +699,7 @@ function buildStormfin(host, species, rng, wps) {
 }
 
 // ------------------------------------------------------------------ frostjaw
-function buildFrostjaw(host, species, rng, wps) {
+function buildFrostjaw(host, species, rng, wps, B) {
   const C = pal(species);
   const mIce = mat(0xbfe8fa, { rough: 0.18, metal: 0.05, glow: 0.25, transparent: true, opacity: 0.86 });
   const mCrack = mat(C.accent, { rough: 0.3, glow: 2.0 });
@@ -601,83 +710,81 @@ function buildFrostjaw(host, species, rng, wps) {
   host.add(detail);
 
   // --- ice plates and spikes frozen onto the back -------------------------
-  const spikes = [];
-  for (let i = 0; i < 14; i++) {
-    const t = i / 13;
-    const h = 0.05 + Math.sin(t * Math.PI) * 0.10;
-    const s = put(detail, cone4(), mIce,
-      [lerp(0.30, -0.34, t), 0.060 + Math.sin(t * Math.PI) * 0.035, ((i % 3) - 1) * 0.035],
+  const spikes = new THREE.Group();
+  for (let i = 0; i < 16; i++) {
+    const t = i / 15;
+    const x = lerp(0.32, B.tail + 0.08, t);
+    const h = 0.06 + Math.sin(t * Math.PI) * 0.13;
+    const zo = ((i % 3) - 1) * B.side(x) * 0.45;
+    put(spikes, cone4(), mIce,
+      [x, B.top(x) + h * 0.35, zo],
       [(rng() - 0.5) * 0.4, rng() * TAU, (rng() - 0.5) * 0.3],
-      [0.022 + rng() * 0.012, h, 0.022 + rng() * 0.012]);
-    spikes.push(s);
+      [0.026 + rng() * 0.014, h, 0.026 + rng() * 0.014]);
   }
-  addPlates(detail, mIce, 6, (t) => ({
-    x: lerp(0.24, -0.28, t), y: 0.075, z: 0, rz: 0.2,
-  }), 0.10, 0.1);
+  detail.add(dyn(spikes));
+  addPlates(detail, mIce, 7, (t) => {
+    const x = lerp(0.26, -0.30, t);
+    return { x, y: B.top(x) + 0.004, z: 0, rz: 0.2 };
+  }, 0.12, 0.1);
 
   // --- glowing cracks through the frozen crust ---------------------------
-  const cracks = [];
-  for (let i = 0; i < 22; i++) {
-    const t = rng();
-    const c = put(detail, box(), mCrack, [
-      lerp(0.28, -0.32, t),
-      lerp(0.06, -0.05, rng()),
-      (rng() < 0.5 ? 1 : -1) * (0.035 + rng() * 0.026),
-    ], [0, 0, rng() * TAU], [0.035 + rng() * 0.03, 0.006, 0.006]);
-    cracks.push(c);
+  for (let i = 0; i < 26; i++) {
+    const x = lerp(0.30, B.tail + 0.06, rng());
+    const up = rng() * 2 - 1;
+    put(detail, box(), mCrack, [
+      x,
+      B.mid(x) + up * B.at(x).ry * 0.8,
+      (rng() < 0.5 ? 1 : -1) * B.side(x) * 0.95 * Math.sqrt(Math.max(0, 1 - up * up)),
+    ], [0, 0, rng() * TAU], [0.04 + rng() * 0.04, 0.007, 0.007]);
   }
 
   // --- exposed ribs along both flanks ------------------------------------
   for (const side of [1, -1]) {
-    addRibs(detail, mBone, 6, (t) => ({
-      x: lerp(0.06, -0.22, t),
-      y: -0.020 + t * 0.010,
-      z: side * 0.046,
-      rz: 0.3 + t * 0.4,
-      len: 0.085 - t * 0.02,
-    }), { r: 0.008 });
+    addRibs(detail, mBone, 7, (t) => {
+      const x = lerp(0.08, -0.24, t);
+      return { x, y: B.mid(x) - B.at(x).ry * 0.30, z: side * B.side(x) * 0.92,
+        rz: 0.3 + t * 0.4, len: Math.max(0.04, B.at(x).ry * 1.5) };
+    }, { r: 0.009 });
   }
 
   // --- the jaw: oversized, crooked, half the teeth snapped ---------------
   const jaw = new THREE.Group();
-  jaw.position.set(0.28, -0.02, 0);
-  addTeeth(jaw, mBone, 17, (t) => ({
-    x: 0.06 - Math.abs(t - 0.5) * 0.12,
-    y: -0.012,
-    z: (t - 0.5) * 0.16,
-    rz: Math.PI + (t - 0.5) * 0.55,
-  }), { size: 0.040, broken: 0.38, rng });
-  addTeeth(jaw, mBone, 14, (t) => ({
-    x: 0.05 - Math.abs(t - 0.5) * 0.10,
-    y: -0.075,
-    z: (t - 0.5) * 0.13,
-  }), { size: 0.034, broken: 0.45, rng, down: false });
-  detail.add(jaw);
+  const fx = 0.34;
+  addTeeth(jaw, mBone, 19, (t) => {
+    const x = fx - Math.abs(t - 0.5) * 0.10;
+    return { x, y: B.mid(x) - B.at(x).ry * 0.22, z: (t - 0.5) * B.side(fx) * 2.0,
+      rz: Math.PI + (t - 0.5) * 0.55 };
+  }, { size: 0.052, broken: 0.38, rng });
+  addTeeth(jaw, mBone, 15, (t) => {
+    const x = fx - 0.016 - Math.abs(t - 0.5) * 0.09;
+    return { x, y: B.mid(x) - B.at(x).ry * 1.05, z: (t - 0.5) * B.side(fx) * 1.7 };
+  }, { size: 0.044, broken: 0.45, rng, down: false });
+  detail.add(dyn(jaw));
 
   // --- frost breath vents ------------------------------------------------
-  for (const s of [1, -1]) put(detail, cyl6(), mHide, [0.24, 0.03, s * 0.045], [0, 0, 0.4], [0.018, 0.03, 0.018]);
+  for (const sd of [1, -1]) {
+    put(detail, cyl6(), mHide, [0.26, B.mid(0.26) + 0.02, sd * B.side(0.26) * 0.8], [0, 0, 0.4], [0.022, 0.035, 0.022]);
+  }
 
   // --- weak points: the melt-holes in the ice over its heart ------------
-  addWeakPoint(detail, 0.055, 0.055, 0.052, 0.032, C.accent, wps);
-  addWeakPoint(detail, 0.055, 0.055, -0.052, 0.032, C.accent, wps);
-  addWeakPoint(detail, -0.170, 0.045, 0.0, 0.032, C.accent, wps);
+  addWeakPoint(detail, 0.08, B.mid(0.08) + 0.04, B.side(0.08) * 0.94, 0.040, C.accent, wps);
+  addWeakPoint(detail, 0.08, B.mid(0.08) + 0.04, -B.side(0.08) * 0.94, 0.040, C.accent, wps);
+  addWeakPoint(detail, -0.18, B.top(-0.18) + 0.012, 0, 0.038, C.accent, wps);
 
   return {
     anim(t, s, parts) {
       mCrack.emissiveIntensity = 1.2 + Math.sin(t * 2.4) * 0.6 + s.aggro * 1.6;
-      jaw.rotation.z = s.mouth * 0.42;
-      jaw.position.y = -0.02 - s.mouth * 0.02;
-      for (let i = 0; i < spikes.length; i++) {
-        spikes[i].scale.y = spikes[i].scale.y * 0.0 + (0.05 + Math.sin(i * 0.7) * 0.02)
-          + (0.10 * (0.6 + 0.4 * Math.sin(t * 1.2 + i)));
-      }
+      jaw.rotation.z = s.mouth * 0.30;
+      jaw.position.y = -s.mouth * 0.03;
+      spikes.rotation.z = Math.sin(t * 1.1) * 0.05;
+      spikes.position.y = Math.sin(t * 1.7) * 0.006;
       if (parts.tail) parts.tail.rotation.y = Math.sin(t * 1.4) * 0.2;
     },
   };
 }
 
 // --------------------------------------------------------------- abyss-mouth
-function buildAbyssMouth(host, species, rng, wps) {
+function buildAbyssMouth(host, species, rng, wps, B) {
   const C = pal(species);
   const mFlesh = mat(0x120a1c, { rough: 0.92 });
   const mGullet = mat(C.accent, { rough: 0.6, glow: 1.4 });
@@ -690,77 +797,80 @@ function buildAbyssMouth(host, species, rng, wps) {
 
   // --- the lure: a long stalk with a bulb that is not a light ------------
   const stalk = new THREE.Group();
-  stalk.position.set(0.20, 0.09, 0);
-  const segs = 7;
+  stalk.position.set(0.22, B.top(0.22) + 0.01, 0);
+  const segs = 8;
   for (let i = 0; i < segs; i++) {
     const t = i / (segs - 1);
-    put(stalk, cyl5(), mFlesh, [t * 0.16, t * 0.20 + Math.sin(t * 2) * 0.03, 0],
-      [0, 0, -0.7], [0.010 - t * 0.004, 0.045, 0.010 - t * 0.004]);
+    put(stalk, cyl5(), mFlesh, [t * 0.20, t * 0.26 + Math.sin(t * 2) * 0.035, 0],
+      [0, 0, -0.7], [0.012 - t * 0.005, 0.055, 0.012 - t * 0.005]);
   }
-  const bulb = put(stalk, sphere(), mLure, [0.185, 0.235, 0], [0, 0, 0], 0.062);
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * TAU;
-    put(stalk, cyl5(), mLure, [0.185 + Math.cos(a) * 0.03, 0.235 + Math.sin(a) * 0.03, 0],
-      [0, 0, a], [0.004, 0.05, 0.004]);
+  const bulb = dyn(put(stalk, sphere(), mLure, [0.225, 0.30, 0], [0, 0, 0], 0.085));
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * TAU;
+    put(stalk, cyl5(), mLure, [0.225 + Math.cos(a) * 0.042, 0.30 + Math.sin(a) * 0.042, 0],
+      [0, 0, a], [0.005, 0.06, 0.005]);
   }
-  detail.add(stalk);
+  detail.add(dyn(stalk));
 
   // --- glowing gullet behind the teeth ------------------------------------
-  const gullet = put(detail, sphere(), mGullet, [0.24, -0.03, 0], [0, 0, 0], [0.12, 0.14, 0.15]);
+  const mouthX = 0.30;
+  const gullet = dyn(put(detail, sphere(), mGullet, [mouthX - 0.03, B.mid(mouthX), 0], [0, 0, 0],
+    [B.side(mouthX) * 1.0, B.at(mouthX).ry * 1.0, B.side(mouthX) * 1.1]));
 
   // --- ring of enormous teeth --------------------------------------------
   const toothRing = new THREE.Group();
-  for (let i = 0; i < 22; i++) {
-    const a = (i / 22) * TAU;
-    const r = 0.115 + Math.sin(a * 3) * 0.012;
+  const rr = B.side(mouthX) * 1.02, ry = B.at(mouthX).ry * 1.02;
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * TAU;
+    const wob = 1 + Math.sin(a * 3) * 0.09;
     const long = i % 4 === 0;
     const chip = rng() < 0.22;
     put(toothRing, cone4(), mTooth,
-      [0.325, Math.sin(a) * r - 0.02, Math.cos(a) * r],
-      [0, 0, -Math.PI / 2 - Math.sin(a) * 0.25],
-      [0.017, chip ? 0.03 : (long ? 0.10 : 0.070), 0.017]);
+      [mouthX + 0.03, B.mid(mouthX) + Math.sin(a) * ry * wob, Math.cos(a) * rr * wob],
+      [0, 0, -Math.PI / 2 - Math.sin(a) * 0.3],
+      [0.020, chip ? 0.035 : (long ? 0.125 : 0.085), 0.020]);
   }
-  detail.add(toothRing);
+  detail.add(dyn(toothRing));
 
   // --- bioluminescent spot rows along the flanks -------------------------
-  const spots = [];
   for (const side of [1, -1]) {
-    for (let i = 0; i < 12; i++) {
-      const t = i / 11;
-      const sp = put(detail, blob(), mSpot, [
-        lerp(0.16, -0.40, t),
-        lerp(-0.02, 0.03, t) + Math.sin(t * 6) * 0.02,
-        side * (0.075 - t * 0.03),
-      ], [0, 0, 0], 0.012);
-      spots.push(sp);
+    for (let i = 0; i < 14; i++) {
+      const t = i / 13;
+      const x = lerp(0.16, B.tail + 0.06, t);
+      const up = Math.sin(t * 6) * 0.5;
+      put(detail, blob(), mSpot, [
+        x, B.mid(x) + up * B.at(x).ry,
+        side * B.side(x) * 0.95 * Math.sqrt(Math.max(0, 1 - up * up)),
+      ], [0, 0, 0], 0.014);
     }
   }
 
   // --- tendrils trailing from the jaw ------------------------------------
   const tendrils = [];
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < 7; k++) {
     const g = new THREE.Group();
-    const a = (k / 6) * TAU;
-    g.position.set(0.30, Math.sin(a) * 0.09 - 0.03, Math.cos(a) * 0.09);
+    const a = (k / 7) * TAU;
+    g.position.set(mouthX + 0.02, B.mid(mouthX) + Math.sin(a) * ry * 0.95, Math.cos(a) * rr * 0.95);
     for (let i = 0; i < 5; i++) {
-      put(g, cyl5(), mFlesh, [i * 0.038, -i * 0.012, 0], [0, 0, Math.PI / 2 - i * 0.10],
-        [0.006, 0.045, 0.006]);
+      put(g, cyl5(), mFlesh, [i * 0.042, -i * 0.014, 0], [0, 0, Math.PI / 2 - i * 0.10],
+        [0.007, 0.05, 0.007]);
     }
-    put(g, blob(), mSpot, [0.20, -0.06, 0], [0, 0, 0], 0.014);
-    detail.add(g);
+    put(g, blob(), mSpot, [0.22, -0.07, 0], [0, 0, 0], 0.016);
+    detail.add(dyn(g));
     tendrils.push(g);
   }
 
   // --- exposed ribs, because it is mostly mouth and skeleton -------------
-  addRibs(detail, mTooth, 7, (t) => ({
-    x: lerp(0.05, -0.28, t), y: -0.03, z: 0.055,
-    rz: 0.3 + t * 0.5, len: 0.09 - t * 0.02,
-  }), { r: 0.008 });
+  addRibs(detail, mTooth, 8, (t) => {
+    const x = lerp(0.06, -0.28, t);
+    return { x, y: B.mid(x) - B.at(x).ry * 0.3, z: B.side(x) * 0.92,
+      rz: 0.3 + t * 0.5, len: Math.max(0.04, B.at(x).ry * 1.4) };
+  }, { r: 0.009 });
 
   // --- weak points: the lure bulb and the two eyes -----------------------
-  addWeakPoint(detail, 0.385, 0.325, 0.0, 0.055, 0xff5a86, wps);   // on the lure
-  addWeakPoint(detail, 0.235, 0.075, 0.075, 0.038, 0xff5a86, wps);
-  addWeakPoint(detail, 0.235, 0.075, -0.075, 0.038, 0xff5a86, wps);
+  addWeakPoint(detail, 0.445, B.top(0.22) + 0.31, 0.0, 0.062, 0xff5a86, wps);   // on the lure
+  addWeakPoint(detail, 0.22, B.top(0.22) - 0.02, B.side(0.22) * 0.85, 0.044, 0xff5a86, wps);
+  addWeakPoint(detail, 0.22, B.top(0.22) - 0.02, -B.side(0.22) * 0.85, 0.044, 0xff5a86, wps);
 
   return {
     anim(t, s, parts) {
@@ -769,8 +879,8 @@ function buildAbyssMouth(host, species, rng, wps) {
       mGullet.emissiveIntensity = 0.9 + pulse * 0.8 + s.mouth * 1.6;
       mSpot.emissiveIntensity = 1.2 + Math.sin(t * 2.2) * 0.6;
       stalk.rotation.z = Math.sin(t * 0.8) * 0.16;
-      bulb.scale.setScalar(0.062 * (1 + pulse * 0.12));
-      gullet.scale.set(0.12 + s.mouth * 0.05, 0.14 + s.mouth * 0.06, 0.15 + s.mouth * 0.06);
+      bulb.scale.setScalar(0.085 * (1 + pulse * 0.12));
+      gullet.scale.setScalar(1 + s.mouth * 0.28);
       toothRing.position.x = s.mouth * 0.035;
       toothRing.scale.setScalar(1 + s.mouth * 0.22);
       for (let i = 0; i < tendrils.length; i++) {
@@ -804,6 +914,92 @@ export const BOSS_LENGTH = {
 };
 
 /**
+ * Bake every non-animated primitive under `host` into one merged mesh per
+ * material. Anything marked `userData.dynamic` (or any descendant of it) is
+ * left alone so `animateBoss` can still move it.
+ */
+function mergeStatic(host, skip) {
+  const roots = [host];
+  host.traverse((o) => {
+    if (o === host || o === skip) return;
+    if (skip && isUnder(o, skip)) return;
+    if (o.userData?.dynamic && o.children.length) roots.push(o);
+  });
+  for (const root of roots) mergeUnder(root, skip);
+}
+
+function isUnder(o, ancestor) {
+  let p = o.parent;
+  while (p) { if (p === ancestor) return true; p = p.parent; }
+  return false;
+}
+
+/** Merge every static mesh that belongs directly to `root`. */
+function mergeUnder(root, skip) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const buckets = new Map();
+  const doomed = [];
+
+  root.traverse((o) => {
+    if (o === root || !o.isMesh || o.userData?.dynamic) return;
+    if (o === skip || (skip && isUnder(o, skip))) return;
+    // Belongs to a nested dynamic node? That node merges it instead.
+    let p = o.parent;
+    while (p && p !== root) { if (p.userData?.dynamic) return; p = p.parent; }
+    if (p !== root) return;
+    const g = o.geometry;
+    // The painted fish geometry carries extra attributes; never touch it.
+    if (!g?.attributes?.position || g.getAttribute('aT') || g.getAttribute('color')) return;
+    let list = buckets.get(o.material);
+    if (!list) { list = []; buckets.set(o.material, list); }
+    list.push({ geo: g, matrix: new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld) });
+    doomed.push(o);
+  });
+  if (!doomed.length) return;
+
+  for (const [material, list] of buckets) {
+    const merged = mergeToBuffer(list);
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, material);
+    m.name = 'bossStatic';
+    root.add(m);
+  }
+  for (const o of doomed) o.parent?.remove(o);
+  const empties = [];
+  root.traverse((o) => { if (o.isGroup && o !== root && !o.children.length && !o.userData?.dynamic) empties.push(o); });
+  for (const e of empties) e.parent?.remove(e);
+}
+
+/** Concatenate transformed position+normal into a single non-indexed buffer. */
+function mergeToBuffer(list) {
+  const parts = [];
+  let total = 0;
+  for (const { geo: g, matrix } of list) {
+    const c = g.index ? g.toNonIndexed() : g.clone();
+    c.applyMatrix4(matrix);
+    if (!c.getAttribute('normal')) c.computeVertexNormals();
+    parts.push(c);
+    total += c.attributes.position.count;
+  }
+  if (!total) return null;
+  const pos = new Float32Array(total * 3);
+  const nrm = new Float32Array(total * 3);
+  let off = 0;
+  for (const c of parts) {
+    pos.set(c.attributes.position.array, off * 3);
+    nrm.set(c.attributes.normal.array, off * 3);
+    off += c.attributes.position.count;
+    c.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  out.computeBoundingSphere();
+  return out;
+}
+
+/**
  * Build a boss mesh.
  *
  * @param {string|object} speciesOrId  boss species id or species object
@@ -822,7 +1018,7 @@ export function buildBossMesh(speciesOrId, opts = {}) {
   // --- base body from the normal fish pipeline ---------------------------
   let base = null;
   try {
-    base = buildFishMesh(species, null, { glow: clamp01((species.glow ?? 0) * 0.8 + 0.1) });
+    base = buildFishMesh(bossSpecies(species), null, { glow: clamp01((species.glow ?? 0) * 0.4) });
   } catch (e) {
     console.error('[BossMesh] base mesh failed for', species.id, e);
   }
@@ -838,7 +1034,7 @@ export function buildBossMesh(speciesOrId, opts = {}) {
   const builder = BUILDERS[species.id];
   let anim = null;
   if (builder) {
-    try { anim = builder(host, species, rng, weakPoints).anim; }
+    try { anim = builder(host, species, rng, weakPoints, bodyProfile(base)).anim; }
     catch (e) { console.error('[BossMesh] detail build failed for', species.id, e); }
   }
   if (!weakPoints.length) {
@@ -848,6 +1044,11 @@ export function buildBossMesh(speciesOrId, opts = {}) {
     addWeakPoint(host, 0.20, 0.02, -0.06, 0.03, C.accent, weakPoints);
     addWeakPoint(host, -0.10, 0.06, 0.0, 0.03, C.accent, weakPoints);
   }
+
+  // --- collapse the static detail into one mesh per material -------------
+  // A boss is ~120 little primitives; merged, it costs a handful of draws.
+  if (base) base.userData.dynamic = true;
+  mergeStatic(host, base);
 
   // --- re-normalise the whole assembly to 1.0 m along X ------------------
   host.updateMatrixWorld(true);
@@ -902,10 +1103,10 @@ export function buildBossMesh(speciesOrId, opts = {}) {
       const w = weakPoints[i];
       if (w.broken) continue;
       const p = 0.5 + 0.5 * Math.sin(t * 3.2 + i * 1.7);
-      w._mat.emissiveIntensity = 1.5 + p * 1.6 + state.aggro * 1.2;
-      w._halo.scale.setScalar((w.radius / (w.radius || 1)) * (1 + p * 0.22) * (w._halo.userData._s0 ?? 1));
-      if (w._halo.userData._s0 === undefined) w._halo.userData._s0 = w._halo.scale.x;
-      w._halo.lookAt(0, 1e4, 0);
+      w._mat.emissiveIntensity = 1.8 + p * 2.0 + state.aggro * 1.4;
+      const hb = w._halo.userData.base ?? 1;
+      w._halo.scale.setScalar(hb * (0.85 + p * 0.3));
+      w._halo.material.opacity = 0.34 + p * 0.26;
     }
 
     if (anim) { try { anim(t, state, parts); } catch { /* detail anim optional */ } }
