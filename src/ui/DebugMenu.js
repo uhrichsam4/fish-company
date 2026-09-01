@@ -62,6 +62,11 @@ export class DebugMenu {
         ${btn('🌫 Fog', 'weather:fog')}${btn('⛈ Storm', 'weather:storm')}${btn('🌊 Heavy', 'weather:heavy_storm')}
         <br>${btn('🌅 Dawn', 'time:0.25')}${btn('☀ Noon', 'time:0.5')}${btn('🌇 Dusk', 'time:0.75')}${btn('🌙 Night', 'time:0.0')}
         <br>${btn('Time x1', 'timescale:1')}${btn('x0.25', 'timescale:0.25')}${btn('x3', 'timescale:3')}${btn('Pause TOD', 'sky:pause')}`)}
+      ${sec('Disasters', `
+        ${btn('🌊 Rogue Wave', 'storm:rogue')}${btn('🌀 Tsunami', 'storm:tsunami')}
+        ${btn('🛑 Calm Sea', 'storm:clear')}
+        <br>${btn('Surge +1m', 'storm:surge1')}${btn('Surge +3m', 'storm:surge3')}${btn('Surge 0', 'storm:surge0')}
+        <div data-storm-readout style="margin-top:6px;font-family:var(--mono);font-size:10.5px;opacity:.75"></div>`)}
       ${sec('Company', `
         ${btn('Hire Worker', 'worker:hire')}${btn('Hire x5', 'worker:hire5')}${btn('Clear Workers', 'worker:clear')}
         <br>${btn('Give Boat', 'boat:give')}${btn('Give All Boats', 'boat:all')}
@@ -155,6 +160,17 @@ export class DebugMenu {
           break;
         }
         case 'weather': bus.emit('weather:set', { id: arg }); toast(`Weather: ${arg}`); break;
+        case 'storm': {
+          const st = g.get('storm');
+          if (!st) { toast('Storm system not loaded'); break; }
+          if (arg === 'rogue') { st.startRogue(true); toast('Rogue wave incoming'); }
+          else if (arg === 'tsunami') { st.startTsunami(); toast('Tsunami sequence started'); }
+          else if (arg === 'clear') { st.clearEvents(); st.surge = 0; toast('Sea calmed'); }
+          else if (arg === 'surge1') { st.surge = 1; toast('Surge 1 m'); }
+          else if (arg === 'surge3') { st.surge = 3; toast('Surge 3 m'); }
+          else if (arg === 'surge0') { st.surge = 0; toast('Surge 0'); }
+          break;
+        }
         case 'time': g.get('sky')?.setTimeOfDay(+arg); break;
         case 'timescale': g.timeScale = +arg; toast(`Time scale ${arg}x`); break;
         case 'sky': { const s = g.get('sky'); s.paused = !s.paused; toast(`TOD ${s.paused ? 'paused' : 'running'}`); break; }

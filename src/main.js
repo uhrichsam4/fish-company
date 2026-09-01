@@ -65,6 +65,7 @@ async function boot() {
     ['./economy/Inventory.js', 'Inventory'],
     ['./economy/Bucket.js', 'BucketSystem'],
     ['./world/Weather.js', 'Weather'],
+    ['./world/StormSystem.js', 'StormSystem'],
     ['./fish/FishSystem.js', 'FishSystem'],
     ['./fish/PhysicalFish.js', 'PhysicalFishManager'],
     ['./fish/BossSystem.js', 'BossSystem'],
