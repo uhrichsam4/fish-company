@@ -98,6 +98,12 @@ export class Waypoints {
     const player = game.get('player');
     if (!player) return;
 
+    // --- the active journey step -------------------------------------------
+    // Above the tracked quest: the journey is the guided path, and if the two
+    // ever disagree the guided one is the one a lost player needs.
+    const jt = game.get('journey')?.markerTarget?.(game);
+    if (jt) this._push('journey', jt.icon, jt.label, 'var(--gold)', jt.x, jt.y, jt.z, 105);
+
     // --- tracked quest objective -------------------------------------------
     const qt = this._questTarget(game);
     if (qt) this._push('quest', '🎯', qt.label, 'var(--accent)', qt.x, qt.y, qt.z, 100);

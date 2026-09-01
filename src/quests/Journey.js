@@ -40,11 +40,12 @@ const STEPS = [
   },
   {
     id: 'axe', title: 'Chop a Tree', how: 'Equip the felling axe from the hotbar and swing at a trunk',
-    goal: 1, on: 'trees:felled', reward: { money: 80 },
+    goal: 1, on: 'trees:felled', reward: { money: 80 }, marker: 'tree',
   },
   {
     id: 'wood', title: 'Gather 25 Wood', how: 'Keep felling — wood is what everything is built from',
     goal: 25, on: 'trees:felled', amount: (e) => e.wood || 1, reward: { money: 150 },
+    marker: 'tree',
   },
   {
     id: 'foundation', title: 'Lay a Foundation', how: 'Press B to open the build menu, then place a Foundation',
@@ -210,6 +211,48 @@ export class Journey {
         kind: '', duration: 6500,
       });
     }
+  }
+
+  /**
+   * Where the active step wants you to go, for the waypoint layer.
+   *
+   * Telling a new player to "find the sell station" and then not showing them
+   * where it is is the same as not telling them. Resolved live rather than
+   * stored on the step, because the nearest tree changes as you fell them and
+   * the nearest merchant changes as you travel.
+   */
+  markerTarget(game) {
+    const step = this.step;
+    if (!step?.marker) return null;
+    const player = game.get('player');
+    if (!player) return null;
+    const near = (list, get) => {
+      let best = null, bestD = Infinity;
+      for (const it of list || []) {
+        const p = get(it);
+        if (!p) continue;
+        const d = (p.x - player.position.x) ** 2 + (p.z - player.position.z) ** 2;
+        if (d < bestD) { bestD = d; best = p; }
+      }
+      return best;
+    };
+
+    if (step.marker === 'sell') {
+      const p = near(game.get('world')?.sellZones, (z) => z.position);
+      return p && { icon: '💰', label: 'Sell here', x: p.x, y: p.y + 1.4, z: p.z };
+    }
+    if (step.marker === 'shop') {
+      const p = near((game.get('npcs')?.npcs || []).filter((n) => n.def?.shop),
+        (n) => n.object?.position);
+      return p && { icon: '🛒', label: 'Shop', x: p.x, y: p.y + 2.2, z: p.z };
+    }
+    if (step.marker === 'tree') {
+      const trees = game.get('trees')?.trees;
+      const p = near(trees ? [...trees.values()].filter((t) => !t.stump) : [],
+        (t) => t.object?.position || t.position);
+      return p && { icon: '🌴', label: 'Chop this', x: p.x, y: p.y + 3, z: p.z };
+    }
+    return null;
   }
 
   save() { return { index: this.index, progress: this.progress, done: this.done, seed: this._seed }; }

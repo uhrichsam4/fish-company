@@ -83,6 +83,7 @@ export class HUD {
     // you could afford the thing you were standing in front of.
     this.carryEl = el('div', 'hud-carry');
     tr.appendChild(this.carryEl);
+    this.trEl = tr;
     this.root.appendChild(tr);
     this._carrySig = '';
 
@@ -247,7 +248,12 @@ export class HUD {
   }
 
   setObjective(o) {
-    if (!o) { this.objective.style.display = 'none'; return; }
+    this._objective = o;
+    // While the journey is running it is the single source of "do this next".
+    // Two instruction cards in one corner giving different answers is the
+    // confusion this whole card was meant to remove; quests get the slot back
+    // once the guided path is finished, and their waypoint shows either way.
+    if (!o || this._journeyActive) { this.objective.style.display = 'none'; return; }
     this.objective.style.display = '';
     this.objText.textContent = o.text || '';
     this.objProg.textContent = o.progress || '';
@@ -326,7 +332,10 @@ export class HUD {
     if (!this._bucketEl) {
       const el = document.createElement('div');
       el.className = 'hud-bucket';
-      (document.getElementById('ui-root') || document.body).appendChild(el);
+      // Into the top-right column, not free-floating on ui-root. Absolutely
+      // positioned at a fixed top, it sat on top of the carry strip -- two
+      // widgets in one corner each assuming they owned it.
+      (this.trEl || document.getElementById('ui-root') || document.body).appendChild(el);
       this._bucketEl = el;
     }
     const el = this._bucketEl;
@@ -350,6 +359,9 @@ export class HUD {
   setJourney(j) {
     if (!this.journeyEl) return;
     if (!j) { this.journeyEl.style.display = 'none'; return; }
+    const wasActive = this._journeyActive;
+    this._journeyActive = !j.done;
+    if (wasActive !== this._journeyActive) this.setObjective(this._objective);
     const sig = `${j.title}|${j.count}|${j.frac}|${j.done}`;
     if (sig === this._journeySig) return;
     const advanced = this._journeySig && this._journeySig.split('|')[0] !== j.title;

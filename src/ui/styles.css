@@ -877,7 +877,8 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
    in the same corner and fought for the same 170px. */
 .minimap { top: 14px; right: 14px; }
 .hud-tr { top: 196px !important; right: 16px !important; text-align: right; }
-.hud-bucket { top: 250px; right: 14px; }
+/* In the top-right column flow -- see HUD.setBucket. */
+.hud-bucket { position: static; margin: 10px 0 0 auto; text-align: left; }
 
 /* Health and stamina fade out when they have nothing to report. */
 .hud-bl > div { transition: opacity .35s ease; }
