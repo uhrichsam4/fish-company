@@ -335,12 +335,29 @@ export function installTestHarness(game) {
      * PNG under tools/shots/. The read has to happen inside the same task as
      * the draw call because the context isn't created with
      * preserveDrawingBuffer, so we re-render explicitly and read immediately.
+     *
+     * Long edge is capped at opts.max (default 1280) at 1x; pass explicit
+     * width/height to override. tools/shots/ is gitignored -- these are
+     * regenerable, and committing them at full res filled the disk.
      */
     async capture(name = 'shot', opts = {}) {
       const r = game.renderer;
-      const w = opts.width, h = opts.height;
-      const prev = { w: r.domElement.width, h: r.domElement.height };
-      if (w && h) { r.setSize(w, h, false); game.camera.aspect = w / h; game.camera.updateProjectionMatrix(); }
+      // setSize takes logical pixels; domElement.width is the backing buffer,
+      // already scaled by the pixel ratio. Restoring from the latter grew the
+      // canvas by one factor of dpr on every capture.
+      const dpr = r.getPixelRatio();
+      const prev = { w: r.domElement.width / dpr, h: r.domElement.height / dpr };
+      // These are for eyeballing, and a full-res retina grab is a ~3.5MB PNG.
+      // Cap the long edge and drop to 1x unless a caller asks for a size.
+      let w = opts.width, h = opts.height;
+      if (!w || !h) {
+        const scale = Math.min(1, (opts.max ?? 1280) / Math.max(prev.w, prev.h));
+        w = Math.round(prev.w * scale); h = Math.round(prev.h * scale);
+      }
+      r.setPixelRatio(1);
+      r.setSize(w, h, false);
+      game.camera.aspect = w / h;
+      game.camera.updateProjectionMatrix();
       // Draw and read back in one go. Render twice: the first pass warms
       // shadow maps and any lazily-compiled program, and on a canvas without
       // preserveDrawingBuffer a single forced render can read back partially
@@ -349,11 +366,10 @@ export function installTestHarness(game) {
       r.render(game.scene, game.camera);
       for (const s of game.systems) { try { s.postRender?.(game); } catch { /* */ } }
       const url = r.domElement.toDataURL('image/png');
-      if (w && h) {
-        r.setSize(prev.w, prev.h, false);
-        game.camera.aspect = prev.w / prev.h;
-        game.camera.updateProjectionMatrix();
-      }
+      r.setPixelRatio(dpr);
+      r.setSize(prev.w, prev.h, false);
+      game.camera.aspect = prev.w / prev.h;
+      game.camera.updateProjectionMatrix();
       try {
         const res = await fetch('http://localhost:5181/', {
           method: 'POST', headers: { 'content-type': 'application/json' },

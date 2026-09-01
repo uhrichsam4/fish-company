@@ -4,3 +4,6 @@ dist/
 *.log
 .vite/
 tmp/
+
+# Automated visual-inspection captures: large, regenerable, and they filled the disk.
+tools/shots/
