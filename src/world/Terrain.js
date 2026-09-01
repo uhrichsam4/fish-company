@@ -30,29 +30,41 @@ export function worldHeight(x, z) {
       continue;
     }
 
-    // Domain-warp so islands are lobed, not circular.
-    const wx = x + (fbm2(x * 0.0055 + 11.3, z * 0.0055 - 4.1, 3) - 0.5) * r.radius * 0.9;
-    const wz = z + (fbm2(x * 0.0055 - 7.7, z * 0.0055 + 2.9, 3) - 0.5) * r.radius * 0.9;
+    // Domain-warp so islands are lobed, not circular. `warp` can be turned
+    // down for a region whose silhouette needs to read as a deliberate shape
+    // rather than a natural one.
+    const warp = r.warp ?? 0.9;
+    const wx = x + (fbm2(x * 0.0055 + 11.3, z * 0.0055 - 4.1, 3) - 0.5) * r.radius * warp;
+    const wz = z + (fbm2(x * 0.0055 - 7.7, z * 0.0055 + 2.9, 3) - 0.5) * r.radius * warp;
     const d = Math.hypot(wx - r.x, wz - r.z);
-    const t = d / r.radius;
+    // `star` modulates the effective radius by angle, giving pointed lobes.
+    let shapeRadius = r.radius;
+    if (r.star) {
+      const sa = Math.atan2(wz - r.z, wx - r.x);
+      shapeRadius *= 1 + r.star.amp * Math.cos(r.star.points * sa + (r.star.phase || 0));
+    }
+    const t = d / shapeRadius;
 
     // -1e9 (not 0) so points beyond the island don't clamp the shelf up to sea level.
     let land = -1e9;
     if (t < 1.0) {
       // Island body: dome + ridges, flattening near the waterline.
-      const dome = Math.pow(1 - t * t, 1.35);
-      const ridge = (fbm2(x * 0.014, z * 0.014, 4) - 0.44) * r.peak * 0.85 * Math.pow(1 - t, 0.55);
+      // `flat` keeps a region's surface walkable and plaza-like: the dome
+      // stays, everything that makes a hillside interesting is damped.
+      const rough = r.flat ? 0.1 : 1;
+      const dome = Math.pow(1 - t * t, r.flat ? 0.6 : 1.35);
+      const ridge = (fbm2(x * 0.014, z * 0.014, 4) - 0.44) * r.peak * 0.85 * Math.pow(1 - t, 0.55) * rough;
       // Mid-scale relief: gullies and shoulders so hillsides aren't smooth domes.
-      const relief = (fbm2(x * 0.038 + 5.1, z * 0.038 - 3.3, 3) - 0.5) * r.peak * 0.34 * Math.pow(1 - t, 0.35);
+      const relief = (fbm2(x * 0.038 + 5.1, z * 0.038 - 3.3, 3) - 0.5) * r.peak * 0.34 * Math.pow(1 - t, 0.35) * rough;
       // Erosion channels radiating from the peak.
       const ang = Math.atan2(z - r.z, x - r.x);
       const gully = Math.pow(Math.abs(Math.sin(ang * 5.5 + fbm2(x * 0.01, z * 0.01, 2) * 6)), 2.2);
-      const erosion = -gully * r.peak * 0.16 * Math.pow(clamp01(t * 1.3), 1.1) * (1 - t * 0.5);
+      const erosion = -gully * r.peak * 0.16 * Math.pow(clamp01(t * 1.3), 1.1) * (1 - t * 0.5) * rough;
       // Terrain is sampled on a ~3 m grid, so any height term finer than
       // ~12 m wavelength aliases into a large-scale beat pattern — that was
       // the field of hard diagonal streaks across one half of every island.
       // Sub-grid detail belongs in the material's normal map, not the mesh.
-      const detail = (valueNoise2(x * 0.045, z * 0.045) - 0.5) * 1.5 * (1 - t * 0.5);
+      const detail = (valueNoise2(x * 0.045, z * 0.045) - 0.5) * 1.5 * (1 - t * 0.5) * rough;
       land = dome * r.peak + ridge + relief + erosion + detail;
       // Beach: a narrow apron with a berm crest, not a long flat ramp. The
       // beach width varies around the island so it isn't a uniform ring.
@@ -400,6 +412,9 @@ export function scatterOnLand(region, count, opts = {}) {
     const h = worldHeight(x, z);
     if (h < minH || h > maxH) continue;
     if (worldSlope(x, z) > maxSlope) continue;
+    // A region can keep its middle clear -- the lobby needs an open plaza for
+    // the start pads, not a palm grove on top of them.
+    if (region.clearRadius && Math.hypot(x - region.x, z - region.z) < region.clearRadius) continue;
     if (opts.minSpacing) {
       let ok = true;
       for (const p of out) { if (Math.hypot(p.x - x, p.z - z) < opts.minSpacing) { ok = false; break; } }

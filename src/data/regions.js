@@ -4,6 +4,26 @@
  */
 export const REGIONS = [
   {
+    // The multiplayer lobby: a flat five-pointed plaza island, deliberately
+    // shaped rather than natural, sitting well clear of every play region so
+    // its shelf cannot bleed into one. Players spawn here and step into a
+    // start pad to begin a run.
+    id: 'lobby', name: 'Lobby Island', short: 'Lobby',
+    x: -1200, z: 1000, radius: 70, peak: 7, reach: 190,
+    biome: 'tropical', tier: 1,
+    star: { points: 5, amp: 0.5, phase: 0.3 },
+    warp: 0, flat: true, clearRadius: 32,
+    unlocked: true, unlockCost: 0, unlockReq: null,
+    desc: 'Where everyone gathers before a trip out.',
+    shopTier: 1, ambience: 'amb_beach',
+    fogColor: '#a8d8ea', fogDensity: 0.0022,
+    waterShallow: '#43d6bd', waterDeep: '#0a3a5c', waterHorizon: '#2f7fa8',
+    seabedDepth: -18, seabedColor: '#d9c89a',
+    dockAngle: 1.9, hasShop: false, hasSell: false, hasHarbor: false,
+    spawnDepthBands: [[0.5, 5, 0.5]],
+    maxFish: 10,
+  },
+  {
     id: 'crash', name: 'Crash Island', short: 'Crash',
     x: 0, z: 0, radius: 88, peak: 26, reach: 250,
     biome: 'tropical', tier: 1,

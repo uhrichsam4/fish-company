@@ -5,6 +5,8 @@ import { Ocean } from './world/Ocean.js';
 import { World } from './world/World.js';
 import { Player } from './player/Player.js';
 import { HUD } from './ui/HUD.js';
+import { REGION_BY_ID } from './data/regions.js';
+import { worldHeight } from './world/Terrain.js';
 
 const bootEl = document.getElementById('boot');
 const fillEl = document.getElementById('boot-fill');
@@ -79,6 +81,7 @@ async function boot() {
     ['./boats/FleetSystem.js', 'FleetSystem'],
     ['./submarines/SubSystem.js', 'SubSystem'],
     ['./submarines/DeepSea.js', 'DeepSea'],
+    ['./world/LobbySystem.js', 'LobbySystem'],
     ['./world/EventSystem.js', 'EventSystem'],
     ['./world/NPCSystem.js', 'NPCSystem'],
     ['./world/Ambience.js', 'Ambience'],
@@ -126,10 +129,20 @@ async function boot() {
   // ---- spawn ----
   const world = game.get('world');
   const player = game.get('player');
-  const anchors = world.getAnchors('crash');
-  const spawn = anchors.spawn;
-  const toShore = Math.atan2(anchors.shore.z - spawn.z, anchors.shore.x - spawn.x);
-  player.spawnAt(spawn, -toShore + Math.PI / 2);
+  // A new game starts on Lobby Island, where the start pads are; a restored
+  // save is put back wherever it left off, so returning players are not
+  // dropped somewhere they did not expect.
+  const lobbyDef = REGION_BY_ID.lobby;
+  if (lobbyDef && !game.save.hasSave()) {
+    setStatus('raising Lobby Island…');
+    await world.activateRegion('lobby');
+    player.spawnAt({ x: lobbyDef.x, y: worldHeight(lobbyDef.x, lobbyDef.z) + 1.5, z: lobbyDef.z }, 0);
+  } else {
+    const anchors = world.getAnchors('crash');
+    const spawn = anchors.spawn;
+    const toShore = Math.atan2(anchors.shore.z - spawn.z, anchors.shore.x - spawn.x);
+    player.spawnAt(spawn, -toShore + Math.PI / 2);
+  }
 
   // Try to restore a save.
   if (game.save.hasSave()) {
