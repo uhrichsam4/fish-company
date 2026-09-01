@@ -99,7 +99,10 @@ export class NetSystem {
   // ----------------------------------------------------------------------- UI
 
   _buildUI() {
-    const host = document.querySelector('#click-to-play .ctp-inner');
+    // Prefer the menu's dedicated slot; fall back to the overlay body so the
+    // card still appears if the menu markup is ever simplified.
+    const host = document.querySelector('#click-to-play [data-menu-panel="multiplayer"]')
+      || document.querySelector('#click-to-play .ctp-inner');
     const root = document.getElementById('ui-root');
     if (!host || !root) return;
 

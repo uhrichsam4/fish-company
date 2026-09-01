@@ -177,7 +177,32 @@ async function boot() {
     if (game.audio.ctx?.state === 'suspended') game.audio.ctx.resume();
     bus.emit('game:entered');
   };
-  ctp.addEventListener('click', enter);
+  // Menu buttons act instead of the old "click anywhere to play" behaviour,
+  // so a click on the multiplayer fields no longer drops you into the game.
+  ctp.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-menu]');
+    if (btn) {
+      e.stopPropagation();
+      const act = btn.dataset.menu;
+      if (act === 'play') enter();
+      else if (act === 'settings') {
+        const ui = game.get('ui');
+        const pause = ui?.panels?.get?.('pause');
+        if (pause) pause.activeTab = 'settings';
+        ui?.show('pause');
+      } else if (act === 'multiplayer') {
+        const slot = ctp.querySelector('[data-menu-panel="multiplayer"]');
+        if (!slot) return;
+        const show = slot.hasAttribute('hidden');
+        slot.toggleAttribute('hidden', !show);
+        btn.setAttribute('aria-expanded', String(show));
+      }
+      return;
+    }
+    // Clicks on the card itself (inputs, labels) must not start the game.
+    if (e.target.closest('.menu-card')) return;
+    enter();
+  });
   bus.on('pointer:unlocked', () => {
     if (!game.get('ui')?.anyOpen?.()) ctp.classList.remove('hidden');
   });

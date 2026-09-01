@@ -29,8 +29,38 @@
 
   <div id="click-to-play" class="hidden">
     <div class="ctp-inner">
-      <h2>CLICK TO PLAY</h2>
-      <p>WASD move &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; E interact &nbsp;·&nbsp; Esc release cursor</p>
+      <div class="menu-card">
+        <div class="menu-brand">
+          <span class="menu-fish">🐟</span>
+          <h1>FISH COMPANY</h1>
+          <p class="menu-tag">Build a fishing empire from a sandbar and a broken boat.</p>
+        </div>
+
+        <div class="menu-actions">
+          <button type="button" class="menu-btn primary" data-menu="play">
+            <span class="mb-icon">▶</span>
+            <span class="mb-text"><b>Play</b><i>Jump straight in</i></span>
+          </button>
+          <button type="button" class="menu-btn" data-menu="multiplayer" aria-expanded="false">
+            <span class="mb-icon">👥</span>
+            <span class="mb-text"><b>Multiplayer</b><i data-menu-mp-sub>Play with friends</i></span>
+            <span class="mb-chev">›</span>
+          </button>
+          <button type="button" class="menu-btn" data-menu="settings">
+            <span class="mb-icon">⚙</span>
+            <span class="mb-text"><b>Settings</b><i>Graphics, audio, controls</i></span>
+          </button>
+        </div>
+
+        <div class="menu-slot" data-menu-panel="multiplayer" hidden></div>
+
+        <p class="menu-controls">
+          <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move
+          &nbsp;·&nbsp; Mouse look
+          &nbsp;·&nbsp; <kbd>E</kbd> interact
+          &nbsp;·&nbsp; <kbd>Esc</kbd> release cursor
+        </p>
+      </div>
     </div>
   </div>
 
