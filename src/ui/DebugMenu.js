@@ -82,7 +82,7 @@ export class DebugMenu {
         ${btn('Fleet Routes', 'overlay:fleet')}<br>${btn('FPS', 'overlay:fps')}${btn('Wireframe', 'overlay:wire')}`)}
       ${sec('Save', `${btn('Save', 'save:now')}${btn('Load', 'save:load')}${btn('Wipe + Reload', 'save:wipe')}
         <br>${btn('Export', 'save:export')}${btn('Log Stats', 'save:stats')}`)}
-      ${sec('Perf', `${btn('Stress 200 Fish', 'perf:fish')}${btn('Stress Physics', 'perf:phys')}${btn('Quality High', 'perf:high')}${btn('Quality Low', 'perf:low')}`)}
+      ${sec('Perf', `${btn('📊 Perf Panel (F3)', 'perf:panel')}${btn('Stress 200 Fish', 'perf:fish')}${btn('Stress Physics', 'perf:phys')}${btn('Quality High', 'perf:high')}${btn('Quality Low', 'perf:low')}`)}
       <div style="opacity:.5;font-size:10px;margin-top:6px">F3 perf · F4 hud · F8 menu</div>`;
 
     this.el.addEventListener('click', (e) => {
@@ -216,7 +216,8 @@ export class DebugMenu {
           else if (arg === 'stats') { console.table(eco.stats); toast('Stats logged'); }
           break;
         case 'perf':
-          if (arg === 'fish') { g.settings.maxFish = 400; fish.maxFish = 400; for (let i = fish.pool.length; i < 400; i++) { const F = fish.pool[0].constructor; const f = new F(i); fish.root.add(f.group); fish.pool.push(f); } toast('Fish cap 400'); }
+          if (arg === 'panel') { bus.emit('perf:toggle', {}); }
+          else if (arg === 'fish') { g.settings.maxFish = 400; fish.maxFish = 400; for (let i = fish.pool.length; i < 400; i++) { const F = fish.pool[0].constructor; const f = new F(i); fish.root.add(f.group); fish.pool.push(f); } toast('Fish cap 400'); }
           else if (arg === 'phys') { bus.emit('debug:stressPhysics'); }
           else if (arg === 'high') { g.quality = 'high'; bus.emit('quality:changed', 'high'); }
           else if (arg === 'low') { g.quality = 'low'; bus.emit('quality:changed', 'low'); }
@@ -238,7 +239,7 @@ export class DebugMenu {
   update(dt, game) {
     const input = game.input;
     if (input.rawPressed('F8')) this.toggle();
-    if (input.rawPressed('F3')) { game.settings.showFps = !game.settings.showFps; bus.emit('settings:changed'); }
+    if (input.rawPressed('F3')) bus.emit('perf:toggle', {});
     if (input.rawPressed('F4')) { this._hud = !this._hud; bus.emit('hud:visible', !this._hud); }
 
     if (this.overlays.ai || this.overlays.nav) this.drawAIOverlay(game);

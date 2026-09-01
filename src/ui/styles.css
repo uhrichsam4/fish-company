@@ -814,3 +814,31 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 .hud-bucket .hb-bar i { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
 .hud-bucket .hb-bar.warn i { background: var(--warn); }
 .hud-bucket .hb-bar.full i { background: var(--danger); }
+
+
+/* ---- performance panel ------------------------------------------------ */
+.perf-panel {
+  position: fixed; top: 10px; left: 10px; z-index: 90;
+  width: 246px; max-height: 92vh; overflow-y: auto;
+  padding: 9px 11px; display: none;
+  background: rgba(7,13,20,.9); border: 1px solid var(--line);
+  border-radius: 10px; backdrop-filter: blur(6px);
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim);
+  pointer-events: none; line-height: 1.5;
+}
+.perf-panel.show { display: block; }
+.perf-panel .pp-head {
+  font-weight: 700; color: var(--accent); letter-spacing: .1em;
+  margin-bottom: 6px; display: flex; justify-content: space-between;
+}
+.perf-panel .pp-head span { color: var(--ink-faint); font-weight: 400; }
+.perf-panel .pp-sep {
+  margin: 7px 0 3px; padding-top: 5px; border-top: 1px solid var(--line-soft);
+  color: var(--ink-faint); letter-spacing: .12em; font-size: 9.5px;
+}
+.perf-panel .pp-row { display: flex; align-items: baseline; gap: 6px; }
+.perf-panel .pp-row span { flex: 1; white-space: pre; }
+.perf-panel .pp-row b { color: var(--ink); font-weight: 700; }
+.perf-panel .pp-row i { font-style: normal; color: var(--good); letter-spacing: -1px; }
+.perf-panel .pp-row i.warn { color: var(--warn); }
+.perf-panel .pp-row i.bad { color: var(--danger); }

@@ -99,6 +99,7 @@ async function boot() {
     ['./ui/Tutorial.js', 'Tutorial'],
     ['./ui/Waypoints.js', 'Waypoints'],
     ['./ui/UIManager.js', 'UIManager'],
+    ['./util/PerfPanel.js', 'PerfPanel'],
     ['./ui/DebugMenu.js', 'DebugMenu'],
   ];
   // Resolved through import.meta.glob, not a bare dynamic import. A runtime
