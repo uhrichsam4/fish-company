@@ -56,7 +56,37 @@ export class GamblingPanel extends Panel {
 
   _stopAnim() {
     if (this._raf) { cancelAnimationFrame(this._raf); this._raf = 0; }
+    if (this._animTo) { clearTimeout(this._animTo); this._animTo = null; }
     this._busy = false;
+  }
+
+  /**
+   * Run a timed animation. rAF drives it while the page is compositing, but a
+   * backgrounded tab stops rAF dead — and a bet that has already been settled
+   * must still show its result, so a timer guarantees the finish.
+   */
+  _runAnim(dur, onFrame, onDone) {
+    this._stopAnim();
+    this._busy = true;
+    const t0 = performance.now();
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (this._raf) { cancelAnimationFrame(this._raf); this._raf = 0; }
+      if (this._animTo) { clearTimeout(this._animTo); this._animTo = null; }
+      this._busy = false;
+      onFrame(1);
+      onDone();
+    };
+    const step = () => {
+      const t = clamp01((performance.now() - t0) / dur);
+      onFrame(t);
+      if (t >= 1) { finish(); return; }
+      this._raf = requestAnimationFrame(step);
+    };
+    this._raf = requestAnimationFrame(step);
+    this._animTo = setTimeout(finish, dur + 500);
   }
 
   _defaultStake() {
@@ -212,7 +242,6 @@ export class GamblingPanel extends Panel {
     if (this._busy) return;
     const res = g.spinRoulette(this.betBand, this.stake);
     if (!res.ok) { this._deny(res.reason); return; }
-    this._busy = true;
     const msg = this.bodyEl.querySelector('#gb-wheel-msg');
     if (msg) msg.textContent = '';
 
@@ -220,15 +249,10 @@ export class GamblingPanel extends Panel {
     const seg = TAU_ / ROULETTE_POCKETS;
     const target = TAU_ * 5 - (res.pocket * seg + seg / 2);
     const from = this._wheelAngle % TAU_;
-    const dur = 2800;
-    const t0 = performance.now();
-    const step = () => {
-      const t = clamp01((performance.now() - t0) / dur);
+    this._runAnim(2800, (t) => {
       this._wheelAngle = from + (target - from) * ease(t);
       this._drawWheel(this._wheelAngle, t >= 1 ? res.pocket : -1);
-      if (t < 1) { this._raf = requestAnimationFrame(step); return; }
-      this._raf = 0;
-      this._busy = false;
+    }, () => {
       const band = ROULETTE_BANDS.find((b) => b.key === res.landed);
       if (msg) {
         msg.innerHTML = res.win
@@ -236,8 +260,7 @@ export class GamblingPanel extends Panel {
           : `<span style="color:var(--danger)">${band.name}. Not yours.</span>`;
       }
       this._refreshHeader();
-    };
-    this._raf = requestAnimationFrame(step);
+    });
   }
 
   // ----------------------------------------------------------------- race
@@ -309,7 +332,6 @@ export class GamblingPanel extends Panel {
     if (this._busy) return;
     const res = g.runRace(this.betRunner, this.stake);
     if (!res.ok) { this._deny(res.reason); return; }
-    this._busy = true;
     const card = res.card;
     const runners = card.runners;
     const msg = this.bodyEl.querySelector('#gb-race-msg');
@@ -317,25 +339,22 @@ export class GamblingPanel extends Panel {
 
     // Rescale the drawn finishing times so the winner crosses at `dur`.
     const dur = 4600;
+    const total = dur + 900;
     const wt = card.times[card.winner];
     const finish = {};
     for (const r of runners) finish[r.id] = dur * (card.times[r.id] / wt);
 
     const prog = {};
-    const t0 = performance.now();
-    const step = () => {
-      const t = performance.now() - t0;
+    this._runAnim(total, (u) => {
+      const t = u * total;
       for (const r of runners) {
         const base = clamp01(t / finish[r.id]);
         // Wobble fades out completely before the line so the order never lies.
         const wob = Math.sin(t / 260 + r.p * 9) * 0.035 * (1 - base);
         prog[r.id] = clamp01(base + wob);
       }
-      const done = t >= dur + 900;
-      this._drawRace(runners, prog, done ? card.winner : null);
-      if (!done) { this._raf = requestAnimationFrame(step); return; }
-      this._raf = 0;
-      this._busy = false;
+      this._drawRace(runners, prog, u >= 1 ? card.winner : null);
+    }, () => {
       if (msg) {
         msg.innerHTML = res.win
           ? `<span style="color:var(--good)">${res.winner.emoji} ${res.winner.name} wins — you take ${formatMoneyExact(res.payout * res.stake)}</span>`
@@ -343,9 +362,8 @@ export class GamblingPanel extends Panel {
       }
       this._refreshHeader();
       // A new card is already waiting; show its odds.
-      setTimeout(() => { if (this.open && this.activeTab === 'race') this.render(); }, 2200);
-    };
-    this._raf = requestAnimationFrame(step);
+      setTimeout(() => { if (this.open && this.activeTab === 'race') this.render(); }, 2600);
+    });
   }
 
   // ------------------------------------------------------------- coin flip
@@ -406,26 +424,18 @@ export class GamblingPanel extends Panel {
     if (this._busy) return;
     const res = g.flip(this.stake);
     if (!res.ok) { this._deny(res.reason); return; }
-    this._busy = true;
     const msg = this.bodyEl.querySelector('#gb-coin-msg');
     if (msg) msg.textContent = '';
-    const dur = 1700;
-    const t0 = performance.now();
-    const step = () => {
-      const t = clamp01((performance.now() - t0) / dur);
-      const spins = 7 * Math.PI * ease(t);
-      this._drawCoin(spins, t >= 1 ? res.face : null);
-      if (t < 1) { this._raf = requestAnimationFrame(step); return; }
-      this._raf = 0;
-      this._busy = false;
+    this._runAnim(1700, (t) => {
+      this._drawCoin(7 * Math.PI * ease(t), t >= 1 ? res.face : null);
+    }, () => {
       if (msg) {
         msg.innerHTML = res.win
           ? `<span style="color:var(--good)">Fish side. ${formatMoneyExact(res.payout)} back.</span>`
           : `<span style="color:var(--danger)">Skull side. ${formatMoneyExact(res.stake)} gone.</span>`;
       }
       this._refreshHeader();
-    };
-    this._raf = requestAnimationFrame(step);
+    });
   }
 
   // --------------------------------------------------------------- crates

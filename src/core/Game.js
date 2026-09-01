@@ -125,6 +125,13 @@ export class Game {
 
   /** @param {{name:string, order?:number, init?:Function, update?:Function, lateUpdate?:Function}} sys */
   add(sys) {
+    // A system may be registered both by main.js and by a sibling that owns
+    // it; keep the first and hand the caller the existing instance.
+    if (sys.name && this.systemsByName.has(sys.name)) {
+      const existing = this.systemsByName.get(sys.name);
+      if (existing !== sys) console.info(`[Game] "${sys.name}" already registered — reusing the existing instance`);
+      return existing;
+    }
     sys.game = this;
     sys.order = sys.order ?? 100;
     this.systems.push(sys);

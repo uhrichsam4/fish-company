@@ -552,7 +552,14 @@ export class FishingSystem {
       f.position.y = Math.min(f.position.y, waterY + lerp(0.3, 2.4, clamp01(sp.speed)));
     } else {
       this._jumped = false;
-      f.position.y = clamp(f.position.y, bed + 0.25, waterY - 0.12);
+      // Tired fish near the boat ride the surface rather than hiding at depth.
+      const surfaceHold = clamp01((1 - this.fishStamina) * 1.2) * clamp01(1 - this.lineOut / 8);
+      const minY = lerp(bed + 0.25, waterY - 0.35, surfaceHold);
+      f.position.y = clamp(f.position.y, minY, waterY - 0.1);
+      if (surfaceHold > 0.4 && rchance(dt * 6 * surfaceHold)) {
+        bus.emit('fx:splash', { position: _v4.set(f.position.x, waterY, f.position.z).clone(), scale: 0.25 + clamp01(inst.weight / 40) * 0.6 });
+        game.audio.play('splash_small', { volume: 0.18, position: f.position.clone(), throttle: 180, rate: rrange(0.9, 1.2) });
+      }
     }
     // Keep the fish inside the line's reach.
     const maxLen = (s.lineLength || 30) * 1.15;
@@ -593,7 +600,14 @@ export class FishingSystem {
     }
 
     // ---- landing ----
-    if (this.lineOut < lerp(1.6, 3.4, clamp01(inst.length / 3))) {
+    // Measured horizontally: fishing from a dock or a boat puts the rod tip
+    // several metres above the water, so straight-line distance can never
+    // reach the threshold no matter how long you reel.
+    const landDist = lerp(1.9, 3.6, clamp01(inst.length / 3));
+    const horiz = Math.hypot(f.position.x - this.rodTip.x, f.position.z - this.rodTip.z);
+    const atSurface = (waterHeightAt(f.position.x, f.position.z) - f.position.y) < 0.9;
+    if ((horiz < landDist && atSurface) || this.lineOut < landDist
+        || (this.fightTime > 100 && horiz < landDist * 2.2)) {
       this.landFish(game, player);
       return;
     }

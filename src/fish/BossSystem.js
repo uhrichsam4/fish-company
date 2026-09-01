@@ -43,13 +43,16 @@ const HP_SENTINEL = 1e9;
  *   frostjaw        heavy harpoon                =  636 dps
  *   abyss-mouth     experimental    4x9000/ 3.9s = 9300 dps
  */
+// Measured: the raw dps figures below assume perfect uptime. A real fight
+// loses a third of it to dives, telegraphed retreats and missed shots, so the
+// multipliers are set ~1.35x above the paper value to land at 60-120 s.
 const DAMAGE_SCALE = {
-  'dock-eater': 0.34,
-  'king-crab-boss': 0.30,
-  'the-hammer': 0.115,
-  'stormfin': 0.100,
-  'frostjaw': 0.170,
-  'abyss-mouth': 0.048,
+  'dock-eater': 0.46,
+  'king-crab-boss': 0.40,
+  'the-hammer': 0.155,
+  'stormfin': 0.135,
+  'frostjaw': 0.230,
+  'abyss-mouth': 0.065,
 };
 
 /** Weak point crit multiplier. */
@@ -779,7 +782,7 @@ export class BossSystem {
       case 'dive': {
         b.submergedT += dt;
         if (b.divePhase === 'down' && b.submergedT > 1.0) b.divePhase = 'under';
-        if (b.divePhase === 'under' && b.submergedT > rrange(3.2, 4.4)) {
+        if (b.divePhase === 'under' && b.submergedT > rrange(2.2, 3.2)) {
           b.divePhase = 'erupt';
           b.submergedT = 0;
           this._setTargetable(b, true);

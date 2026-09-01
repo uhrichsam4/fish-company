@@ -49,9 +49,13 @@ export class DeepSea {
     this.name = 'deepsea';
     this.order = 47;
 
-    // Guard against being registered twice (SubSystem adds us; main.js might).
+    // Guard against being registered twice: SubSystem adds one from its own
+    // constructor so the pair works without a main.js hook, and main.js may
+    // also list DeepSea. The first instance wins; the second goes inert AND
+    // drops its name so `game.get('deepsea')` still resolves to the live one.
     this._duplicate = !!game.__deepSeaClaimed;
     game.__deepSeaClaimed = true;
+    if (this._duplicate) { this.name = undefined; this.disabled = true; }
 
     this.depth = 0;
     this.blend = 0;
@@ -800,7 +804,7 @@ export class DeepSea {
       for (let i = 0; i < n; i++) {
         if (!rchance(0.55)) continue;
         const a = Math.random() * TAU;
-        const r = rrange(45, 320);
+        const r = rrange(25, 160);
         this.ghostContacts.push({
           x: cam.position.x + Math.cos(a) * r,
           y: cam.position.y + rrange(-60, 40),

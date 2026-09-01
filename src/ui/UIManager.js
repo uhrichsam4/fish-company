@@ -43,20 +43,22 @@ export class UIManager {
       if (p.name) game.systemsByName.set(p.name, p);
     }
 
-    // Tutorial + waypoints are HUD-layer systems owned by the UI. They are not
-    // pushed onto game.systems: init runs inside Game.initSystems' own loop
-    // over that array, and mutating it there would re-enter a system. Driving
-    // them from update() keeps ordering deterministic; they still answer to
-    // game.get(name) and take part in the save.
+    // Tutorial + waypoints are HUD-layer systems. If the boot list already
+    // registered them they run as first-class systems and we leave them alone;
+    // otherwise the UI owns them. They are never pushed onto game.systems from
+    // here — init runs inside Game.initSystems' own loop over that array, and
+    // mutating it mid-iteration would re-enter a system — so the fallback
+    // copies are driven from update() and registered for the save by hand.
     this.extras = [];
-    for (const Cls of [Tutorial, Waypoints]) {
+    for (const [name, Cls] of [['tutorial', Tutorial], ['waypoints', Waypoints]]) {
+      if (game.systemsByName.has(name)) continue;
       try {
         const sys = new Cls(game);
         await sys.init?.(game);
-        game.systemsByName.set(sys.name, sys);
-        if (typeof sys.save === 'function') game.save.register(sys.name, () => sys.save(), (d) => sys.load(d));
+        game.systemsByName.set(name, sys);
+        if (typeof sys.save === 'function') game.save.register(name, () => sys.save(), (d) => sys.load(d));
         this.extras.push(sys);
-      } catch (e) { console.error('[UI] extra system failed', e); }
+      } catch (e) { console.error(`[UI] ${name} failed to start`, e); }
     }
 
     bus.on('interact:shop', (d) => this.show('shop', d));
