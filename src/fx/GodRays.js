@@ -7,9 +7,16 @@ import * as THREE from 'three';
  * prepass, no raymarching — the whole thing is a soft sin() falloff across the
  * shaft plus a depth fade.
  *
- * Verdict after the visual pass: it reads well *underwater looking up-ish*
- * (soft, wide, low contrast). Kept intentionally faint — turned up it looks
- * like translucent cardboard, so `intensity` is clamped low by default.
+ * HONEST VERDICT after the visual passes: this is the weakest effect in the
+ * pack and it is OFF by default. Against bright shallow water it disappears;
+ * pushed bright enough to see, the billboarded quads merge into a shapeless
+ * white wash rather than reading as separate shafts, because they all rotate to
+ * face the camera and overlap. It only earns its place in a genuinely dark
+ * scene (deep water, night, the abyss region) where a faint directional
+ * brightening near the surface helps. Narrow shafts + a high-power cross
+ * section (below) is as far as this technique goes without a depth-aware
+ * raymarch; if it looks bad in your region, just never call `fx.godRays(true)`.
+ * `intensity` is clamped to 0.6 so it can never blow out the frame.
  */
 
 const VERT = /* glsl */`
@@ -53,7 +60,7 @@ uniform float uTime;
 varying vec2 vUv;
 varying float vSeed;
 void main() {
-  float across = pow(sin(clamp(vUv.x, 0.0, 1.0) * 3.14159), 2.2);
+  float across = pow(sin(clamp(vUv.x, 0.0, 1.0) * 3.14159), 3.4);
   float depth = pow(1.0 - vUv.y, 1.5);
   float head = smoothstep(0.0, 0.08, vUv.y);
   float pulse = 0.75 + 0.25 * sin(uTime * 0.7 + vSeed * 4.0);
@@ -65,15 +72,15 @@ void main() {
 `;
 
 export class GodRays {
-  constructor({ count = 7, width = 5.5, length = 26, radius = 13, color = 0xbfe9ff } = {}) {
+  constructor({ count = 9, width = 2.4, length = 24, radius = 17, color = 0xdff6ff } = {}) {
     const pos = new Float32Array(count * 4 * 3);   // unused but required by three
     const local = new Float32Array(count * 4 * 2);
     const params = new Float32Array(count * 4 * 3);
     const idx = new Uint16Array(count * 6);
     for (let i = 0; i < count; i++) {
       const ang = (i / count) * Math.PI * 2 + Math.random() * 0.4;
-      const rad = radius * (0.35 + Math.random() * 0.9);
-      const ws = 0.6 + Math.random() * 0.9;
+      const rad = radius * (0.45 + Math.random() * 0.75);
+      const ws = 0.55 + Math.random() * 1.1;
       const corners = [[-0.5, 0], [0.5, 0], [0.5, 1], [-0.5, 1]];
       for (let c = 0; c < 4; c++) {
         const v = i * 4 + c;
@@ -101,7 +108,7 @@ export class GodRays {
         uLength: { value: length },
         uTime: { value: 0 },
         uColor: { value: new THREE.Color(color) },
-        uIntensity: { value: 0.22 },
+        uIntensity: { value: 0.3 },
       },
       vertexShader: VERT,
       fragmentShader: FRAG,

@@ -368,28 +368,37 @@ export class LightningBolt {
     const wz = (dx / len) * uy - (dy / len) * ux;
     const amp = len * jitter;
 
-    let px = ax, py = ay, pz = az;
+    // Pass 1: the jagged path.
+    const P = this._path || (this._path = new Float32Array(n * 3));
     for (let i = 0; i < n; i++) {
       const t = i / (n - 1);
       const env = Math.sin(t * Math.PI);           // no offset at the endpoints
       const j1 = (Math.random() * 2 - 1) * amp * env;
       const j2 = (Math.random() * 2 - 1) * amp * env * 0.7;
-      const x = ax + dx * t + ux * j1 + wx * j2;
-      const y = ay + dy * t + uy * j1 + wy * j2;
-      const z = az + dz * t + uz * j1 + wz * j2;
+      P[i * 3] = ax + dx * t + ux * j1 + wx * j2;
+      P[i * 3 + 1] = ay + dy * t + uy * j1 + wy * j2;
+      P[i * 3 + 2] = az + dz * t + uz * j1 + wz * j2;
+    }
+    // Pass 2: SMOOTHED tangents (average of the incoming and outgoing edge).
+    // Using only the incoming edge makes the ribbon fold into bow-ties at the
+    // sharp corners, which reads as a rendering bug rather than as lightning.
+    for (let i = 0; i < n; i++) {
+      const i3 = i * 3;
+      const p0 = i > 0 ? (i - 1) * 3 : i3;
+      const p1 = i < n - 1 ? (i + 1) * 3 : i3;
+      let tx = P[p1] - P[p0], ty = P[p1 + 1] - P[p0 + 1], tz = P[p1 + 2] - P[p0 + 2];
+      let tl = Math.hypot(tx, ty, tz);
+      if (tl < 1e-5) { tx = dx; ty = dy; tz = dz; tl = len; }
+      tx /= tl; ty /= tl; tz /= tl;
       const k = i * 6;
-      this.pos[k] = x; this.pos[k + 1] = y; this.pos[k + 2] = z;
-      this.pos[k + 3] = x; this.pos[k + 4] = y; this.pos[k + 5] = z;
-      // direction from the previous point (first uses the next one)
-      let tx = x - px, ty = y - py, tz = z - pz;
-      if (i === 0) { tx = dx; ty = dy; tz = dz; }
-      const tl = Math.hypot(tx, ty, tz) || 1;
-      this.dir[k] = tx / tl; this.dir[k + 1] = ty / tl; this.dir[k + 2] = tz / tl;
-      this.dir[k + 3] = tx / tl; this.dir[k + 4] = ty / tl; this.dir[k + 5] = tz / tl;
-      const taper = Math.min(1, env * 1.9 + 0.25);
+      this.pos[k] = P[i3]; this.pos[k + 1] = P[i3 + 1]; this.pos[k + 2] = P[i3 + 2];
+      this.pos[k + 3] = P[i3]; this.pos[k + 4] = P[i3 + 1]; this.pos[k + 5] = P[i3 + 2];
+      this.dir[k] = tx; this.dir[k + 1] = ty; this.dir[k + 2] = tz;
+      this.dir[k + 3] = tx; this.dir[k + 4] = ty; this.dir[k + 5] = tz;
+      const env = Math.sin((i / (n - 1)) * Math.PI);
+      const taper = Math.min(1, env * 2.4 + 0.35);
       this.inf[i * 4 + 1] = taper;
       this.inf[i * 4 + 3] = taper;
-      px = x; py = y; pz = z;
     }
     this.aPos.needsUpdate = this.aDir.needsUpdate = this.aInf.needsUpdate = true;
     this.duration = duration;
@@ -404,7 +413,7 @@ export class LightningBolt {
     if (left <= 0) { this.mesh.visible = false; this.material.uniforms.uFlash.value = 0; return false; }
     const t = 1 - left / this.duration;
     // hard strobe: bright, blink, bright, out
-    const flick = t < 0.12 ? 1 : (t < 0.22 ? 0.25 : (t < 0.45 ? 1 : Math.pow(1 - (t - 0.45) / 0.55, 1.6)));
+    const flick = t < 0.14 ? 1 : (t < 0.24 ? 0.5 : (t < 0.5 ? 1 : Math.pow(1 - (t - 0.5) / 0.5, 1.5)));
     this.material.uniforms.uFlash.value = flick;
     return true;
   }

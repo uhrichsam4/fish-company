@@ -55,6 +55,7 @@ export class Ocean {
       uSparkle: { value: 1 },
       uQuality: { value: 2 },
       uOpacity: { value: 1 },
+      uLight: { value: 1 },
       uRipples: { value: Array.from({ length: 12 }, () => new THREE.Vector4(0, 0, -1, 0)) },
     };
 
@@ -150,6 +151,16 @@ export class Ocean {
       this.skirt.position.set(cam.position.x, this.seaLevel - 0.05, cam.position.z);
     }
     u.uUnderwater.value = cam.position.y < waterHeightAt(cam.position.x, cam.position.z) ? 1 : 0;
+
+    const sky = game.get('sky');
+    if (sky) {
+      const light = 0.06 + sky.dayFactor * 0.94;
+      u.uLight.value = light;
+      u.uSunDir.value.copy(sky.sunDir);
+      u.uSunColor.value.copy(sky.uniforms.uSunColor.value);
+      u.uSkyColor.value.copy(sky.uniforms.uHorizon.value);
+      this.skirtMat.color.copy(u.uHorizonColor.value).multiplyScalar(0.35 + light * 0.65);
+    }
   }
 
   heightAt(x, z) { return waterHeightAt(x, z); }
@@ -309,6 +320,7 @@ uniform float uWindStrength;
 uniform float uSparkle;
 uniform float uQuality;
 uniform float uOpacity;
+uniform float uLight;
 uniform float uAmplitude;
 
 varying vec3 vWorldPos;
@@ -379,6 +391,10 @@ void main() {
     col = mix(col, uDeepColor * 1.4, 0.55);
     alpha = 0.85;
   }
+
+  // Water is lit by the sky: at night it must go dark, not stay tropical.
+  col *= mix(0.10, 1.0, uLight);
+  col += vec3(0.012, 0.02, 0.034) * (1.0 - uLight);
 
   float fogAmt = 1.0 - exp(-uFogDensity * uFogDensity * vDist * vDist);
   col = mix(col, uFogColor, clamp(fogAmt, 0.0, 1.0));

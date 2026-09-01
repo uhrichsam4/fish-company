@@ -45,7 +45,7 @@
   button:hover { background: #1d3b53; border-color: #3d7fa5; }
   button.on { background: #1c6a5f; border-color: #45e0d0; color: #ccfff8; }
   button.hero { background: #1e4d6b; border-color: #47a3d8; font-weight: 700; }
-  #stats { position: fixed; right: 10px; top: 10px; z-index: 40; text-align: right;
+  #stats { position: fixed; right: 10px; bottom: 10px; z-index: 40; text-align: right;
     background: rgba(7,18,28,.8); border: 1px solid #1e3a4d; border-radius: 8px; padding: 7px 10px; }
   #stats b { color: #45e0d0; font-weight: 700; }
   .hint { color: #66869a; margin-top: 7px; font-size: 10px; line-height: 1.5; }
@@ -330,7 +330,7 @@ for (const [name, [group, label, fire, hero]] of Object.entries(EFFECTS)) {
 
 btn('g-persist', 'wake', (b) => {
   if (wakeHandle) { wakeHandle.stop(); wakeHandle = null; b.classList.remove('on'); }
-  else { wakeHandle = fx.wake(boat, { width: 1.7, spread: 1.1, sprayRate: 12 }); b.classList.add('on'); }
+  else { wakeHandle = fx.wake(boat, { width: 1.6, spread: 0.5, sprayRate: 12 }); b.classList.add('on'); }
 }, { toggle: true });
 btn('g-persist', 'bubbleTrail', (b) => {
   if (trailHandle) { trailHandle.stop(); trailHandle = null; b.classList.remove('on'); }
@@ -419,7 +419,7 @@ window.EFFECTS = EFFECTS;
   if (q.get('snow')) { snowLvl = Number(q.get('snow')); fx.weatherSnow(snowLvl); }
   if (q.get('motes')) { motesOn = true; fx.underwaterMotes(true, Number(q.get('motes'))); }
   if (q.get('rays')) { raysOn = true; fx.godRays(true); }
-  if (q.get('wake')) wakeHandle = fx.wake(boat, { width: 1.7, spread: 1.1, sprayRate: 12 });
+  if (q.get('wake')) wakeHandle = fx.wake(boat, { width: 1.6, spread: 0.5, sprayRate: 12 });
   if (q.get('trail')) trailHandle = fx.bubbleTrail(fish, { rate: 26, spread: 0.18 });
   if (q.get('aura')) auraHandle = fx.rareAura(fish, { color: 0xc48cff, intensity: 1.3 });
   if (q.get('stress')) stress = true;
@@ -449,6 +449,7 @@ const trisEl = document.getElementById('tris');
 const spsEl = document.getElementById('sps');
 const liveEl = document.getElementById('live');
 const baseCam = new THREE.Vector3();
+window.PERF = { last: 0, min: 0, max: 0, avg: 0, samples: [], draws: 0, tris: 0, spawnsPerSec: 0, dropped: 0, reset() { this.samples.length = 0; } };
 
 function tick() {
   requestAnimationFrame(tick);
@@ -497,7 +498,23 @@ function tick() {
 
   frames++; acc += raw;
   if (acc >= 0.4) {
-    fpsEl.textContent = (frames / acc).toFixed(0);
+    const fps = frames / acc;
+    // Only record while the tab is actually visible — rAF is throttled to ~1 Hz
+    // in a background tab and would poison the numbers.
+    if (!document.hidden) {
+      const P = window.PERF;
+      P.last = +fps.toFixed(1);
+      P.samples.push(P.last);
+      if (P.samples.length > 60) P.samples.shift();
+      P.min = Math.min(...P.samples);
+      P.max = Math.max(...P.samples);
+      P.avg = +(P.samples.reduce((a, b) => a + b, 0) / P.samples.length).toFixed(1);
+      P.draws = renderer.info.render.calls;
+      P.tris = renderer.info.render.triangles;
+      P.spawnsPerSec = Math.round((fx.stats.spawns - spawnPrev) / acc);
+      P.dropped = fx.stats.dropped;
+    }
+    fpsEl.textContent = fps.toFixed(0);
     drawsEl.textContent = renderer.info.render.calls;
     trisEl.textContent = renderer.info.render.triangles.toLocaleString();
     spsEl.textContent = Math.round((fx.stats.spawns - spawnPrev) / acc);

@@ -49,11 +49,11 @@ const FRAME_SPAWN_BUDGET = 420;
 const QUALITY_SCALE = { high: 1, medium: 0.72, low: 0.45 };
 
 const IMPACT_KINDS = {
-  wood: { chip: PAL.wood, chip2: PAL.woodDark, dust: PAL.dustTan, sparks: 0, chips: 7, dustN: 5, size: 0.085, ring: false },
-  metal: { chip: PAL.metal, chip2: 0x8e97a3, dust: 0xc9d2dc, sparks: 14, chips: 5, dustN: 3, size: 0.06, ring: true },
-  stone: { chip: PAL.stone, chip2: 0x6f6d68, dust: 0xcfc9bb, sparks: 0, chips: 8, dustN: 7, size: 0.09, ring: false },
-  ice: { chip: PAL.ice, chip2: 0x7fd8f0, dust: 0xe6fbff, sparks: 6, chips: 9, dustN: 5, size: 0.075, ring: true },
-  flesh: { chip: PAL.flesh, chip2: 0xf0b79a, dust: 0xffe6d6, sparks: 0, chips: 4, dustN: 8, size: 0.07, ring: false },
+  wood: { chip: PAL.wood, chip2: PAL.woodDark, dust: PAL.dustTan, sparks: 0, chips: 8, dustN: 5, size: 0.14, ring: false },
+  metal: { chip: PAL.metal, chip2: 0x8e97a3, dust: 0xc9d2dc, sparks: 16, chips: 6, dustN: 3, size: 0.10, ring: true },
+  stone: { chip: PAL.stone, chip2: 0x6f6d68, dust: 0xcfc9bb, sparks: 0, chips: 9, dustN: 7, size: 0.15, ring: false },
+  ice: { chip: PAL.ice, chip2: 0x7fd8f0, dust: 0xe6fbff, sparks: 8, chips: 10, dustN: 5, size: 0.13, ring: true },
+  flesh: { chip: PAL.flesh, chip2: 0xf0b79a, dust: 0xffe6d6, sparks: 0, chips: 4, dustN: 9, size: 0.11, ring: false },
   water: null,   // routed to splash()
 };
 
@@ -389,17 +389,20 @@ export class Effects {
     const crown = this._n(9 * rs, 5);
     for (let i = 0; i < crown; i++) {
       const a = (i / crown) * TAU + Math.random() * 0.45;
-      const out = (1.5 + Math.random() * 2.0) * rs;
-      const upv = (4.0 + Math.random() * 3.4) * rs;
+      const out = (1.9 + Math.random() * 2.2) * rs;
+      const upv = (4.2 + Math.random() * 3.4) * rs;
       d = this._s();
       d.x = x + Math.cos(a) * 0.12 * s; d.y = y + 0.02 * s; d.z = z + Math.sin(a) * 0.12 * s;
       d.vx = Math.cos(a) * out + ux * upv * 0.3;
       d.vy = upv * uy + 0.4;
       d.vz = Math.sin(a) * out + uz * upv * 0.3;
       d.grav = -17; d.drag = 1.1;
-      d.life = 0.30 + Math.random() * 0.20;
-      d.size = 0.28 * s; d.size2 = 0.40 * s;
-      d.col = 0xffffff; d.col2 = tint; d.alpha = 1; d.alphaPow = 2.1; d.fadeIn = 0.012;
+      const sv = 0.62 + Math.random() * 0.85;      // size variance kills the "row of identical bubbles" look
+      d.life = 0.28 + Math.random() * 0.20;
+      d.size = 0.30 * s * sv; d.size2 = 0.42 * s * sv;
+      // alphaPow < 1 HOLDS the particle opaque then drops it — that is what
+      // keeps foam reading as solid water instead of translucent haze.
+      d.col = 0xffffff; d.col2 = 0xffffff; d.alpha = 1; d.alphaPow = 0.5; d.fadeIn = 0.012;
       d.tile = TILE.blob;
       d.stretch = 0.85;                          // sheets of water, not balls
       this._push(this.alpha);
@@ -414,9 +417,10 @@ export class Effects {
       d.x = x + Math.cos(a) * 0.16 * s; d.y = y + 0.05 * s; d.z = z + Math.sin(a) * 0.16 * s;
       d.vx = Math.cos(a) * out; d.vy = upv; d.vz = Math.sin(a) * out;
       d.grav = -15; d.drag = 1.8; d.turb = 0.1;
-      d.life = 0.26 + Math.random() * 0.18;
-      d.size = 0.22 * s; d.size2 = 0.42 * s; d.sizePow = 0.6;
-      d.col = 0xffffff; d.col2 = PAL.foamCool; d.alpha = 1; d.alphaPow = 2.2;
+      const fv = 0.6 + Math.random() * 0.9;
+      d.life = 0.22 + Math.random() * 0.16;
+      d.size = 0.22 * s * fv; d.size2 = 0.40 * s * fv; d.sizePow = 0.6;
+      d.col = 0xffffff; d.col2 = PAL.foamCool; d.alpha = 1; d.alphaPow = 0.6;
       d.tile = TILE.foam; d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 2.4;
       this._push(this.alpha);
     }
@@ -451,8 +455,8 @@ export class Effects {
       d.vx = Math.cos(a) * 0.7 * rs; d.vy = sp; d.vz = Math.sin(a) * 0.7 * rs;
       d.grav = -19; d.drag = 1.4;
       d.life = 0.34 + Math.random() * 0.16;
-      d.size = 0.19 * s; d.size2 = 0.13 * s;
-      d.col = 0xffffff; d.col2 = tint; d.alpha = 1; d.alphaPow = 1.8; d.fadeIn = 0.01;
+      d.size = 0.20 * s; d.size2 = 0.13 * s;
+      d.col = 0xffffff; d.col2 = 0xffffff; d.alpha = 1; d.alphaPow = 0.55; d.fadeIn = 0.01;
       d.tile = TILE.blob; d.stretch = 2.4;
       this._push(this.alpha);
     }
@@ -645,7 +649,7 @@ export class Effects {
     const ribbon = this._takeRibbon(o);
     return this._addEmitter({
       kind: 'wake', obj: object3d, ribbon,
-      width: o.width ?? 1.4, spread: o.spread ?? 0.9,
+      width: o.width ?? 1.4, spread: o.spread ?? 0.45,
       offset: o.offset ? this._readArr(o.offset) : [0, 0, 0],
       sprayRate: o.sprayRate ?? 9, minSpeed: o.minSpeed ?? 0.8,
       prevX: 0, prevZ: 0, hasPrev: false, acc: 0, rippleAcc: 0,
@@ -691,11 +695,11 @@ export class Effects {
       d.x = x; d.y = y; d.z = z;
       d.vx = dir[0] * sp; d.vy = dir[1] * sp + 0.4; d.vz = dir[2] * sp;
       d.grav = kind === 'flesh' ? -2.5 : -3.2; d.drag = 2.4; d.turb = 0.2;
-      d.life = 0.45 + Math.random() * 0.55;
-      d.size = 0.13 * s; d.size2 = 0.62 * s; d.sizePow = 0.45;
+      d.life = 0.38 + Math.random() * 0.42;
+      d.size = 0.16 * s * (0.7 + Math.random() * 0.7); d.size2 = 0.68 * s * (0.7 + Math.random() * 0.7); d.sizePow = 0.45;
       d.col = kind === 'flesh' ? PAL.flesh : K.dust;
       d.col2 = kind === 'flesh' ? 0xffffff : K.chip2;
-      d.alpha = kind === 'flesh' ? 0.95 : 0.85; d.alphaPow = 1.4;
+      d.alpha = kind === 'flesh' ? 1 : 0.92; d.alphaPow = 0.65;
       d.tile = kind === 'flesh' ? TILE.foam : TILE.dust;
       d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 2.2;
       this._push(this.alpha);
@@ -724,14 +728,14 @@ export class Effects {
         d = this._s();
         d.x = x; d.y = y; d.z = z;
         d.vx = dir[0] * sp; d.vy = dir[1] * sp + 1.2; d.vz = dir[2] * sp;
-        d.grav = -16; d.drag = 1.1;
-        d.life = 0.22 + Math.random() * 0.45;
-        d.size = kind === 'ice' ? 0.09 * s : 0.07 * s; d.size2 = 0.012;
-        d.col = kind === 'ice' ? PAL.ice : PAL.fireHot;
+        d.grav = -16; d.drag = 0.55;
+        d.life = 0.26 + Math.random() * 0.42;
+        d.size = kind === 'ice' ? 0.14 * s : 0.12 * s; d.size2 = 0.015;
+        d.col = kind === 'ice' ? 0xffffff : 0xfff4c8;
         d.col2 = kind === 'ice' ? PAL.aqua : PAL.ember;
-        d.alphaPow = 0.8;
+        d.alphaPow = 0.5;
         d.tile = kind === 'ice' ? TILE.star : TILE.spark;
-        d.stretch = kind === 'ice' ? 0 : 1.5;
+        d.stretch = kind === 'ice' ? 0 : 2.6;
         d.spin = (Math.random() - 0.5) * 10;
         this._push(this.add);
       }
@@ -811,25 +815,41 @@ export class Effects {
     const s = clamp(o.scale ?? 1, 0.2, 6);
     let d;
 
-    // fireball core
-    for (let i = 0; i < 3; i++) {
+    // OPAQUE fireball body first. Additive light alone always reads as a white
+    // flash — the alpha-blended orange lumps are what give it a silhouette.
+    const balls = this._n(5, 3);
+    for (let i = 0; i < balls; i++) {
+      const a = Math.random() * TAU, r = Math.random() * 0.32 * s;
+      const bv = 0.7 + Math.random() * 0.7;
       d = this._s();
-      d.x = x + (Math.random() - 0.5) * 0.3 * s;
-      d.y = y + (Math.random() - 0.3) * 0.3 * s;
-      d.z = z + (Math.random() - 0.5) * 0.3 * s;
-      d.life = 0.28 + i * 0.08;
-      d.size = 0.5 * s; d.size2 = (2.6 + i * 0.5) * s; d.sizePow = 0.4;
-      d.col = PAL.fireHot; d.col2 = i === 0 ? PAL.fire : PAL.ember;
-      d.alphaPow = 1.7; d.fadeIn = 0.01;
-      d.tile = i === 0 ? TILE.flare : TILE.foam;
-      d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 2;
+      d.x = x + Math.cos(a) * r; d.y = y + (Math.random() - 0.35) * 0.35 * s; d.z = z + Math.sin(a) * r;
+      d.vx = Math.cos(a) * 1.7 * s; d.vy = 1.3 * s; d.vz = Math.sin(a) * 1.7 * s;
+      d.grav = 1.6; d.drag = 3.2;
+      d.life = 0.34 + Math.random() * 0.22;
+      d.size = 0.42 * s * bv; d.size2 = 1.5 * s * bv; d.sizePow = 0.45;
+      d.col = 0xffc23a; d.col2 = 0x9c3410; d.alpha = 1; d.alphaPow = 0.85; d.fadeIn = 0.012;
+      d.tile = TILE.foam; d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 2.4;
+      this._push(this.alpha);
+    }
+    // additive heat on top of the body
+    for (let i = 0; i < 2; i++) {
+      d = this._s();
+      d.x = x; d.y = y + 0.05 * s; d.z = z;
+      d.life = i === 0 ? 0.13 : 0.30;
+      d.size = (i === 0 ? 0.3 : 0.5) * s;
+      d.size2 = (i === 0 ? 1.2 : 2.0) * s;
+      d.sizePow = 0.4;
+      d.col = i === 0 ? 0xffffff : PAL.fire;
+      d.col2 = i === 0 ? PAL.fire : PAL.ember;
+      d.alpha = i === 0 ? 1 : 0.8; d.alphaPow = i === 0 ? 1.5 : 1.9; d.fadeIn = 0.008;
+      d.tile = TILE.flare; d.rot = Math.random() * TAU;
       this._push(this.add);
     }
-    // shockwave ring
+    // shockwave ring — thin, fast, gone
     d = this._s();
     d.x = x; d.y = y; d.z = z;
-    d.life = 0.4; d.size = 0.4 * s; d.size2 = 6 * s; d.sizePow = 0.32;
-    d.col = PAL.sun; d.col2 = PAL.ember; d.alpha = 0.9; d.alphaPow = 2.4;
+    d.life = 0.26; d.size = 0.4 * s; d.size2 = 3.4 * s; d.sizePow = 0.3;
+    d.col = 0xfff0c0; d.col2 = PAL.ember; d.alpha = 1; d.alphaPow = 2.6;
     d.tile = TILE.ring;
     this._push(this.add);
 
@@ -850,7 +870,7 @@ export class Effects {
       this._push(this.add);
     }
     // smoke
-    const smoke = this._n(11 * s, 4);
+    const smoke = this._n(8 * s, 4);
     for (let i = 0; i < smoke; i++) {
       const dir = this._cone(-0.5);
       const sp = (1.2 + Math.random() * 3.4) * s;
@@ -858,9 +878,9 @@ export class Effects {
       d.x = x; d.y = y; d.z = z;
       d.vx = dir[0] * sp; d.vy = dir[1] * sp + 1.4; d.vz = dir[2] * sp;
       d.grav = 1.4; d.drag = 1.2; d.turb = 0.35;
-      d.life = 1.1 + Math.random() * 1.3;
-      d.size = 0.5 * s; d.size2 = 2.4 * s; d.sizePow = 0.55;
-      d.col = 0x6b6459; d.col2 = PAL.smoke; d.alpha = 0.75; d.alphaPow = 1.1; d.fadeIn = 0.09;
+      d.life = 0.85 + Math.random() * 0.9;
+      d.size = 0.45 * s; d.size2 = 1.9 * s; d.sizePow = 0.55;
+      d.col = 0x8a6a4c; d.col2 = 0xa9a49b; d.alpha = 0.8; d.alphaPow = 1.2; d.fadeIn = 0.09;
       d.tile = TILE.smoke; d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 1.1;
       d.delay = Math.random() * 0.12;
       this._push(this.alpha);
@@ -873,7 +893,7 @@ export class Effects {
         x, y: y + 0.1, z,
         vx: dir[0] * sp, vy: dir[1] * sp + 3, vz: dir[2] * sp,
         size: 0.1 * s, life: 1.1 + Math.random(),
-        col: 0x3a3630, floorY: y - 0.02, bounce: 0.3, spin: 18, water: true,
+        col: Math.random() < 0.5 ? 0x6f6155 : 0x8a5a34, floorY: y - 0.02, bounce: 0.3, spin: 18, water: true,
       });
     }
     this.pointFlash(x, y + 0.4 * s, z, 0xffb060, 26 * s, 22 * s, 0.28);
@@ -1014,17 +1034,17 @@ export class Effects {
     if (!this.enabled) return;
     const p = this._read(position);
     const s = o.scale ?? 1;
-    const n = this._n(9 * s, 3);
+    const n = this._n(13 * s, 4);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * TAU, r = Math.random() * 0.22 * s;
       const d = this._s();
       d.x = p.x + Math.cos(a) * r; d.y = p.y; d.z = p.z + Math.sin(a) * r;
       d.vx = Math.cos(a) * 0.25; d.vy = 1.6 + Math.random() * 1.8; d.vz = Math.sin(a) * 0.25;
       d.grav = 1.6; d.drag = 0.7; d.turb = 0.4;
-      d.life = 1.4 + Math.random() * 1.4;
-      d.size = 0.22 * s; d.size2 = 1.7 * s; d.sizePow = 0.6;
+      d.life = 1.3 + Math.random() * 1.2;
+      d.size = 0.26 * s; d.size2 = 1.45 * s; d.sizePow = 0.6;
       d.col = 0xffffff; d.col2 = o.color ?? PAL.sky;
-      d.alpha = 0.6; d.alphaPow = 1.15; d.fadeIn = 0.12;
+      d.alpha = 0.9; d.alphaPow = 0.9; d.fadeIn = 0.1;
       d.tile = TILE.smoke; d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 0.9;
       d.delay = Math.random() * 0.5;
       this._push(this.alpha);
@@ -1069,7 +1089,7 @@ export class Effects {
     bolt.material.uniforms.uCore.value.set(o.core ?? 0xffffff);
     bolt.material.uniforms.uGlow.value.set(o.color ?? PAL.volt);
     bolt.material.uniforms.uWidth.value = o.width ?? 0.34;
-    bolt.strike(ax, ay, az, bx, by, bz, this.rt, dur, o.jitter ?? 0.14);
+    bolt.strike(ax, ay, az, bx, by, bz, this.rt, dur, o.jitter ?? 0.10);
 
     // impact pop at the far end
     const d = this._s();
@@ -1221,8 +1241,8 @@ export class Effects {
     if (!r) {
       if (this._liveRibbons() >= CAP.ribbons) return null;
       r = new Ribbon({
-        texture: this.foamTex, capacity: 56, life: o.life ?? 4.5,
-        spread: o.spread ?? 0.9, minDist: o.minDist ?? 0.6,
+        texture: this.foamTex, capacity: 64, life: o.life ?? 3.6,
+        spread: o.spread ?? 0.45, minDist: o.minDist ?? 0.55,
         color: o.color ?? 0xffffff, opacity: o.opacity ?? 0.9,
       });
       this.game.scene.add(r.mesh);

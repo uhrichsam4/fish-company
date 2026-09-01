@@ -368,6 +368,8 @@ export class DebrisPool {
   spawn(d) {
     const i = this.cursor;
     this.cursor = (this.cursor + 1) % this.capacity;
+    // Recycling a slot that is still alive must not inflate the live counter.
+    if (this.life[i] <= 0) this.live++;
     const i3 = i * 3;
     this.p[i3] = d.x; this.p[i3 + 1] = d.y; this.p[i3 + 2] = d.z;
     this.v[i3] = d.vx; this.v[i3 + 1] = d.vy; this.v[i3 + 2] = d.vz;
@@ -391,7 +393,6 @@ export class DebrisPool {
       this.mesh.instanceColor.setXYZ(i, _c.r * j, _c.g * j, _c.b * j);
       this.mesh.instanceColor.needsUpdate = true;
     }
-    this.live++;
     return i;
   }
 
