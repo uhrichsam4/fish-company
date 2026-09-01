@@ -142,10 +142,15 @@ export class UIManager {
     const input = game.input;
     const anyOpen = this.anyOpen();
     const debugOpen = game.get('debug')?.open;
-    input.uiCapture = anyOpen || !!debugOpen;
+    // The lobby pad panel is a real modal even though it is not a Panel: it
+    // must capture input too, or the number keys meant for choosing a party
+    // size fall through to the hotbar.
+    const lobbyOpen = !!game.get('lobby')?.panelOpen;
+    input.uiCapture = anyOpen || !!debugOpen || lobbyOpen;
 
     if (input.rawPressed('Escape')) {
       if (anyOpen) this.closeAll();
+      else if (lobbyOpen) game.get('lobby')?.leave();
       else if (debugOpen) game.get('debug').toggle();
       else this.show('pause');
     }
