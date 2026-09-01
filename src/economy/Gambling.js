@@ -144,6 +144,8 @@ export class Gambling {
   }
 
   async init(game) {
+    if (this._inited) return this;   // adding a system late must not double-register
+    this._inited = true;
     // Verified at boot: if anyone edits a table, the console says so loudly.
     for (const [name, rows] of [['crate', CRATE_TABLE], ['risk', RISK_TABLE]]) {
       const w = rows.reduce((a, r) => a + r.weight, 0);

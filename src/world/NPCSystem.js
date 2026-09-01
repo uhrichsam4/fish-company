@@ -15,6 +15,13 @@ const HEAD_TRACK_RADIUS = 7;
 
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
+const _probe = new THREE.Vector3();
+const _down = new THREE.Vector3(0, -1, 0);
+const _rayOrigin = new THREE.Vector3();
+const _ray = new THREE.Raycaster();
+
+/** Collider tags an NPC must not be standing inside. */
+const BLOCK_TAGS = new Set(['building', 'rock', 'wreck', 'iceberg', 'structure', 'prop', 'boat', 'crate']);
 
 /**
  * The people. Twelve of them, world-wide.
@@ -52,6 +59,8 @@ export class NPCSystem {
   }
 
   async init(game) {
+    if (this._inited) return this;   // adding a system late must not double-register
+    this._inited = true;
     this.root = new THREE.Group();
     this.root.name = 'npcs';
     game.scene.add(this.root);
@@ -65,7 +74,7 @@ export class NPCSystem {
         phase: Math.random() * TAU,
         glanceTimer: rrange(3, 9), glanceYaw: 0,
         talkTimer: rrange(8, 30),
-        registered: false,
+        registered: false, settled: false, interactable: null,
       };
       this.npcs.push(n);
       this.byId.set(def.id, n);
@@ -106,8 +115,8 @@ export class NPCSystem {
   // ------------------------------------------------------------- placement
 
   /** Resolve a world position from the region's anchors. Idempotent. */
-  place(n) {
-    if (n.placed) return true;
+  place(n, force = false) {
+    if (n.placed && !force) return true;
     const world = this.game.get('world');
     const def = REGION_BY_ID[n.region];
     if (!world || !def || def.trench) return false;
@@ -121,32 +130,105 @@ export class NPCSystem {
     const out = a.outward || { x: 1, z: 0 };
     const side = a.side || { x: 0, z: 1 };
 
-    const x = base.x + out.x * (at.fwd || 0) + side.x * (at.side || 0);
-    const z = base.z + out.z * (at.fwd || 0) + side.z * (at.side || 0);
+    const wantX = base.x + out.x * (at.fwd || 0) + side.x * (at.side || 0);
+    const wantZ = base.z + out.z * (at.fwd || 0) + side.z * (at.side || 0);
     const onDock = at.anchor === 'dock' || at.anchor === 'dockEnd' || at.anchor === 'dockStart';
-    const y = onDock ? (a.dock?.y ?? 1.8) + 0.04 : worldHeight(x, z);
+    // `dock.y` is the anchor height, not necessarily the height of the planks
+    // that got built there, so probe for the surface actually on screen.
+    const wantY = onDock
+      ? this._deckY(wantX, wantZ, (a.dock?.y ?? 1.8)) + 0.04
+      : worldHeight(wantX, wantZ);
+    // Region dressing moves around; an anchor that was open sand last week can
+    // be the inside of a warehouse now. Shuffle out of anything solid.
+    const spot = this._findClear(wantX, wantZ, wantY, onDock);
+    const x = spot.x, z = spot.z, y = spot.y;
     n.position.set(x, y, z);
 
     // Face something meaningful rather than due north.
     let target = a.dock || a.shore;
     if (at.face === 'sea' && a.dockEnd) {
       target = { x: a.dockEnd.x + out.x * 30, z: a.dockEnd.z + out.z * 30 };
-    } else if (at.face === 'campfire' && a.campfire) target = a.campfire;
+    } else if (at.face === 'shore' && a.shore) target = a.shore;
+    else if (at.face === 'campfire' && a.campfire) target = a.campfire;
     else if (at.face === 'shop' && a.shop) target = a.shop;
     if (target) n.facing = Math.atan2(target.x - x, target.z - z);
     n.lookAt.set(target?.x ?? x, y + 1.5, target?.z ?? z + 1);
 
     n.placed = true;
+    // Only trustworthy once the region's colliders actually exist.
+    n.settled = !!world.regions.get(n.region)?.active;
+    if (n.interactable) {
+      n.interactable.position.set(x, y + 1.2, z);
+    }
     return true;
+  }
+
+  /**
+   * Height of the dock surface at (x,z). Dock props are built by the region
+   * decorator and their deck does not always sit exactly on the anchor, so an
+   * NPC placed at the anchor height can end up shin-deep in the planks.
+   */
+  _deckY(x, z, baseY) {
+    const world = this.game.get('world');
+    if (!world?.root) return baseY;
+    _rayOrigin.set(x, baseY + 8, z);
+    _ray.set(_rayOrigin, _down);
+    _ray.far = 14;
+    let hits;
+    try { hits = _ray.intersectObject(world.root, true); }
+    catch (e) { return baseY; }
+    for (const h of hits) {
+      const y = h.point.y;
+      if (y > baseY + 5) continue;         // a roof or a gantry, not the deck
+      if (y < baseY - 0.4) break;          // past the deck, into the water
+      return y;
+    }
+    return baseY;
+  }
+
+  /**
+   * Nearest spot within a few metres that is not inside a static collider.
+   * Colliders only exist for an activated region, so this is a no-op until
+   * the region streams in — `_register` re-runs it at that point.
+   */
+  _findClear(x, z, y, onDock) {
+    const phys = this.game.physics;
+    if (!phys?.querySphere) return { x, z, y };
+    const blocked = (cx, cz, cy) => {
+      let bad = false;
+      _probe.set(cx, cy + 0.95, cz);
+      try {
+        phys.querySphere(_probe, 0.6, (e) => {
+          if (BLOCK_TAGS.has(e.tag)) { bad = true; return false; }
+          return true;
+        });
+      } catch (err) { return false; }
+      return bad;
+    };
+    if (!blocked(x, z, y)) return { x, z, y };
+    for (const r of [1.7, 2.9, 4.3, 6.2]) {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * TAU + r;
+        const nx = x + Math.cos(a) * r;
+        const nz = z + Math.sin(a) * r;
+        const ny = onDock ? y : worldHeight(nx, nz);
+        if (!onDock && ny < 0.35) continue;          // nobody stands in the sea
+        if (!blocked(nx, nz, ny)) return { x: nx, z: nz, y: ny };
+      }
+    }
+    return { x, z, y };
   }
 
   _register(regionId) {
     const world = this.game.get('world');
     if (!world) return;
     for (const n of this.npcs) {
-      if (n.region !== regionId || n.registered) continue;
-      if (!this.place(n)) continue;
-      world.interactables.push({
+      if (n.region !== regionId) continue;
+      // Placement done before the region streamed in had no colliders to test
+      // against; redo it now that the buildings exist.
+      if (!this.place(n, n.placed && !n.settled)) continue;
+      if (n.registered) continue;
+      const it = {
         region: regionId,
         kind: 'talk',
         label: `Talk to ${n.def.name}`,
@@ -156,13 +238,16 @@ export class NPCSystem {
         position: new THREE.Vector3(n.position.x, n.position.y + 1.2, n.position.z),
         radius: 4.4,
         data: { npcId: n.id },
-      });
+      };
+      world.interactables.push(it);
+      n.interactable = it;
       n.registered = true;
+      if (n.physical) n.object.position.copy(n.position);
     }
   }
 
   _unregister(regionId) {
-    for (const n of this.npcs) if (n.region === regionId) n.registered = false;
+    for (const n of this.npcs) if (n.region === regionId) { n.registered = false; n.interactable = null; }
     // World already dropped the interactables for this region.
   }
 
@@ -325,6 +410,11 @@ export class NPCSystem {
   _animate(n, dt, t, player, dist, isTalking) {
     const rig = n.rig;
     if (!rig) return;
+    // Keep the mesh on the record's position every frame: `place()` can move an
+    // NPC after they have spawned (region dressing streams in and shoves them
+    // out of a wall), and the mesh must follow.
+    n.object.position.copy(n.position);
+    n.object.rotation.y = n.facing;
     const p = n.phase;
     const breathe = Math.sin(t * 1.15 + p);
     const shift = Math.sin(t * 0.42 + p * 1.7);          // slow weight transfer
@@ -363,7 +453,6 @@ export class NPCSystem {
       const want = Math.atan2(dx, dz);
       if (Math.abs(wrap(want - n.facing)) > 1.0) {
         n.facing += wrap(want - n.facing) * (1 - Math.pow(0.25, dt));
-        if (n.object) n.object.rotation.y = n.facing;
       }
     } else {
       n.glanceTimer -= dt;

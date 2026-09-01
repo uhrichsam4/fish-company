@@ -228,7 +228,7 @@ export const NPCS = [
   {
     id: 'dice', name: 'Doubloon Dee', title: 'Fish Roulette', region: 'harbor',
     emoji: '🎲', accent: 0xb96bff, seed: 660044231, prop: null,
-    at: { anchor: 'sell', fwd: 2.6, side: 3.4, face: 'dock' },
+    at: { anchor: 'dock', fwd: 2.0, side: -2.6, face: 'shore' },
     role: 'gambler', gamble: true,
     lines: {
       first: [

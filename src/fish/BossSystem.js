@@ -463,42 +463,38 @@ export class BossSystem {
     }
   }
 
-  /** @returns {object|null} the weak point this hit landed on, if any. */
+  /**
+   * @returns {object|null} the weak point this hit landed on, if any.
+   *
+   * WeaponSystem's projectile sweep triggers on a sphere the size of the whole
+   * animal, so its reported impact point is far too coarse to decide a crit on
+   * its own. The player's aim ray is the authority — a weak point only counts
+   * when they actually pointed at it — and the impact point is used as a
+   * sanity check so a shot that landed on the far side cannot crit.
+   */
   _weakPointHitBy(b, point, player) {
     const wps = b.weakPoints;
-    if (!wps || !wps.length) return null;
+    if (!wps || !wps.length || !player) return null;
     const scale = b.fish?.scale || 1;
     this._refreshWeakPointWorld(b);
 
-    // 1. explicit impact position (harpoon / spear)
-    if (point) {
-      let best = null, bestD = Infinity;
-      for (const w of wps) {
-        if (w.broken || !w.world) continue;
-        const r = w.radius * scale * 2.6 + 0.6;
-        const d = w.world.distanceTo(point);
-        if (d < r && d < bestD) { bestD = d; best = w; }
-      }
-      if (best) return best;
+    const o = player.eyePosition.clone();
+    const dir = player.forward(_v2).clone().normalize();
+    let best = null, bestD = Infinity;
+    for (const w of wps) {
+      if (w.broken || !w.world) continue;
+      _v3.copy(w.world).sub(o);
+      const along = _v3.dot(dir);
+      if (along < 0.5 || along > 320) continue;
+      const perp = Math.sqrt(Math.max(0, _v3.lengthSq() - along * along));
+      // Tight: roughly the visible radius of the glowing point, plus a little.
+      const tol = w.radius * scale * 2.0 + 0.3;
+      if (perp < tol && perp < bestD) { bestD = perp; best = w; }
     }
-
-    // 2. aim ray (beam / suction / anything that reports no point)
-    if (player) {
-      const o = player.eyePosition.clone();
-      const dir = player.forward(_v2).clone().normalize();
-      let best = null, bestD = Infinity;
-      for (const w of wps) {
-        if (w.broken || !w.world) continue;
-        _v3.copy(w.world).sub(o);
-        const along = _v3.dot(dir);
-        if (along < 0.5 || along > 260) continue;
-        const perp = Math.sqrt(Math.max(0, _v3.lengthSq() - along * along));
-        const r = w.radius * scale * 2.4 + 0.5;
-        if (perp < r && perp < bestD) { bestD = perp; best = w; }
-      }
-      if (best) return best;
-    }
-    return null;
+    if (!best) return null;
+    // The shot has to have landed somewhere near it too.
+    if (point && best.world.distanceTo(point) > best.radius * scale * 4 + b.instance.length * 0.25) return null;
+    return best;
   }
 
   _refreshWeakPointWorld(b) {

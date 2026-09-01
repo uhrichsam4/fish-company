@@ -154,12 +154,19 @@ export function installTestHarness(game) {
       const inWater = await T.waitFor(() => f.state === 'inwater' || f.state === 'nibble', 6000, 'hook in water');
       if (!inWater) { log.push(`cast failed, state=${f.state}`); return null; }
 
-      const bit = await T.waitFor(() => f.state === 'nibble', timeout * 0.6, 'nibble');
-      if (!bit) { log.push('no bite'); f.cancel(); return null; }
-      await sleep(120);
-      await T.click(0, 40);
-      const hooked = await T.waitFor(() => f.state === 'hooked', 2500, 'hooked');
-      if (!hooked) { log.push('hook set failed'); return null; }
+      // Wait for a bite, then strike. A failed hook-set leaves the bait in the
+      // water, so keep waiting rather than giving up on the whole cast.
+      let hooked = false;
+      const castDeadline = performance.now() + timeout * 0.7;
+      while (!hooked && performance.now() < castDeadline) {
+        const bit = await T.waitFor(() => f.state === 'nibble', 12000, 'nibble');
+        if (!bit) break;
+        await sleep(90);
+        await T.click(0, 40);
+        hooked = await T.waitFor(() => f.state === 'hooked', 1800, 'hooked');
+        if (!hooked && f.state !== 'inwater' && f.state !== 'nibble') break;
+      }
+      if (!hooked) { log.push(`no hook (state=${f.state})`); f.cancel(); return null; }
 
       // Reel with tension management: back off when the line is close to snapping.
       const t0 = performance.now();

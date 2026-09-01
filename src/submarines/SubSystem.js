@@ -14,7 +14,7 @@ import {
   getSpecies, speciesForHabitat, rollFishInstance, RARITY,
 } from '../data/fishData.js';
 import {
-  clamp, clamp01, lerp, damp, dampAngle, shortestAngle, rrange, rint, rpick, rchance,
+  clamp, clamp01, lerp, damp, shortestAngle, rrange, rpick,
   makeRNG, weightedPick, formatMoneyExact, formatWeight, formatTime, dist2DSq, TAU,
 } from '../util/math.js';
 
@@ -1465,7 +1465,7 @@ export class SubSystem {
           s.battery = Math.max(0, s.battery - s.stats.batteryUse * 0.85 * dt);
           e.eventTimer -= dt;
           if (e.eventTimer <= 0) {
-            e.eventTimer = clamp(9 / this.expeditionRate(e), 1.5, 30);
+            e.eventTimer = clamp(16 / this.expeditionRate(e), 4, 40);
             this.rollExpeditionEvent(e, game);
           }
           const bail = s.battery <= s.stats.battery * 0.22
@@ -1503,9 +1503,10 @@ export class SubSystem {
     if (e.pilot) rate *= 1 + (e.pilot.level || 1) * 0.03;
     if (e.sonarOp) rate *= 1.35 + (e.sonarOp.skills?.perception ?? 3) * 0.03;
     if (e.diver) rate *= 1.25;
+    // A fully-teched company should be better at this, not twenty times better.
     const research = this.game.get('research');
-    rate *= research?.catchRateMult ?? 1;
-    return clamp(rate, 0.25, 8);
+    rate *= clamp(research?.catchRateMult ?? 1, 1, 1.6);
+    return clamp(rate, 0.25, 4);
   }
 
   rollExpeditionEvent(e, game) {
@@ -1535,7 +1536,7 @@ export class SubSystem {
       e.log.push(`Recovered ${rpick(SALVAGE)} — ${formatMoneyExact(value)}`);
     } else if (roll < 0.88) {
       const d = rpick(DISCOVERIES);
-      if (!e.discoveries.includes(d)) {
+      if (e.discoveries.length < 4 && !e.discoveries.includes(d)) {
         e.discoveries.push(d);
         e.log.push(`Logged: ${d}`);
       }

@@ -3,13 +3,12 @@ import { bus } from '../core/EventBus.js';
 import { waterHeightAt } from '../world/waves.js';
 import { worldHeight } from '../world/Terrain.js';
 import { regionAt } from '../data/regions.js';
-import { getSpecies, speciesForHabitat } from '../data/fishData.js';
+import { speciesForHabitat } from '../data/fishData.js';
 import {
   clamp, clamp01, lerp, damp, hash2, rrange, rpick, rchance, makeRNG, weightedPick, TAU,
 } from '../util/math.js';
 
 const _v = new THREE.Vector3();
-const _v2 = new THREE.Vector3();
 const _c1 = new THREE.Color();
 const _c2 = new THREE.Color();
 

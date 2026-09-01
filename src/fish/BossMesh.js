@@ -507,17 +507,18 @@ function buildIronshell(host, species, rng, wps, B) {
 
   // --- snagged crab-pot cage riding the shell -----------------------------
   const cage = new THREE.Group();
-  cage.position.set(-0.16, B.top(-0.16) + 0.02, B.side(-0.16) * 0.45);
-  cage.rotation.set(0.25, 0.4, 0.15);
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * TAU;
-    put(cage, cyl5(), mRust, [Math.cos(a) * 0.085, 0.06, Math.sin(a) * 0.085], [0, 0, 0], [0.007, 0.12, 0.007]);
+  cage.position.set(-0.14, B.top(-0.14) + 0.012, B.side(-0.14) * 0.5);
+  cage.rotation.set(0.35, 0.4, 0.55);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU;
+    put(cage, cyl5(), mRust, [Math.cos(a) * 0.055, 0.035, Math.sin(a) * 0.055], [0, 0, 0], [0.005, 0.075, 0.005]);
   }
-  for (const y of [0.0, 0.06, 0.12]) {
-    put(cage, ring(), mRust, [0, y, 0], [Math.PI / 2, 0, 0], [0.24, 0.24, 0.24]);
+  for (const y of [0.004, 0.070]) {
+    put(cage, ring(), mRust, [0, y, 0], [Math.PI / 2, 0, 0], [0.145, 0.145, 0.145]);
   }
-  put(cage, box(), mRust, [0.07, 0.06, 0.04], [0.3, 0.4, 0.5], [0.006, 0.11, 0.085]);
-  detail.add(dyn(cage));
+  // one wall stoved in
+  put(cage, box(), mRust, [0.05, 0.035, 0.03], [0.3, 0.4, 0.5], [0.005, 0.07, 0.055]);
+    detail.add(dyn(cage));
 
   // --- chains dragging from the shell -------------------------------------
   addChain(detail, mMetal, [-0.18, B.top(-0.18) - 0.01, B.side(-0.18) * 0.7], [-0.5, -0.85, 0.1], 9, 0.015);

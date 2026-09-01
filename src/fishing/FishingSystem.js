@@ -351,6 +351,7 @@ export class FishingSystem {
     // Nibble: FishSystem sets state, we get the event.
     if (this.state === CAST_STATE.NIBBLE) {
       this.hookSetWindow -= dt;
+      game.get('hud')?.setHookWindow(clamp01(this.hookSetWindow / Math.max(0.01, this.hookSetTotal || 1)));
       // Bobber dips and twitches.
       h.position.y -= 0.06 + Math.sin(this.stateTime * 26) * 0.045;
       if (canAct && (input.mousePressed(0) || input.mousePressed(1))) {
@@ -367,12 +368,39 @@ export class FishingSystem {
     this.state = CAST_STATE.NIBBLE;
     this.stateTime = 0;
     const sp = fish.species;
+    const inst = fish.instance;
     // Bigger/rarer fish give a shorter window.
     this.hookSetWindow = lerp(2.2, 0.75, clamp01(sp.speed * 0.6 + sp.escape * 0.4));
-    this.game.audio.play('fish_bite', { volume: 0.55, position: this.hook.position.clone(), rate: lerp(1.25, 0.7, clamp01(fish.instance.weight / 40)) });
-    bus.emit('fx:ripple', { position: this.hook.position.clone(), radius: 0.5 });
-    bus.emit('player:shake', 0.08);
-    bus.emit('fishing:nibble', { fish });
+    this.hookSetTotal = this.hookSetWindow;
+
+    // The bite is the moment the player has to react to, so telegraph it hard:
+    // the bobber plunges, the water bursts, the audio pitch tracks the fish's
+    // size, and the view flinches.
+    const heavy = clamp01(inst.weight / 30);
+    this.game.audio.play('fish_bite', {
+      volume: 0.55 + heavy * 0.35, position: this.hook.position.clone(),
+      rate: lerp(1.3, 0.62, heavy),
+    });
+    if (inst.weight > 8) {
+      this.game.audio.play('splash_medium', { volume: 0.3 + heavy * 0.4, position: this.hook.position.clone() });
+    }
+    bus.emit('fx:splash', { position: this.hook.position.clone(), scale: 0.3 + heavy * 0.9 });
+    bus.emit('fx:ripple', { position: this.hook.position.clone(), radius: 0.6 + heavy });
+    bus.emit('ocean:ripple', { x: this.hook.position.x, z: this.hook.position.z, strength: 0.4 + heavy * 0.5 });
+    bus.emit('player:shake', 0.08 + heavy * 0.22);
+    // Yank the view a few degrees toward the bite.
+    const player = this.game.get('player');
+    if (player) {
+      _v.copy(this.hook.position).sub(player.eyePosition);
+      const yawTo = Math.atan2(-_v.x, -_v.z);
+      let d = yawTo - player.yaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      player.recoil.y += clamp(d, -0.18, 0.18) * (0.25 + heavy * 0.35);
+      player.recoil.x -= 0.03 + heavy * 0.05;
+    }
+    this.bobberDip = 1;
+    bus.emit('fishing:nibble', { fish, window: this.hookSetWindow, weight: inst.weight });
   }
 
   onNibbleEnd() {
@@ -381,9 +409,11 @@ export class FishingSystem {
     this.state = CAST_STATE.IN_WATER;
     this.stateTime = 0;
     this.game.get('hud')?.setFishing(null);
+    this.game.get('hud')?.setHookWindow(null);
   }
 
   attemptHookSet(game) {
+    game.get('hud')?.setHookWindow(null);
     const f = this.nibbleFish;
     if (!f) { this.onNibbleEnd(); return; }
     const s = this.stats;
@@ -464,7 +494,7 @@ export class FishingSystem {
     let lateral = 0, vertical = 0;
 
     switch (this.fightPhase) {
-      case 'run': pull *= 1.6; break;
+      case 'run': pull *= 2.7; break;
       case 'dive': pull *= 1.25; vertical = -1; break;
       case 'surface': pull *= 0.7; vertical = 0.7; break;
       case 'sideways': pull *= 1.1; lateral = Math.sin(this.fightTime * 2.4) * 1.4; break;
@@ -492,10 +522,15 @@ export class FishingSystem {
     } else this._overTension = Math.max(0, (this._overTension || 0) - dt * 1.6);
 
     // ---- move the fish ----
-    const stamDrain = dt * lerp(0.16, 0.03, sp.stamina) * (this.reeling ? 1.8 : 0.7);
+    const stamDrain = dt * lerp(0.22, 0.05, sp.stamina) * (this.reeling ? 1.9 : 0.7);
     this.fishStamina = clamp01(this.fishStamina - stamDrain + (this.reeling ? 0 : dt * 0.02));
 
-    const netPull = (reelForce - pull * 4.2) * dt * 0.09;
+    // Reel rate scales with how outclassed the fish is. Without this a
+    // sardine on a heavy rod took ten seconds to travel four metres, which
+    // made every fight feel identical and slow.
+    const overkill = clamp01(1 - inst.weight / Math.max(0.5, rodPower));
+    const reelGain = 0.09 * (1 + 4.2 * overkill * overkill);
+    const netPull = (reelForce - pull * 4.2) * dt * reelGain;
     // Positive netPull pulls the fish toward the player.
     _v3.copy(dir).multiplyScalar(-netPull);
     // Lateral + vertical fish motion.
@@ -531,6 +566,24 @@ export class FishingSystem {
     this.hook.position.copy(f.position).addScaledVector(dir, -inst.length * 0.35);
     this.hook.inWater = f.position.y < waterY;
     if (this.activeBait) this.activeBait.inWater = false;
+
+    // ---- feel: the line pulls the view toward the fish and tugs on runs ----
+    if (player) {
+      _v.copy(f.position).sub(player.eyePosition);
+      const yawTo = Math.atan2(-_v.x, -_v.z);
+      let dy = yawTo - player.yaw;
+      while (dy > Math.PI) dy -= Math.PI * 2;
+      while (dy < -Math.PI) dy += Math.PI * 2;
+      const pullK = this.tension * clamp01(inst.weight / Math.max(2, s.maxWeight * 0.5)) * 0.55;
+      player.recoil.y += clamp(dy, -1, 1) * pullK * dt * 2.4;
+      player.recoil.x += (Math.atan2(f.position.y - player.eyePosition.y, Math.hypot(_v.x, _v.z)) - player.pitch) * pullK * dt * 1.6;
+      // Rhythmic tug while the fish is running, so a fight has texture.
+      if (this.fightPhase === 'run' || this.fightPhase === 'thrash') {
+        const tug = Math.sin(this.fightTime * (this.fightPhase === 'thrash' ? 15 : 7)) * this.tension * 0.02;
+        player.recoil.x += tug * dt * 26;
+        player.shake = Math.max(player.shake, this.tension * 0.12);
+      }
+    }
 
     // ---- huge fish drag the player ----
     if (inst.weight > s.maxWeight * 0.5 && this.tension > 0.6 && player.grounded) {
@@ -638,6 +691,10 @@ export class FishingSystem {
       instance: inst, position: spawnPos, velocity: vel, mesh,
       angularVelocity: { x: rrange(-3, 3), y: rrange(-4, 4), z: rrange(-3, 3) },
     });
+
+    // A landed fish should land: brief hit-stop scaled by size, plus a shove.
+    bus.emit('fx:hitStop', clamp(0.02 + inst.weight * 0.0015, 0.02, 0.1));
+    bus.emit('fx:screenFlash', { color: 'rgba(255,255,255,0.10)', duration: 90 });
 
     const record = eco?.recordCatch(inst, 'player');
     const trickResult = tricks?.evaluateCatch({
@@ -748,10 +805,12 @@ export class FishingSystem {
     this.castSpin = 0;
     this.line.setVisible(false);
     this.bobber.visible = false;
+    this.bobberDip = 0;
     if (this._reelLoop) { this._reelLoop.stop(0.15); this._reelLoop = null; }
     if (this._tensionLoop) { this._tensionLoop.stop(0.2); this._tensionLoop = null; }
     game.get('hud')?.setFishing(null);
     game.get('hud')?.setCastPower(null);
+    game.get('hud')?.setHookWindow(null);
   }
 
   cancel() {
@@ -773,6 +832,13 @@ export class FishingSystem {
       this.bobber.visible = this.state === CAST_STATE.IN_WATER || this.state === CAST_STATE.NIBBLE || this.state === CAST_STATE.REELING_EMPTY;
       if (this.bobber.visible) {
         this.bobber.position.copy(this.hook.position);
+        // Punchy dip on the bite, decaying over the hook-set window.
+        if (this.bobberDip > 0) {
+          this.bobberDip = Math.max(0, this.bobberDip - dt * 2.2);
+          this.bobber.position.y -= this.bobberDip * 0.22;
+          const sc = 1 + this.bobberDip * 0.25;
+          this.bobber.scale.setScalar(sc);
+        } else if (this.bobber.scale.x !== 1) this.bobber.scale.setScalar(1);
         const n = waterNormalAt(this.hook.position.x, this.hook.position.z, undefined, _n);
         this.bobber.quaternion.setFromUnitVectors(UP, _v.set(n.x, n.y, n.z).normalize());
       }

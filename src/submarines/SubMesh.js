@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeRNG, lerp, clamp, TAU } from '../util/math.js';
+import { makeRNG, lerp, TAU } from '../util/math.js';
 
 /**
  * Procedural submarine hulls.

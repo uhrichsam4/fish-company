@@ -93,9 +93,14 @@ export class Tutorial {
     on('fishing:nibble', () => {
       const f = this.game.get('fishing');
       this._hookWindowMax = Math.max(0.2, f?.hookSetWindow || 1);
+      // The HUD grew its own strike prompt with a timing bar; don't draw a
+      // second one on top of it — teach what the bar means instead.
+      const hudBar = !!document.getElementById('hook-prompt');
       this.show('hook_set',
-        `<span class="tut-strong">Click now!</span> <span class="tut-dim">Left mouse sets the hook — before the bar runs out.</span>`,
-        { bar: () => clamp01((this.game.get('fishing')?.hookSetWindow || 0) / this._hookWindowMax) });
+        hudBar
+          ? `<span class="tut-strong">Click now!</span> <span class="tut-dim">Left mouse sets the hook — before that bar empties.</span>`
+          : `<span class="tut-strong">Click now!</span> <span class="tut-dim">Left mouse sets the hook — before the bar runs out.</span>`,
+        hudBar ? {} : { bar: () => clamp01((this.game.get('fishing')?.hookSetWindow || 0) / this._hookWindowMax) });
     });
 
     on('fishing:hooked', () => this.show('reel',
@@ -202,10 +207,13 @@ export class Tutorial {
       this.show('tension', '<span class="tut-strong">Let go!</span> <span class="tut-dim">The line is about to snap.</span>');
     }
 
+    // 0.92 is the same threshold the HUD already paints the storage readout red
+    // at — warn before a fish is actually turned away rather than after.
     const inv = game.get('inventory');
-    if (inv && inv.capacity > 0 && inv.freeWeight <= 0.001 && inv.fish.length) {
-      this.show('storage_full',
-        'Storage is full. Sell what you have, or buy a bigger container from the <b>shop</b>.');
+    if (inv && inv.capacity > 0 && inv.fish.length && inv.usedWeight / inv.capacity >= 0.92) {
+      this.show('storage_full', inv.isFull
+        ? 'Storage is full — the next fish will not fit. Sell up, or buy a bigger container at the <b>shop</b>.'
+        : 'Storage is nearly full. Sell up, or buy a bigger container at the <b>shop</b>.');
     }
 
     // Near a sell station holding fish.

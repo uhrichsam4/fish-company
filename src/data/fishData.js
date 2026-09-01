@@ -936,12 +936,29 @@ export function rollRarity(rng = Math.random, luckMult = 1) {
 }
 
 /** Integer dollar value of a specimen. Never less than $1. */
+/**
+ * Soft cap for the value tail.
+ *
+ * The raw formula multiplies $/kg by mass by rarity by variant, which is fine
+ * up to a few tens of thousands and absurd past that — a Golden Abyssal
+ * Leviathan priced at roughly $14 billion, which makes every other number in
+ * the game meaningless. Above SOFT_CAP the curve compresses with a square
+ * root, so the tail still escalates (a mythic catch is worth millions) without
+ * running away.
+ */
+export const VALUE_SOFT_CAP = 20000;
+
+export function softCapValue(raw) {
+  if (raw <= VALUE_SOFT_CAP) return raw;
+  return VALUE_SOFT_CAP * Math.sqrt(raw / VALUE_SOFT_CAP);
+}
+
 export function computeFishValue(species, variant, weightKg, rarityBonus = 1) {
   if (!species) return 1;
   const v = variant || NORMAL_VARIANT;
   const rar = RARITY[species.rarity] || RARITY.common;
   const raw = species.value * Math.max(0, weightKg) * rar.mult * v.valueMult * rarityBonus;
-  return Math.max(1, Math.round(raw));
+  return Math.max(1, Math.round(softCapValue(raw)));
 }
 
 /**

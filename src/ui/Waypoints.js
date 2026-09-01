@@ -5,6 +5,7 @@ import { REGION_BY_ID } from '../data/regions.js';
 import { clamp, clamp01, formatDistance } from '../util/math.js';
 
 const MAX_MARKERS = 20;
+const MAX_BOAT_MARKERS = 4;   // a full marina shouldn't become a wall of pins
 const EDGE = 34;          // px kept clear at the screen edge
 const NEAR_FADE = 60;     // full opacity inside this
 const FAR_FADE = 900;     // floor opacity beyond this
@@ -36,6 +37,8 @@ export class Waypoints {
     }
     this.count = 0;
     this.visible = true;
+    /** Reused scratch for the boat distance sort (gather runs at 4 Hz). */
+    this._boatBuf = [];
     this._t = 99;
     this._offs = [];
     /** Player-placed marker from the world map. */
@@ -61,6 +64,7 @@ export class Waypoints {
     const el = document.createElement('div');
     el.className = 'wp';
     el.innerHTML = `<div class="wp-arrow"></div><div class="wp-pin"><span class="wp-icon"></span><span class="wp-label"></span></div><div class="wp-dist"></div>`;
+    el.style.display = 'none';
     this.layer.appendChild(el);
     return {
       el,
@@ -121,13 +125,21 @@ export class Waypoints {
       }
     }
 
-    // --- owned boats --------------------------------------------------------
+    // --- owned boats: nearest few, so a full marina isn't a wall of pins ------
     const boats = game.get('boats');
     if (boats?.owned?.length) {
+      const near = this._boatBuf;
+      near.length = 0;
       for (const b of boats.owned) {
         if (!b.position) continue;
         // A boat that is out as part of a fleet is already marked as a fleet.
         if (fleets?.fleets?.some((f) => f.boat === b && f.state !== 'docked')) continue;
+        const dx = b.position.x - player.position.x, dz = b.position.z - player.position.z;
+        near.push({ b, d: dx * dx + dz * dz });
+      }
+      near.sort((a, c) => a.d - c.d);
+      for (let i = 0; i < Math.min(MAX_BOAT_MARKERS, near.length); i++) {
+        const b = near[i].b;
         this._push('boat', '🚤', b.name, '#8fc9e8', b.position.x, b.position.y + 2.2, b.position.z, 40);
       }
     }

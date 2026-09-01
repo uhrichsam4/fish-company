@@ -87,6 +87,8 @@ export class EventSystem {
   }
 
   async init(game) {
+    if (this._inited) return this;   // adding a system late must not double-register
+    this._inited = true;
     this.root = new THREE.Group();
     this.root.name = 'world-events';
     this.root.renderOrder = 2;

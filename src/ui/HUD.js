@@ -98,6 +98,11 @@ export class HUD {
         <div class="tension-marks"><i style="left:60%"></i><i style="left:80%"></i></div>
       </div>
       <div class="fish-dist"></div>`;
+    this.hookPrompt = el('div', '');
+    this.hookPrompt.id = 'hook-prompt';
+    this.hookPrompt.innerHTML = `<div class="hp-text">STRIKE!</div><div class="hp-bar"><i></i></div>`;
+    this.root.appendChild(this.hookPrompt);
+    this.hookBar = this.hookPrompt.querySelector('.hp-bar > i');
     this.root.appendChild(this.fishHud);
     this.fishName = this.fishHud.querySelector('.fish-name');
     this.fishWeight = this.fishHud.querySelector('.fish-weight');
@@ -253,6 +258,15 @@ export class HUD {
     this.tensionFill.style.width = `${t * 100}%`;
     this.tensionBar.classList.toggle('danger', t > 0.8);
     this.fishDist.textContent = state.distance != null ? `${state.distance.toFixed(1)} m` : '';
+  }
+
+  /** The hook-set timing window — the one thing a new player can't see. */
+  setHookWindow(frac, label) {
+    if (frac == null) { this.hookPrompt.classList.remove('show'); return; }
+    this.hookPrompt.classList.add('show');
+    this.hookBar.style.width = `${clamp01(frac) * 100}%`;
+    this.hookBar.style.background = frac > 0.5 ? 'var(--good)' : frac > 0.25 ? 'var(--warn)' : 'var(--danger)';
+    if (label) this.hookPrompt.querySelector('.hp-text').textContent = label;
   }
 
   setCastPower(p) {
