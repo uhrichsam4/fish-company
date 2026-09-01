@@ -102,6 +102,8 @@ async function boot() {
     ['./ui/Tutorial.js', 'Tutorial'],
     ['./ui/Waypoints.js', 'Waypoints'],
     ['./ui/Minimap.js', 'Minimap'],
+    ['./world/Harvestables.js', 'HarvestSystem'],
+    ['./fx/Upscaler.js', 'Upscaler'],
     ['./ui/BuildMenu.js', 'BuildMenu'],
     ['./quests/Journey.js', 'Journey'],
     ['./fx/Underwater.js', 'Underwater'],

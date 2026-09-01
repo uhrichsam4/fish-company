@@ -89,6 +89,9 @@ export class PausePanel extends Panel {
       <div class="card" style="margin-bottom:11px"><div class="card-title">🎥 Display</div>
         ${row('fov', 'Field of view', 60, 110, 1)}
         ${row('renderScale', 'Render scale', 0.5, 1.5, 0.05)}
+        ${check('upscale', 'Upscaler (render low, sharpen up)')}
+        ${row('upscaleScale', 'Upscale from', 0.4, 1, 0.05)}
+        ${row('upscaleSharpness', 'Upscale sharpness', 0, 1, 0.05)}
         ${row('viewDistance', 'View distance', 0.5, 2, 0.1)}
         ${check('shadows', 'Shadows')}
         ${row('shadowRes', 'Shadow quality', 512, 4096, 512)}

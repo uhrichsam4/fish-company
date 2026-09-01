@@ -29,6 +29,9 @@ export class Game {
     this.settings = {
       shadows: true, shadowRes: 2048, fov: 75, sensitivity: 0.0022, invertY: false,
       renderScale: 1, maxFish: 140, particles: 1, motionBlur: false, bobbing: 1,
+      // On by default at 0.75: measured -42% GPU frame time on this scene,
+      // which is fill-rate bound. See the numbers in fx/Upscaler.js.
+      upscale: true, upscaleScale: 0.75, upscaleSharpness: 0.7, upscaleMSAA: true,
       showFps: false, viewDistance: 1.0, waterQuality: 2, uiScale: 1, autosave: true,
       volMaster: 0.85, volSfx: 1.0, volMusic: 0.45, volAmb: 0.6, subtitles: true,
     };
@@ -284,7 +287,12 @@ export class Game {
   }
 
   render() {
-    this.renderer.render(this.scene, this.camera);
+    // Upscaler renders the scene at reduced resolution and sharpens it back up.
+    // Falls through to a direct render when off or unavailable.
+    const up = this.get?.('upscaler');
+    if (!up?.render(this.renderer, this.scene, this.camera)) {
+      this.renderer.render(this.scene, this.camera);
+    }
     for (const s of this.systems) {
       if (!s.postRender || s.disabled) continue;
       try { s.postRender(this); }

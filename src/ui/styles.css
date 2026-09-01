@@ -968,3 +968,19 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 .jc-bar { height: 5px; margin-top: 8px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
 .jc-bar i { display: block; height: 100%; background: var(--gold); transition: width .3s ease; }
 .jc-count { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); margin-top: 3px; }
+
+/* ---- what the tool is aimed at --------------------------------------- */
+.hit-target {
+  position: absolute; left: 50%; top: 58%; transform: translateX(-50%);
+  min-width: 150px; max-width: 260px; padding: 7px 12px 8px;
+  background: rgba(12, 17, 24, 0.76); border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px; backdrop-filter: blur(6px);
+  text-align: center; pointer-events: none;
+  opacity: 0; transition: opacity .13s ease;
+}
+.hit-target.show { opacity: 1; }
+.ht-name { font-size: 13px; font-weight: 800; color: var(--ink); }
+.ht-bar { height: 4px; margin-top: 5px; border-radius: 2px; background: rgba(255,255,255,.13); overflow: hidden; }
+.ht-bar i { display: block; height: 100%; background: var(--accent); transition: width .12s linear; }
+.ht-hint { font-size: 11px; color: var(--warn); margin-top: 4px; font-weight: 700; }
+.carry-chip.zero { opacity: .5; }

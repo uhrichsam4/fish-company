@@ -20,10 +20,15 @@ export function dressRegion(world, state, def, anchors) {
   const rng = makeRNG(hash(def.id + ':dress'));
   const group = new THREE.Group();
   group.name = `dressing:${def.id}`;
+  _harvestGame = world.game;
+  _harvestRegion = def.id;
   try {
     fn({ world, state, def, anchors, rng, group, game: world.game });
   } catch (e) {
     console.error(`[Dressing] ${def.id} failed:`, e);
+  } finally {
+    _harvestGame = null;
+    _harvestRegion = null;
   }
   state.group.add(group);
 }
@@ -45,8 +50,26 @@ function place(group, obj, x, z, opts = {}) {
   if (opts.scale) obj.scale.setScalar(opts.scale);
   obj.traverse?.((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   group.add(obj);
+  // Breakable dressing has to stay out of the static batch: batched geometry
+  // lives inside a shared mesh and cannot be hidden on its own.
+  if (opts.harvest && _harvestGame) {
+    obj.userData.noBatch = true;
+    _harvestGame.get('harvest')?.register({
+      object: obj, kind: opts.harvest, x, z, y,
+      radius: opts.harvestRadius ?? 0.7, region: _harvestRegion,
+      scale: opts.scale ?? 1,
+    });
+  }
   return obj;
 }
+
+/**
+ * Dressing runs as a pile of free functions with no access to the game, and
+ * threading it through every dresser to register a crate is not worth the
+ * churn. Set for the duration of one region's dressing pass instead.
+ */
+let _harvestGame = null;
+let _harvestRegion = null;
 
 /** Ring of positions around an anchor, on land, avoiding steep ground. */
 function ringSpots(cx, cz, radius, count, rng, minH = 0.8) {
@@ -74,25 +97,27 @@ const DRESSERS = {
         const z = lerp(a.shore.z, a.wreck.z, t) + rng.gauss(0, 3.4);
         if (worldHeight(x, z) < -0.6) continue;
         const roll = rng();
-        const o = roll < 0.45 ? Props.buildDriftwood?.(rng, {})
-          : roll < 0.72 ? Props.buildCrate?.(rng, { size: lerp(0.4, 0.8, rng()) })
+        const kind = roll < 0.45 ? 'driftwood' : roll < 0.72 ? 'crate' : 'barrel';
+        const o = kind === 'driftwood' ? Props.buildDriftwood?.(rng, {})
+          : kind === 'crate' ? Props.buildCrate?.(rng, { size: lerp(0.4, 0.8, rng()) })
             : Props.buildBarrel?.(rng, {});
-        place(group, o, x, z, { rot: rng() * TAU, tilt: rng.gauss(0, 0.35) });
+        place(group, o, x, z, { rot: rng() * TAU, tilt: rng.gauss(0, 0.35), harvest: kind });
       }
     }
     // A crude shelter and a supply pile by the fire.
     if (a.campfire) {
       place(group, Props.buildTent?.(rng, {}), a.campfire.x + 3.2, a.campfire.z - 2.4, { rot: 1.1 });
       for (const s of ringSpots(a.campfire.x, a.campfire.z, 3.6, 5, rng)) {
-        place(group, rng() < 0.5 ? Props.buildCrate?.(rng, { size: 0.5 }) : Props.buildRopeCoil?.(rng, {}),
-          s.x, s.z, { rot: s.rot });
+        const isCrate = rng() < 0.5;
+        place(group, isCrate ? Props.buildCrate?.(rng, { size: 0.5 }) : Props.buildRopeCoil?.(rng, {}),
+          s.x, s.z, { rot: s.rot, harvest: isCrate ? 'crate' : null });
       }
       // Log seats.
       for (let i = 0; i < 3; i++) {
         const ang = (i / 3) * TAU + 0.4;
         place(group, Props.buildDriftwood?.(rng, { length: 2.2 }),
           a.campfire.x + Math.cos(ang) * 2.4, a.campfire.z + Math.sin(ang) * 2.4,
-          { rot: ang + Math.PI / 2 });
+          { rot: ang + Math.PI / 2, harvest: 'driftwood', harvestRadius: 1.1 });
       }
     }
     // A hand-painted signpost by the dock so the player knows where to go.
@@ -136,7 +161,7 @@ const DRESSERS = {
       place(group, Props.buildWreckedBoat?.(rng, { size: 1.6 }), wx, wz,
         { rot: ang + 0.6, roll: 0.35, scale: 1.5 });
       for (const s of ringSpots(wx, wz, 6, 6, rng, -1)) {
-        place(group, Props.buildBarrel?.(rng, {}), s.x, s.z, { rot: s.rot, tilt: rng.gauss(0, 0.4) });
+        place(group, Props.buildBarrel?.(rng, {}), s.x, s.z, { rot: s.rot, tilt: rng.gauss(0, 0.4), harvest: 'barrel' });
       }
     }
     scatterTideline(def, group, rng, 26, (r) => Props.buildRock?.(r, { size: lerp(0.4, 1.3, r()), style: 'flat' }));
@@ -184,7 +209,7 @@ const DRESSERS = {
     // Fish crates stacked near the sell station.
     if (a.sell) {
       for (const s of ringSpots(a.sell.x, a.sell.z, 4.5, 9, rng)) {
-        place(group, Props.buildFishCrate?.(rng, {}), s.x, s.z, { rot: s.rot });
+        place(group, Props.buildFishCrate?.(rng, {}), s.x, s.z, { rot: s.rot, harvest: 'crate' });
       }
     }
     // Buoys marking the channel.

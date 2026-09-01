@@ -151,6 +151,8 @@ export class PerfPanel {
       ${row('triangles', (p.tris / 1000).toFixed(0) + 'k')}
       ${row('pixels', (px / 1e6).toFixed(2) + ' Mpx')}
       ${row('pixel ratio', r.getPixelRatio().toFixed(2) + ` / dpr ${window.devicePixelRatio}`)}
+      ${(() => { const u = game.get('upscaler')?.stats();
+        return row('upscaler', u ? `${u.mpx.toFixed(2)} Mpx  (${Math.round((u.mpx / (px / 1e6)) * 100)}%)` : 'off'); })()}
       ${row('quality', game.quality)}
       ${row('programs', s.programs)}
       <div class="pp-sep">SCENE</div>

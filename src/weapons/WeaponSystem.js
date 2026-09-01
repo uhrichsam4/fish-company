@@ -165,6 +165,12 @@ export class WeaponSystem {
     }
     if (melee && canAct) this._updateMelee(dt, game, melee, melee.stats || {}, input, player);
 
+    // Aim readout at 12 Hz. Resolved whether or not a tool is held, because
+    // the case worth teaching is a player standing at a tree holding a fishing
+    // rod and wondering why nothing happens.
+    this._aimT = (this._aimT || 0) + dt;
+    if (this._aimT >= 1 / 12) { this._aimT = 0; this._updateAimTarget(game, melee, player); }
+
     this.loaded = this.reloadT <= 0 && this.cooldown <= 0 && this.ammoInMag > 0;
 
     this._updateKnockback(dt, game);
@@ -1223,6 +1229,48 @@ export class WeaponSystem {
     this.game.audio?.stopLoop('underwater_whoosh', 0.18);
   }
 
+  /**
+   * Resolve what a swing would hit right now and hand it to the HUD.
+   *
+   * Same order and reach as the swing itself, so the readout can never
+   * disagree with what actually happens -- a prompt that says "Palm" while the
+   * blow lands on a crate is worse than no prompt.
+   */
+  _updateAimTarget(game, melee, player) {
+    const hud = game.get('hud');
+    if (!hud?.setHitTarget) return;
+    const stats = melee?.stats || {};
+    const reach = (stats.range ?? 3) + 0.6;
+    player.forward(_fwd);
+
+    const tree = game.get('trees')?.targetAt(player.position, _fwd, reach);
+    if (tree) {
+      hud.setHitTarget({
+        icon: '🌴', name: 'Tree', health: tree.health, maxHealth: tree.maxHealth,
+        hint: stats.chop ? '' : 'Needs a tool',
+      });
+      return;
+    }
+    const node = game.get('harvest')?.targetAt(player.position, _fwd, reach);
+    if (node) {
+      const want = node.def.tool;
+      hud.setHitTarget({
+        icon: node.def.icon, name: node.def.name, health: node.health, maxHealth: node.maxHealth,
+        hint: (stats.chop || stats.mine) ? '' : 'Needs a tool',
+      });
+      return;
+    }
+    const piece = game.get('build')?.targetPiece?.(player, reach);
+    if (piece && (stats.chop || stats.mine)) {
+      hud.setHitTarget({
+        icon: piece.def?.icon || '🔨', name: piece.def?.name || 'Piece',
+        health: piece.health, maxHealth: piece.maxHealth, hint: 'Dismantle — half back',
+      });
+      return;
+    }
+    hud.setHitTarget(null);
+  }
+
   // ------------------------------------------------------------------ melee
   _updateMelee(dt, game, item, stats, input, player) {
     if (this.swingT > 0) this.swingT = Math.max(0, this.swingT - dt);
@@ -1237,16 +1285,54 @@ export class WeaponSystem {
     _eye.copy(player.eyePosition);
     player.forward(_fwd);
 
-    // Axes fell trees. Checked before the fish sweep so a swing at a trunk is
-    // never eaten by a fish that happens to be behind it.
+    // Tools hit the world before they hit anything alive, so a swing at a
+    // trunk is never eaten by a fish that happens to be behind it. Order is
+    // trees, then breakable scenery, then your own buildings -- most specific
+    // first, and buildings last so you cannot dismantle your house by
+    // swinging at a crate leaning on it.
+    const reach = (stats.range ?? 3) + 0.6;
+
     if (stats.chop) {
       const trees = game.get('trees');
-      const target = trees?.targetAt(player.position, _fwd, (stats.range ?? 3) + 0.6);
+      const target = trees?.targetAt(player.position, _fwd, reach);
       if (target) {
         trees.chop(target, stats.chop, game);
         bus.emit('fx:impact', {
           position: new THREE.Vector3(target.x, player.eyePosition.y - 0.4, target.z),
           normal: _fwd.clone().negate(), kind: 'wood', scale: 0.9,
+        });
+        return;
+      }
+    }
+
+    // Rocks, crates, barrels, driftwood. Any tool works; the matching one is
+    // just faster, because a swing that does nothing is indistinguishable
+    // from a broken game.
+    if (stats.chop || stats.mine) {
+      const harvest = game.get('harvest');
+      const node = harvest?.targetAt(player.position, _fwd, reach);
+      if (node) {
+        harvest.hit(node, stats, game);
+        bus.emit('fx:impact', {
+          position: new THREE.Vector3(node.x, player.eyePosition.y - 0.4, node.z),
+          normal: _fwd.clone().negate(),
+          kind: node.kind === 'rock' || node.kind === 'boulder' ? 'stone' : 'wood', scale: 0.9,
+        });
+        return;
+      }
+    }
+
+    // Your own build pieces. Dismantling with the tool you built with is the
+    // obvious gesture, and it refunds -- the right-click path did too, but
+    // nothing told anyone it existed.
+    if (stats.chop || stats.mine) {
+      const build = game.get('build');
+      const piece = build?.targetPiece?.(player, reach);
+      if (piece) {
+        build.remove(piece);
+        bus.emit('fx:impact', {
+          position: new THREE.Vector3(piece.x, piece.y, piece.z),
+          normal: _fwd.clone().negate(), kind: 'wood', scale: 1.0,
         });
         return;
       }

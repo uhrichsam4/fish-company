@@ -170,3 +170,43 @@ Named explicitly so this is not mistaken for a finished optimisation pass:
   profiled, so the debris budget is unvalidated at scale.
 - **postprocessing library** — not added. The game currently has no post
   chain, so there was nothing to profile or remove.
+
+---
+
+## Addendum — resolution upscaler
+
+The report above concluded the renderer is fill-rate bound. A later session
+briefly concluded the opposite from a run whose GPU timer queries were only
+partly resolving: the average was taken over whatever came back (24–40 of 60
+per cell), which flattened the curve and made pixel count look irrelevant.
+Harvest every query before quoting the number, or discard the cell.
+
+Re-measured with all 40 queries per cell resolving, frozen scene, identical
+geometry, 1.39 Mpx drawing buffer:
+
+| Configuration | Pixels | GPU ms | vs native |
+|---|---|---|---|
+| Native canvas (MSAA 4×) | 1.39 Mpx | 23.4 | — |
+| Render target 1.00, MSAA 0 | 1.39 Mpx | 22.8 | −3% |
+| Render target 1.00, MSAA 4 | 1.39 Mpx | 22.0 | −6% |
+| Render target 0.75, MSAA 4 | 0.78 Mpx | 13.6 | **−42%** |
+| Render target 0.50, MSAA 4 | 0.35 Mpx | 6.9 | **−71%** |
+
+MSAA is not the variable — at full resolution 0× and 4× are inside the noise.
+Pixel count is, which confirms the original finding rather than overturning it.
+
+`fx/Upscaler.js` renders the scene to a target at `settings.upscaleScale` and
+blits it with an RCAS-style contrast-adaptive sharpen. Default on at 0.75.
+End-to-end with the shipped implementation: **18.8→9.2 ms and 20.7→8.7 ms**
+across two interleaved rounds.
+
+Two things that cost real time to find, both of which look like a working
+build until you compare pixels:
+
+- The render target must not carry the output colour space. Letting it do so
+  means three.js encodes on the way in and decodes on the way out of the blit,
+  and the image lands a full sRGB transfer too dark (measured: mid grey 117 →
+  44). The target is linear and the blit shader encodes once, explicitly.
+- Without `samples: 4` the target has no MSAA while the canvas has 4×, so the
+  comparison flatters the upscaler and ships visible aliasing that the sharpen
+  pass then amplifies. It measured free at 0.75, so there is no reason to.

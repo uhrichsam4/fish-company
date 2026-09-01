@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { bus } from '../core/EventBus.js';
 import { clamp01, formatMoney, formatMoneyExact, formatWeight, formatDistance, formatTime, lerp, damp } from '../util/math.js';
+import { RESOURCE_BY_ID } from '../economy/Resources.js';
 
 /** Event rows drawn before the strip collapses into a "+n more" line. */
 const MAX_EVENT_ROWS = 5;
@@ -353,6 +354,35 @@ export class HUD {
   }
 
   /**
+   * What the tool in your hand is pointed at, and how much of it is left.
+   *
+   * The single biggest reason chopping felt broken: swinging at a tree you
+   * were fractionally out of range of looked exactly like swinging at a tree
+   * that could not be chopped, which looked exactly like a bug. A name and a
+   * health bar make all three distinguishable without a word of documentation.
+   */
+  setHitTarget(t) {
+    if (!this._hitEl) {
+      const el = document.createElement('div');
+      el.className = 'hit-target';
+      (document.getElementById('ui-root') || document.body).appendChild(el);
+      this._hitEl = el;
+    }
+    const el = this._hitEl;
+    if (!t) { el.classList.remove('show'); this._hitSig = ''; return; }
+    const frac = Math.max(0, Math.min(1, t.health / Math.max(1, t.maxHealth)));
+    const sig = `${t.name}|${frac.toFixed(3)}|${t.hint || ''}`;
+    if (sig !== this._hitSig) {
+      this._hitSig = sig;
+      el.innerHTML = `
+        <div class="ht-name">${t.icon || ''} ${t.name}</div>
+        <div class="ht-bar"><i style="width:${frac * 100}%"></i></div>
+        ${t.hint ? `<div class="ht-hint">${t.hint}</div>` : ''}`;
+    }
+    el.classList.add('show');
+  }
+
+  /**
    * The journey card. Its own slot rather than the objective card, which the
    * quest system owns and clears whenever nothing is tracked.
    */
@@ -399,8 +429,22 @@ export class HUD {
     // Four digits of wood makes the chip wider than the minimap.
     const compact = (n) => (n >= 10000 ? `${(n / 1000).toFixed(0)}k`
       : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+
+    // Fish, wood and stone are always shown, at zero included. `summary()`
+    // hides empty materials, which is right for a full inventory list and
+    // wrong here: a strip that is empty until you happen to find something
+    // teaches nobody that wood is a thing the game has, and reads as a
+    // missing HUD rather than as an empty pocket.
     const chips = [['🐟', compact(fish), fish && cap && (bucket.weight / cap) > 0.9 ? 'full' : '']];
-    if (res) for (const r of res.summary()) chips.push([r.icon, compact(r.amount), '']);
+    const always = ['wood', 'stone'];
+    if (res) {
+      for (const id of always) {
+        chips.push([RESOURCE_BY_ID[id]?.icon || '', compact(res.get(id)), res.get(id) ? '' : 'zero']);
+      }
+      for (const r of res.summary()) {
+        if (!always.includes(r.id)) chips.push([r.icon, compact(r.amount), '']);
+      }
+    }
 
     const sig = chips.map((c) => c.join(':')).join('|');
     if (sig === this._carrySig) return;        // this runs on every pickup

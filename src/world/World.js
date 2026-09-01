@@ -292,17 +292,27 @@ export class World {
       const b = r.userData?.bounds;
       const wr = (b ? b.radius : size * 0.6) * sp.scale;
       const wh = (b ? b.height : size) * sp.scale;
+      let rockBody = null;
       if (wh >= 0.5) {
         // A cylinder, not a ball: a ball sized to the width leaves the base of
         // a tall rock uncovered, and one sized to the height floats an
         // invisible bump over a wide flat one.
-        s.bodies.push(this.game.physics.addBody({
+        rockBody = this.game.physics.addBody({
           type: 'fixed',
           position: { x: sp.x, y: r.position.y + wh * 0.5, z: sp.z },
           shape: { kind: 'cylinder', hh: wh * 0.5, r: Math.max(0.2, wr * 0.8) },
           tag: 'rock', events: false,
-        }));
+        });
+        s.bodies.push(rockBody);
       }
+      // Breakable for stone. Kept out of the static batch for the same reason
+      // trees are: batched geometry cannot be hidden individually.
+      r.userData.noBatch = true;
+      this.game.get('harvest')?.register({
+        object: r, kind: 'rock', x: sp.x, y: r.position.y, z: sp.z,
+        radius: Math.max(0.45, wr), region: def.id, body: rockBody,
+        scale: Math.max(0.5, sp.scale * size),
+      });
     }
 
     // A handful of deliberately large landmark rocks, placed on high ground so
@@ -319,11 +329,17 @@ export class World {
       b.rotation.y = sp.rot;
       b.scale.setScalar(sp.scale);
       setShadows(b);
+      b.userData.noBatch = true;
       group.add(b);
-      s.bodies.push(this.game.physics.addBody({
+      const bBody = this.game.physics.addBody({
         type: 'fixed', position: { x: sp.x, y: sp.y + sp.scale, z: sp.z },
         shape: { kind: 'ball', r: sp.scale * 2.0 }, tag: 'rock', events: false,
-      }));
+      });
+      s.bodies.push(bBody);
+      this.game.get('harvest')?.register({
+        object: b, kind: 'boulder', x: sp.x, y: sp.y, z: sp.z,
+        radius: sp.scale * 2.0, region: def.id, body: bBody, scale: sp.scale,
+      });
     }
 
     // ---- underwater decoration ----
