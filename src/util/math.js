@@ -66,10 +66,18 @@ export function weightedPick(items, rng = Math.random, key = 'weight') {
   return items[items.length - 1];
 }
 
-/** Cheap 2D value noise (tileable-ish); good enough for terrain & wave detail. */
+/**
+ * Cheap 2D value noise. Uses an integer bit-mix rather than the classic
+ * sin(dot(...)) trick — that one produces visible diagonal banding when the
+ * sample grid is regular, which showed up as stripes across the terrain.
+ */
 export function hash2(x, y) {
-  let h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
-  return h - Math.floor(h);
+  // The +constants avoid the degenerate all-zero input mapping to exactly 0.
+  let h = Math.imul((x | 0) + 0x1b873593, 0x27d4eb2d) ^ Math.imul((y | 0) + 0x85ebca6b, 0x165667b1);
+  h = Math.imul(h ^ (h >>> 15), 0x2545f491);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0x27d4eb2d);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 export function valueNoise2(x, y) {
   const ix = Math.floor(x), iy = Math.floor(y);

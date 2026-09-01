@@ -10,6 +10,7 @@ import {
   dist2DSq, weightedPick,
 } from '../util/math.js';
 import { worldHeight } from '../world/Terrain.js';
+import * as FishMeshMod from './FishMesh.js';
 
 export const FISH_STATE = {
   ROAM: 'roam', SCHOOL: 'school', INTERESTED: 'interested', NIBBLE: 'nibble',
@@ -72,7 +73,7 @@ export class FishSystem {
     this.rng = makeRNG(20260901);
     this._spawnTimer = 0;
     this._tierTimer = 0;
-    this.FishMesh = null;
+    this.FishMesh = FishMeshMod.buildFishMesh ? FishMeshMod : null;
     this.densityMult = 1;
     this.luckMult = 1;
     this.rareMult = 1;
@@ -82,14 +83,6 @@ export class FishSystem {
   }
 
   async init(game) {
-    try {
-      const path = './FishMesh.js';
-      this.FishMesh = await import(/* @vite-ignore */ path);
-      if (!this.FishMesh.buildFishMesh) this.FishMesh = null;
-    } catch (e) {
-      console.warn('[Fish] FishMesh unavailable, using fallback meshes');
-      this.FishMesh = null;
-    }
 
     this.root = new THREE.Group();
     this.root.name = 'fish';

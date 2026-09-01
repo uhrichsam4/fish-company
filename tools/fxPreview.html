@@ -87,6 +87,8 @@ import { GERSTNER_GLSL, waveState, waterHeightAt } from '/src/world/waves.js';
 import { bus } from '/src/core/EventBus.js';
 
 const errEl = document.getElementById('err');
+const panelEl = document.getElementById('panel');
+const statsEl = document.getElementById('stats');
 const fail = (e) => {
   console.error(e);
   errEl.style.display = 'block';
@@ -167,9 +169,9 @@ const water = new THREE.Mesh(
         vec3 n = normalize(vN);
         vec3 v = normalize(cameraPosition - vW);
         float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
-        float d = clamp(length(vW.xz) / 55.0, 0.0, 1.0);
-        vec3 col = mix(uShallow, uDeep, d * 0.85);
-        col = mix(col, vec3(0.62, 0.82, 0.95), fres * 0.75);
+        float d = clamp(length(vW - cameraPosition) / 70.0, 0.0, 1.0);
+        vec3 col = mix(uShallow, uDeep, d * 0.7);
+        col = mix(col, vec3(0.55, 0.78, 0.93), fres * 0.45);
         float spec = pow(max(dot(reflect(-uSun, n), v), 0.0), 90.0);
         col += vec3(1.0, 0.96, 0.85) * spec * 1.6;
         col = mix(col, uFogColor, vFog);
@@ -271,13 +273,43 @@ await fx.init(game);
 window.FX = fx;
 bus.on('player:shake', (a) => { shakeAmt = Math.max(shakeAmt, a); });
 
-// ---------------------------------------------------------------- buttons
+// ---------------------------------------------------------------- effects
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 let wakeHandle = null, trailHandle = null, auraHandle = null;
 let rainLvl = 0, snowLvl = 0, motesOn = false, raysOn = false, stress = false;
 let shakeAmt = 0;
+const surf = (x, z) => V(x, waterHeightAt(x, z), z);
 
-let lastFire = null, repeatOn = false, repeatAcc = 0;
+/** name -> [group, label, fire] . `toggle` entries are excluded from repeat. */
+const EFFECTS = {
+  splash:      ['g-water', 'splash', () => bus.emit('fx:splash', { position: surf(0, 0), scale: 1 }), 1],
+  splashSmall: ['g-water', 'splash ×0.4', () => fx.splash(surf(0, 0), { scale: 0.4 })],
+  splashBig:   ['g-water', 'splash ×2', () => fx.splash(surf(0, 0), { scale: 2 })],
+  bigSplash:   ['g-water', 'bigSplash', () => bus.emit('fx:bigSplash', { position: surf(0, 0), scale: 2.4 }), 1],
+  ripple:      ['g-water', 'ripple', () => bus.emit('fx:ripple', { position: surf(0, 0), radius: 3 })],
+  bubbles:     ['g-water', 'bubbles', () => bus.emit('fx:bubbles', { position: V(0, -2.4, 0), count: 26 })],
+  spray:       ['g-water', 'spray', () => fx.spray(surf(0, 0), V(1, 0.35, 0), { amount: 1.4 })],
+  steam:       ['g-water', 'steam', () => bus.emit('fx:steam', { position: V(0, -4.5, 0) })],
+
+  wood:   ['g-combat', 'wood', () => fx.impact(V(-6.5, DOCK_TOP, 0), V(0, 1, 0), { kind: 'wood' })],
+  metal:  ['g-combat', 'metal', () => fx.impact(V(-6.5, DOCK_TOP, 0), V(0, 1, 0), { kind: 'metal' })],
+  stone:  ['g-combat', 'stone', () => fx.impact(V(-6.5, DOCK_TOP, 0), V(0, 1, 0), { kind: 'stone' })],
+  flesh:  ['g-combat', 'flesh', () => fx.impact(V(-6.5, DOCK_TOP, 0), V(0, 1, 0), { kind: 'flesh' })],
+  ice:    ['g-combat', 'ice', () => fx.impact(V(-6.5, DOCK_TOP, 0), V(0, 1, 0), { kind: 'ice' })],
+  waterHit: ['g-combat', 'water', () => fx.impact(surf(0, 0), V(0, 1, 0), { kind: 'water' })],
+  muzzle: ['g-combat', 'muzzle', () => bus.emit('fx:muzzle', { position: V(0, 1.2, 0), direction: V(1, 0.12, -0.35) })],
+  explosion: ['g-combat', 'explosion', () => bus.emit('fx:explosion', { position: V(0, 1.2, 0), scale: 1.2 }), 1],
+  lightning: ['g-combat', 'lightning', () => bus.emit('fx:lightning', { from: V(2, 16, -4), to: surf(0, 0) }), 1],
+  hitMarker: ['g-combat', 'hitMarker', () => bus.emit('fx:hitMarker', { position: V(0, 1.4, 0) })],
+
+  moneyBurst: ['g-feel', 'moneyBurst', () => bus.emit('fx:moneyBurst', { position: V(0, 0.9, 0), amount: 4200 }), 1],
+  sparkle:    ['g-feel', 'sparkle', () => bus.emit('fx:sparkle', { position: V(0, 1.1, 0), count: 20, radius: 0.8 })],
+  dustPuff:   ['g-feel', 'dustPuff', () => bus.emit('fx:dustPuff', { position: V(-6.5, DOCK_TOP, 0), scale: 1.2 })],
+  leafBurst:  ['g-feel', 'leafBurst', () => bus.emit('fx:leafBurst', { position: V(0, 1.6, 0) })],
+  screenFlash: ['g-feel', 'screenFlash', () => bus.emit('fx:screenFlash', { color: 'rgba(255,255,255,.55)', duration: 0.3 })],
+  shake:      ['g-feel', 'shake', () => fx.shake(0.6, 0.4)],
+  hitStop:    ['g-feel', 'hitStop', () => fx.hitStop(0.1)],
+};
 
 function btn(group, label, fn, opts = {}) {
   const b = document.createElement('button');
@@ -285,77 +317,49 @@ function btn(group, label, fn, opts = {}) {
   if (opts.hero) b.classList.add('hero');
   b.onclick = () => {
     try { fn(b); } catch (e) { fail(e); }
-    if (!opts.toggle) lastFire = () => { try { fn(b); } catch (e) { fail(e); } };
+    if (!opts.toggle) lastFire = fn;
   };
   document.getElementById(group).appendChild(b);
   return b;
 }
 
-const surf = (x, z) => V(x, waterHeightAt(x, z), z);
-
-btn('g-water', 'splash', () => bus.emit('fx:splash', { position: surf(0, 0), scale: 1 }), { hero: true });
-btn('g-water', 'splash ×0.4', () => fx.splash(surf(2, 1.5), { scale: 0.4 }));
-btn('g-water', 'splash ×2', () => fx.splash(surf(-2, 1.5), { scale: 2 }));
-btn('g-water', 'bigSplash', () => bus.emit('fx:bigSplash', { position: surf(0, -2), scale: 2.4 }), { hero: true });
-btn('g-water', 'ripple', () => bus.emit('fx:ripple', { position: surf(3, -3), radius: 3 }));
-btn('g-water', 'bubbles', () => bus.emit('fx:bubbles', { position: V(1.5, -2.2, 2), count: 24 }));
-btn('g-water', 'spray', () => fx.spray(surf(4, 0), V(1, 0.35, 0), { amount: 1.4 }));
-btn('g-water', 'steam', () => bus.emit('fx:steam', { position: V(-3, -4.5, 3) }));
-
-btn('g-combat', 'wood', () => fx.impact(V(-6.5, DOCK_TOP, 0), V(0, 1, 0), { kind: 'wood' }));
-btn('g-combat', 'metal', () => fx.impact(V(-5.5, DOCK_TOP, 1), V(0, 1, 0), { kind: 'metal' }));
-btn('g-combat', 'stone', () => fx.impact(V(-7.5, DOCK_TOP, 1), V(0, 1, 0), { kind: 'stone' }));
-btn('g-combat', 'flesh', () => fx.impact(V(-6.5, DOCK_TOP, -1.4), V(0, 1, 0), { kind: 'flesh' }));
-btn('g-combat', 'ice', () => fx.impact(V(-5.2, DOCK_TOP, -1), V(0, 1, 0), { kind: 'ice' }));
-btn('g-combat', 'water', () => fx.impact(surf(-3, -1), V(0, 1, 0), { kind: 'water' }));
-btn('g-combat', 'muzzle', () => bus.emit('fx:muzzle', { position: V(-4, 1.6, 2), direction: V(1, 0.12, -0.35) }));
-btn('g-combat', 'explosion', () => bus.emit('fx:explosion', { position: V(2, 1.2, -4), scale: 1.2 }), { hero: true });
-btn('g-combat', 'lightning', () => bus.emit('fx:lightning', { from: V(4, 16, -6), to: surf(4, -6) }), { hero: true });
-btn('g-combat', 'hitMarker', () => bus.emit('fx:hitMarker', { position: V(0, 2.2, 0) }));
-
-btn('g-feel', 'moneyBurst', () => bus.emit('fx:moneyBurst', { position: V(-6.5, DOCK_TOP + 0.4, 0), amount: 4200 }), { hero: true });
-btn('g-feel', 'sparkle', () => bus.emit('fx:sparkle', { position: V(3, 1.4, 2), count: 20, radius: 0.8 }));
-btn('g-feel', 'dustPuff', () => bus.emit('fx:dustPuff', { position: V(-6.5, DOCK_TOP, 1.8), scale: 1.2 }));
-btn('g-feel', 'leafBurst', () => bus.emit('fx:leafBurst', { position: V(6, 3, 3) }));
-btn('g-feel', 'screenFlash', () => bus.emit('fx:screenFlash', { color: 'rgba(255,255,255,.55)', duration: 0.3 }));
-btn('g-feel', 'shake', () => fx.shake(0.6, 0.4));
-btn('g-feel', 'hitStop', () => fx.hitStop(0.1));
+let lastFire = null, repeatOn = false, repeatAcc = 0;
+for (const [name, [group, label, fire, hero]] of Object.entries(EFFECTS)) {
+  btn(group, label, fire, { hero: !!hero });
+}
 
 btn('g-persist', 'wake', (b) => {
   if (wakeHandle) { wakeHandle.stop(); wakeHandle = null; b.classList.remove('on'); }
   else { wakeHandle = fx.wake(boat, { width: 1.7, spread: 1.1, sprayRate: 12 }); b.classList.add('on'); }
-});
+}, { toggle: true });
 btn('g-persist', 'bubbleTrail', (b) => {
   if (trailHandle) { trailHandle.stop(); trailHandle = null; b.classList.remove('on'); }
   else { trailHandle = fx.bubbleTrail(fish, { rate: 26, spread: 0.18 }); b.classList.add('on'); }
-});
+}, { toggle: true });
 btn('g-persist', 'rareAura', (b) => {
   if (auraHandle) { auraHandle.stop(); auraHandle = null; b.classList.remove('on'); }
   else { auraHandle = fx.rareAura(fish, { color: 0xc48cff, intensity: 1.3 }); b.classList.add('on'); }
-});
+}, { toggle: true });
 
 btn('g-weather', 'rain', (b) => {
   rainLvl = rainLvl >= 1 ? 0 : (rainLvl ? 1 : 0.55);
   fx.weatherRain(rainLvl);
   b.classList.toggle('on', rainLvl > 0);
   b.textContent = rainLvl ? `rain ${rainLvl}` : 'rain';
-});
+}, { toggle: true });
 btn('g-weather', 'snow', (b) => {
   snowLvl = snowLvl >= 1 ? 0 : (snowLvl ? 1 : 0.6);
   fx.weatherSnow(snowLvl);
   b.classList.toggle('on', snowLvl > 0);
   b.textContent = snowLvl ? `snow ${snowLvl}` : 'snow';
-});
-btn('g-weather', 'motes', (b) => { motesOn = !motesOn; fx.underwaterMotes(motesOn, 0.8); b.classList.toggle('on', motesOn); });
-btn('g-weather', 'godRays', (b) => { raysOn = !raysOn; fx.godRays(raysOn); b.classList.toggle('on', raysOn); });
+}, { toggle: true });
+btn('g-weather', 'motes', (b) => { motesOn = !motesOn; fx.underwaterMotes(motesOn, 0.8); b.classList.toggle('on', motesOn); }, { toggle: true });
+btn('g-weather', 'godRays', (b) => { raysOn = !raysOn; fx.godRays(raysOn); b.classList.toggle('on', raysOn); }, { toggle: true });
 btn('g-weather', 'dive', (b) => {
   const under = camera.position.y > 0;
-  orbit.target.set(0, under ? -3.2 : 0.4, 0);
-  orbit.pitch = under ? 0.12 : 0.32;
-  orbit.dist = under ? 5 : 12;
-  applyCam();
+  window.FOCUS(0, under ? -3.2 : 0.4, 0, under ? 5 : 12, undefined, under ? 0.1 : 0.3);
   b.classList.toggle('on', under);
-});
+}, { toggle: true });
 
 btn('g-bench', 'FIRE ALL', () => fireAll(), { hero: true });
 btn('g-bench', 'repeat', (b) => { repeatOn = !repeatOn; b.classList.toggle('on', repeatOn); }, { toggle: true });
@@ -364,17 +368,21 @@ btn('g-bench', 'slow-mo', (b) => {
   b.textContent = game.timeScale === 1 ? 'slow-mo' : `slow ${game.timeScale}`;
   b.classList.toggle('on', game.timeScale !== 1);
 }, { toggle: true });
-btn('g-bench', 'stress', (b) => { stress = !stress; b.classList.toggle('on', stress); });
-btn('g-bench', 'clear', () => fx.clear());
+btn('g-bench', 'stress', (b) => { stress = !stress; b.classList.toggle('on', stress); }, { toggle: true });
+btn('g-bench', 'clear', () => fx.clear(), { toggle: true });
+btn('g-bench', 'hud', (b) => {
+  const hide = panelEl.style.display !== 'none';
+  panelEl.style.display = hide ? 'none' : '';
+  statsEl.style.display = hide ? 'none' : '';
+}, { toggle: true });
 btn('g-bench', 'quality', (b) => {
   game.quality = game.quality === 'high' ? 'medium' : game.quality === 'medium' ? 'low' : 'high';
   bus.emit('quality:changed', game.quality);
   b.textContent = `q:${game.quality}`;
-});
+}, { toggle: true });
 
 function fireAll() {
-  const t = performance.now() * 0.001;
-  fx.splash(surf(0, 0), { scale: 1.2 });
+  fx.splash(surf(0.5, 0.5), { scale: 1.2 });
   fx.bigSplash(surf(-3.5, -3), { scale: 2 });
   fx.spray(surf(4, 1), V(1, 0.4, 0.2), { amount: 1.5 });
   fx.bubbles(V(1.5, -2.4, 2), 22);
@@ -390,8 +398,41 @@ function fireAll() {
   fx.leafBurst(V(6, 3, 3));
   fx.steam(V(-2, -4.4, 3.5));
   fx.hitMarker(V(0, 2.4, 0));
-  fx.ripple(surf(2 + Math.sin(t) * 2, -3), 3);
+  fx.ripple(surf(2, -3), 3);
   fx.lightning(V(5, 16, -7), surf(5, -7));
+}
+window.FIREALL = fireAll;
+window.EFFECTS = EFFECTS;
+
+// ------------------------------------------------- URL-driven bench harness
+// e.g. ?hud=0&fx=splash&ts=0.12&loop=2.4&cam=0,0.7,0,3,0.65,0.12
+{
+  const q = new URLSearchParams(location.search);
+  if (q.get('hud') === '0') { panelEl.style.display = 'none'; statsEl.style.display = 'none'; }
+  const cam = q.get('cam');
+  if (cam) {
+    const [x, y, z, dist, yaw, pitch] = cam.split(',').map(Number);
+    window.FOCUS(x, y, z, dist, yaw, pitch);
+  }
+  if (q.get('ts')) game.timeScale = Number(q.get('ts'));
+  if (q.get('rain')) { rainLvl = Number(q.get('rain')); fx.weatherRain(rainLvl); }
+  if (q.get('snow')) { snowLvl = Number(q.get('snow')); fx.weatherSnow(snowLvl); }
+  if (q.get('motes')) { motesOn = true; fx.underwaterMotes(true, Number(q.get('motes'))); }
+  if (q.get('rays')) { raysOn = true; fx.godRays(true); }
+  if (q.get('wake')) wakeHandle = fx.wake(boat, { width: 1.7, spread: 1.1, sprayRate: 12 });
+  if (q.get('trail')) trailHandle = fx.bubbleTrail(fish, { rate: 26, spread: 0.18 });
+  if (q.get('aura')) auraHandle = fx.rareAura(fish, { color: 0xc48cff, intensity: 1.3 });
+  if (q.get('stress')) stress = true;
+  const name = q.get('fx');
+  if (name) {
+    const entry = name === 'all' ? [null, null, fireAll] : EFFECTS[name];
+    if (entry) {
+      lastFire = entry[2];
+      repeatOn = true;
+      repeatAcc = 1e9;                       // fire on the very first frame
+      window.__loop = Number(q.get('loop') || 2.4);
+    } else console.warn('[fxPreview] unknown fx:', name);
+  }
 }
 
 addEventListener('keydown', (e) => {
@@ -437,7 +478,7 @@ function tick() {
   }
   if (repeatOn && lastFire) {
     repeatAcc += raw;
-    if (repeatAcc > 0.55) { repeatAcc = 0; lastFire(); }
+    if (repeatAcc > (window.__loop || 0.55)) { repeatAcc = 0; fx.clear(); lastFire(); }
   }
 
   fx.update(dt, game);

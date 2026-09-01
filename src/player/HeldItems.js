@@ -3,6 +3,14 @@ import { bus } from '../core/EventBus.js';
 import { getItem } from '../data/equipment.js';
 import { clamp, clamp01, lerp, damp, smoothstep, rrange } from '../util/math.js';
 
+/**
+ * Viewmodel space is camera-local. Items are authored around the origin, then
+ * the whole rig is lifted so the hands sit just inside the bottom of the frame
+ * (at z=-0.3 with a ~61 deg FOV the visible half-height is only ~0.18).
+ */
+const VM_OFFSET = new THREE.Vector3(0, 0.125, 0);
+const _restR = new THREE.Vector3(0.30, -0.30, -0.32);
+const _restL = new THREE.Vector3(-0.30, -0.30, -0.32);
 const SKIN = 0xd9a273;
 const SLEEVE = 0x3f5a6b;
 
@@ -74,6 +82,7 @@ export class HeldItems {
     let id = null;
     if (kind === 'rod') id = inv.equipped.rod;
     else if (kind === 'tool') id = inv.equipped.tool;
+    else if (kind === 'weapon') id = inv.equipped.weapon;
     else if (kind === 'bait') id = inv.equipped.bait;
     else if (kind) id = kind;
     this.setItem(id);
@@ -100,15 +109,34 @@ export class HeldItems {
 
     const swapDrop = (1 - smoothstep(this.swapT)) * 0.42;
     this.root.position.set(
-      this.sway.x + this.bobOffset.x,
-      this.sway.y + this.bobOffset.y - swapDrop,
-      this.bobOffset.z - this.recoilT * 0.12,
+      VM_OFFSET.x + this.sway.x + this.bobOffset.x,
+      VM_OFFSET.y + this.sway.y + this.bobOffset.y - swapDrop,
+      VM_OFFSET.z + this.bobOffset.z - this.recoilT * 0.12,
     );
     this.root.rotation.set(
       -this.sway.y * 1.8 + this.recoilT * 0.35,
       this.sway.x * 1.8,
       -this.sway.x * 1.2 - swapDrop * 0.4,
     );
+
+    // ---- arm posing: hands follow the held item's grip points ----
+    const grips = this.current?.userData?.grips;
+    if (grips && this.hands.userData.pose) {
+      this.hands.visible = true;
+      this.hands.userData.setVisible('R', !!grips.R);
+      this.hands.userData.setVisible('L', !!grips.L);
+      if (grips.R) this.hands.userData.pose('R', grips.R, { roll: grips.rollR || 0 });
+      if (grips.L) this.hands.userData.pose('L', grips.L, { roll: grips.rollL || 0 });
+    } else {
+      // No grips declared: rest pose at the lower corners.
+      this.hands.visible = !!this.current;
+      if (this.hands.userData.pose) {
+        this.hands.userData.setVisible('R', true);
+        this.hands.userData.setVisible('L', true);
+        this.hands.userData.pose('R', _restR);
+        this.hands.userData.pose('L', _restL);
+      }
+    }
 
     // ---- rod-specific animation ----
     const fishing = game.get('fishing');
@@ -166,26 +194,114 @@ function mat(color, rough = 0.7, metal = 0.05, extra = {}) {
   return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, ...extra });
 }
 
+/**
+ * First-person arms.
+ *
+ * Every limb piece is a DIRECT child of the arms group — no nesting — so an
+ * arm can be stretched to reach a grip point without the scale cascading into
+ * the hand mesh (which is what made the first version look like floating
+ * boxes). Each frame the upper arm and forearm are fitted as capsules between
+ * shoulder → elbow → hand.
+ */
+const UPPER_LEN = 0.24;
+const FORE_LEN = 0.23;
+
 function buildHands() {
   const g = new THREE.Group();
-  const skin = mat(SKIN, 0.85, 0);
-  const sleeve = mat(SLEEVE, 0.92, 0);
-  for (const side of [-1, 1]) {
-    const arm = new THREE.Group();
-    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.2, 4, 8), sleeve);
-    fore.rotation.z = side * 0.35;
-    fore.rotation.x = -1.15;
-    fore.position.set(side * 0.16, -0.18, -0.16);
-    arm.add(fore);
-    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.055, 0.1), skin);
-    hand.position.set(side * 0.115, -0.085, -0.27);
-    hand.rotation.z = side * 0.3;
-    arm.add(hand);
-    arm.name = side < 0 ? 'armL' : 'armR';
-    g.add(arm);
+  g.name = 'arms';
+  const skin = mat(SKIN, 0.9, 0);
+  const sleeve = mat(SLEEVE, 0.96, 0);
+  const cuff = mat(0x24313f, 0.96, 0);
+
+  const arms = {};
+  for (const side of ['L', 'R']) {
+    const sgn = side === 'L' ? -1 : 1;
+
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.049, UPPER_LEN - 0.098, 3, 8), sleeve);
+    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.042, FORE_LEN - 0.084, 3, 8), sleeve);
+    const cuffRing = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.043, 0.038, 8), cuff);
+
+    const hand = new THREE.Group();
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.03, 0.068), skin);
+    palm.geometry.translate(0, 0, 0.004);
+    hand.add(palm);
+    for (let i = 0; i < 4; i++) {
+      const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.0088, 0.024, 2, 5), skin);
+      f.position.set((i - 1.5) * 0.0138, -0.017, 0.031);
+      f.rotation.x = 1.25;
+      hand.add(f);
+    }
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0105, 0.021, 2, 5), skin);
+    thumb.position.set(sgn * 0.026, -0.004, 0.014);
+    thumb.rotation.set(1.0, 0, sgn * -0.75);
+    hand.add(thumb);
+
+    g.add(upper, fore, cuffRing, hand);
+    arms[side] = {
+      upper, fore, cuff: cuffRing, hand,
+      shoulder: new THREE.Vector3(sgn * 0.30, -0.34, 0.22),
+      bendOut: sgn,
+      visible: true,
+    };
   }
-  g.position.set(0.02, -0.06, -0.12);
+  g.userData.arms = arms;
+  g.userData.pose = (side, target, opts) => poseArm(arms[side], target, opts);
+  g.userData.setVisible = (side, v) => {
+    const a = arms[side];
+    a.upper.visible = a.fore.visible = a.cuff.visible = a.hand.visible = v;
+  };
   return g;
+}
+
+const _elbow = new THREE.Vector3();
+const _seg = new THREE.Vector3();
+const _mid = new THREE.Vector3();
+const _yAxis = new THREE.Vector3(0, 1, 0);
+const _perp = new THREE.Vector3();
+
+/** Place a capsule mesh so its ends sit at a and b. */
+function fitLimb(mesh, a, b, baseLen) {
+  _seg.subVectors(b, a);
+  const len = _seg.length();
+  if (len < 1e-5) return;
+  _mid.copy(a).addScaledVector(_seg, 0.5);
+  mesh.position.copy(_mid);
+  mesh.quaternion.setFromUnitVectors(_yAxis, _seg.divideScalar(len));
+  mesh.scale.set(1, len / baseLen, 1);
+}
+
+/**
+ * Two-bone arm with a fixed total length; the elbow is pushed outward and
+ * down so the pose reads as an arm rather than a straight stick.
+ */
+function poseArm(arm, target, opts = {}) {
+  if (!arm || !target) return;
+  const s = arm.shoulder;
+  _seg.subVectors(target, s);
+  const dist = Math.min(_seg.length(), (UPPER_LEN + FORE_LEN) * 0.985);
+  if (dist < 1e-4) return;
+  _seg.normalize();
+
+  // Planar two-bone IK: elbow offset perpendicular to the shoulder→hand line.
+  const a = UPPER_LEN, b = FORE_LEN;
+  const cos = clamp((a * a + dist * dist - b * b) / (2 * a * dist), -1, 1);
+  const along = a * cos;
+  const off = a * Math.sqrt(Math.max(0, 1 - cos * cos));
+  // Bend direction: outward from the body and slightly down.
+  _perp.set(arm.bendOut * 0.72, -0.62, 0.30).normalize();
+  _perp.addScaledVector(_seg, -_perp.dot(_seg));
+  if (_perp.lengthSq() < 1e-6) _perp.set(arm.bendOut, 0, 0);
+  _perp.normalize();
+
+  _elbow.copy(s).addScaledVector(_seg, along).addScaledVector(_perp, off);
+
+  fitLimb(arm.upper, s, _elbow, UPPER_LEN);
+  fitLimb(arm.fore, _elbow, target, FORE_LEN);
+  arm.cuff.position.copy(target).addScaledVector(_seg, -0.045);
+  arm.cuff.quaternion.copy(arm.fore.quaternion);
+  arm.hand.position.copy(target);
+  arm.hand.quaternion.copy(arm.fore.quaternion);
+  if (opts.roll) arm.hand.rotateY(opts.roll);
 }
 
 function buildRod(item) {
@@ -250,9 +366,13 @@ function buildRod(item) {
   handle.rotation.y = Math.PI / 2;
   g.add(handle);
 
-  g.position.set(0.24, -0.24, -0.36);
+  g.position.set(0.235, -0.215, -0.36);
   g.rotation.set(0.16, -0.22, 0.06);
 
+  g.userData.grips = {
+    R: new THREE.Vector3(0.239, -0.225, -0.29),   // rear hand on the grip
+    L: new THREE.Vector3(0.205, -0.265, -0.45),   // front hand near the reel
+  };
   g.userData.segs = segs;
   g.userData.tip = tip;
   g.userData.spool = spool;
@@ -277,6 +397,7 @@ function buildRod(item) {
       else if (fishing.state === 'flying' && fishing.stateTime < 0.3) { targetPitch = -0.5; }
       g.rotation.x = damp(g.rotation.x, targetPitch, 0.0002, dt);
       g.position.z = damp(g.position.z, -0.36 + targetPos, 0.0004, dt);
+      g.rotation.y = damp(g.rotation.y, targetYaw, 0.0004, dt);
       if (fishing.reeling) {
         handle.rotation.x += dt * 15 * (fishing.tension > 0.7 ? 0.5 : 1);
         spool.rotation.x += dt * 12;
@@ -305,8 +426,13 @@ function buildNet(item) {
   bag.rotation.x = -Math.PI / 2 + 0.25;
   bag.position.z = -0.88;
   g.add(bag);
-  g.position.set(0.2, -0.22, -0.25);
-  g.rotation.set(0.1, -0.28, 0.1);
+  g.scale.setScalar(0.9);
+  g.position.set(0.215, -0.20, -0.27);
+  g.rotation.set(0.1, -0.26, 0.1);
+  g.userData.grips = {
+    R: new THREE.Vector3(0.222, -0.215, -0.25),
+    L: new THREE.Vector3(0.205, -0.235, -0.52),
+  };
   return g;
 }
 
@@ -321,8 +447,9 @@ function buildClub(item) {
   head.rotation.x = Math.PI / 2 - 0.5;
   head.position.set(0, 0.09, -0.17);
   g.add(head);
-  g.position.set(0.26, -0.3, -0.34);
+  g.position.set(0.255, -0.245, -0.36);
   g.rotation.set(0.2, -0.3, 0.15);
+  g.userData.grips = { R: new THREE.Vector3(0.256, -0.255, -0.335) };
   return g;
 }
 
@@ -356,8 +483,13 @@ function buildHarpoonGun(item) {
   grip.rotation.x = -0.24;
   g.add(grip);
 
-  g.position.set(0.2, -0.22, -0.3);
-  g.rotation.set(0.03, -0.06, 0);
+  g.scale.setScalar(0.78);
+  g.position.set(0.17, -0.235, -0.46);
+  g.rotation.set(0.02, -0.05, 0);
+  g.userData.grips = {
+    R: new THREE.Vector3(0.172, -0.30, -0.42),   // pistol grip
+    L: new THREE.Vector3(0.168, -0.245, -0.66),  // support hand on the barrel
+  };
   g.userData.spear = spear;
   g.userData.tipCone = tipCone;
   g.userData.animate = (dt, ctx) => {
@@ -385,8 +517,13 @@ function buildSpear(item) {
     barb.position.set(s * 0.022, 0, -1.15);
     g.add(barb);
   }
-  g.position.set(0.22, -0.16, -0.1);
-  g.rotation.set(0.1, -0.1, 0.05);
+  g.scale.setScalar(0.85);
+  g.position.set(0.245, -0.185, -0.24);
+  g.rotation.set(0.08, -0.12, 0.05);
+  g.userData.grips = {
+    R: new THREE.Vector3(0.248, -0.205, -0.22),
+    L: new THREE.Vector3(0.243, -0.215, -0.52),
+  };
   return g;
 }
 
@@ -400,8 +537,13 @@ function buildGaff(item) {
   hookCurve.position.set(0, -0.06, -0.78);
   hookCurve.rotation.set(0, Math.PI / 2, 1.4);
   g.add(hookCurve);
-  g.position.set(0.24, -0.24, -0.3);
-  g.rotation.set(0.14, -0.24, 0.1);
+  g.scale.setScalar(0.92);
+  g.position.set(0.238, -0.21, -0.32);
+  g.rotation.set(0.14, -0.22, 0.1);
+  g.userData.grips = {
+    R: new THREE.Vector3(0.242, -0.225, -0.29),
+    L: new THREE.Vector3(0.234, -0.245, -0.54),
+  };
   return g;
 }
 
@@ -414,6 +556,7 @@ function buildKnife(item) {
   g.add(blade);
   g.position.set(0.24, -0.28, -0.3);
   g.rotation.set(0.15, -0.35, 0.2);
+  g.userData.grips = { R: new THREE.Vector3(0.245, -0.30, -0.27) };
   return g;
 }
 
@@ -424,8 +567,9 @@ function buildBaitBox(item) {
   const lid = new THREE.Mesh(new THREE.BoxGeometry(0.165, 0.014, 0.125), mat(0x3f5a35, 0.9));
   lid.position.y = 0.056;
   g.add(lid);
-  g.position.set(0.24, -0.3, -0.34);
+  g.position.set(0.235, -0.24, -0.36);
   g.rotation.set(0.2, -0.4, 0.1);
+  g.userData.grips = { L: new THREE.Vector3(0.16, -0.27, -0.33) };
   return g;
 }
 
@@ -433,8 +577,9 @@ function buildGenericTool(item) {
   const g = new THREE.Group();
   const m = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.07, 0.25), mat(0x60686f, 0.55, 0.4));
   g.add(m);
-  g.position.set(0.22, -0.26, -0.32);
+  g.position.set(0.22, -0.215, -0.34);
   g.rotation.set(0.12, -0.2, 0.08);
+  g.userData.grips = { R: new THREE.Vector3(0.224, -0.23, -0.31) };
   return g;
 }
 

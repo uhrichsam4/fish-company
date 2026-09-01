@@ -17,7 +17,7 @@ export class Inventory {
     this.consumables = { };     // itemId -> count
     /** @type {Array<{instance, freshness, processLevel, caughtAt}>} */
     this.fish = [];
-    this.hotbar = ['rod', 'tool', 'bait', null, null, null, null, null, null];
+    this.hotbar = ['rod', 'tool', 'weapon', 'bait', null, null, null, null, null];
     this.hotbarIndex = 0;
     this.capacityBonus = 0;
   }
@@ -68,6 +68,7 @@ export class Inventory {
   get reel() { return getItem(this.equipped.reel); }
   get bait() { return getItem(this.equipped.bait); }
   get tool() { return getItem(this.equipped.tool); }
+  get weapon() { return getItem(this.equipped.weapon); }
   get storage() { return getItem(this.equipped.storage); }
 
   /** Combined fishing stats from rod + line + reel + bait. */
@@ -200,6 +201,7 @@ export class Inventory {
       if (!kind) return null;
       if (kind === 'rod') { const i = this.rod; return i && { id: i.id, icon: i.icon, name: i.name }; }
       if (kind === 'tool') { const i = this.tool; return i && { id: i.id, icon: i.icon, name: i.name }; }
+      if (kind === 'weapon') { const i = this.weapon; return i && { id: i.id, icon: i.icon, name: i.name }; }
       if (kind === 'bait') {
         const i = this.bait; if (!i) return null;
         return { id: i.id, icon: i.icon, name: i.name, count: i.consumable ? (this.consumables[i.id] || 0) : 0 };

@@ -7,6 +7,7 @@ import {
 import { bus } from '../core/EventBus.js';
 import { clamp, clamp01, lerp, damp, makeRNG } from '../util/math.js';
 import { setStatus } from '../core/Game.js';
+import * as Props from './props/index.js';
 
 /**
  * Owns terrain, seabed, region streaming and static decoration.
@@ -21,7 +22,7 @@ export class World {
     /** @type {Map<string, object>} */
     this.regions = new Map();
     this.activeRegion = null;
-    this.props = null;           // lazily imported prop library
+    this.props = Props;
     this.terrainMaterial = null;
     this.activateRadius = 620;
     this.deactivateRadius = 900;
@@ -32,16 +33,6 @@ export class World {
   }
 
   async init(game) {
-    setStatus('loading prop library…');
-    try {
-      // TODO: switch to a static import once props/index.js is stable so Vite
-      // can bundle it. The indirection keeps dev boot alive while it's authored.
-      const propsPath = './props/index.js';
-      this.props = await import(/* @vite-ignore */ propsPath);
-    } catch (e) {
-      console.warn('[World] prop library unavailable, using primitives:', e.message);
-      this.props = null;
-    }
 
     this.terrainMaterial = new THREE.MeshStandardMaterial({
       vertexColors: true, roughness: 0.96, metalness: 0.0,

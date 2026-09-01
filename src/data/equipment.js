@@ -169,5 +169,5 @@ export function categoryOf(id) {
 }
 export const STARTING_LOADOUT = {
   rod: 'rod_stick', line: 'line_string', reel: 'reel_old',
-  bait: 'bait_none', tool: 'tool_hands', storage: 'store_basket',
+  bait: 'bait_none', tool: 'tool_hands', weapon: null, storage: 'store_basket',
 };

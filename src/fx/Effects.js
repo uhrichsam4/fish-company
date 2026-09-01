@@ -371,55 +371,89 @@ export class Effects {
     // 1 — hard white flash (the "hit" read; gone in 5 frames)
     d = this._s();
     d.x = x; d.y = y + 0.04 * s; d.z = z;
-    d.life = 0.20; d.size = 0.7 * s; d.size2 = 2.6 * s; d.sizePow = 0.42;
+    d.life = 0.18; d.size = 0.7 * s; d.size2 = 2.3 * s; d.sizePow = 0.42;
     d.col = 0xffffff; d.col2 = tint; d.alphaPow = 2.6; d.fadeIn = 0.008;
     d.tile = TILE.splash; d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 3;
     this._push(this.add);
 
     d = this._s();
     d.x = x; d.y = y + 0.05 * s; d.z = z;
-    d.life = 0.30; d.size = 0.9 * s; d.size2 = 2.1 * s; d.sizePow = 0.5;
-    d.col = tint; d.col2 = PAL.sea; d.alpha = 0.8; d.alphaPow = 2.0; d.fadeIn = 0.02;
+    d.life = 0.22; d.size = 0.8 * s; d.size2 = 1.6 * s; d.sizePow = 0.5;
+    d.col = tint; d.col2 = PAL.sea; d.alpha = 0.75; d.alphaPow = 2.2; d.fadeIn = 0.02;
     d.tile = TILE.flare;
     this._push(this.add);
 
-    // 2 — foam crown: chunky puffs thrown out and up
+    // 2 — the crown. Hard-edged BLOBS, barely growing, gone fast: water throws
+    //     lumps, it does not billow. (Growing soft puffs = the grey-fuzz look.)
     this._axis(ux, uy, uz);
-    const crown = this._n(8 * rs, 4);
+    const crown = this._n(9 * rs, 5);
     for (let i = 0; i < crown; i++) {
-      const a = (i / crown) * TAU + Math.random() * 0.5;
-      const out = (0.9 + Math.random() * 1.9) * rs;
-      const upv = (2.6 + Math.random() * 2.8) * rs;
+      const a = (i / crown) * TAU + Math.random() * 0.45;
+      const out = (1.5 + Math.random() * 2.0) * rs;
+      const upv = (4.0 + Math.random() * 3.4) * rs;
       d = this._s();
-      d.x = x + Math.cos(a) * 0.14 * s; d.y = y + 0.02 * s; d.z = z + Math.sin(a) * 0.14 * s;
-      d.vx = Math.cos(a) * out + ux * upv * 0.25;
-      d.vy = upv * uy + 0.3;
-      d.vz = Math.sin(a) * out + uz * upv * 0.25;
-      d.grav = -13; d.drag = 1.7; d.turb = 0.12;
-      d.life = 0.42 + Math.random() * 0.30;
-      d.size = 0.24 * s; d.size2 = 0.72 * s; d.sizePow = 0.55;
-      d.col = 0xffffff; d.col2 = PAL.foamCool; d.alpha = 1; d.alphaPow = 1.5;
+      d.x = x + Math.cos(a) * 0.12 * s; d.y = y + 0.02 * s; d.z = z + Math.sin(a) * 0.12 * s;
+      d.vx = Math.cos(a) * out + ux * upv * 0.3;
+      d.vy = upv * uy + 0.4;
+      d.vz = Math.sin(a) * out + uz * upv * 0.3;
+      d.grav = -17; d.drag = 1.1;
+      d.life = 0.30 + Math.random() * 0.20;
+      d.size = 0.28 * s; d.size2 = 0.40 * s;
+      d.col = 0xffffff; d.col2 = tint; d.alpha = 1; d.alphaPow = 2.1; d.fadeIn = 0.012;
+      d.tile = TILE.blob;
+      d.stretch = 0.85;                          // sheets of water, not balls
+      this._push(this.alpha);
+    }
+    // a little broken-up foam texture riding on top of the crown
+    const froth = this._n(5 * rs, 3);
+    for (let i = 0; i < froth; i++) {
+      const a = Math.random() * TAU;
+      const out = (0.8 + Math.random() * 1.6) * rs;
+      const upv = (2.6 + Math.random() * 2.6) * rs;
+      d = this._s();
+      d.x = x + Math.cos(a) * 0.16 * s; d.y = y + 0.05 * s; d.z = z + Math.sin(a) * 0.16 * s;
+      d.vx = Math.cos(a) * out; d.vy = upv; d.vz = Math.sin(a) * out;
+      d.grav = -15; d.drag = 1.8; d.turb = 0.1;
+      d.life = 0.26 + Math.random() * 0.18;
+      d.size = 0.22 * s; d.size2 = 0.42 * s; d.sizePow = 0.6;
+      d.col = 0xffffff; d.col2 = PAL.foamCool; d.alpha = 1; d.alphaPow = 2.2;
       d.tile = TILE.foam; d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 2.4;
       this._push(this.alpha);
     }
 
     // 3 — droplets on real ballistic arcs, stretched along velocity
-    const drops = this._n(17 * rs, 6);
+    const drops = this._n(18 * rs, 7);
     for (let i = 0; i < drops; i++) {
-      const dir = this._cone(0.42);
-      const sp = (3.2 + Math.random() * 5.2) * rs;
-      const big = Math.random() < 0.22;
+      const dir = this._cone(0.40);
+      const sp = (3.6 + Math.random() * 5.6) * rs;
+      const big = Math.random() < 0.3;
       d = this._s();
       d.x = x + (Math.random() - 0.5) * 0.2 * s;
       d.y = y + 0.03 * s;
       d.z = z + (Math.random() - 0.5) * 0.2 * s;
       d.vx = dir[0] * sp; d.vy = dir[1] * sp; d.vz = dir[2] * sp;
       d.grav = -23; d.drag = 0.10;
-      d.life = 0.45 + Math.random() * 0.55;
-      d.size = (big ? 0.15 : 0.085) * s; d.size2 = (big ? 0.11 : 0.055) * s;
-      d.col = 0xffffff; d.col2 = tint; d.alpha = 1; d.alphaPow = 0.7; d.fadeIn = 0.01;
+      d.life = 0.36 + Math.random() * 0.44;
+      d.size = (big ? 0.14 : 0.085) * s; d.size2 = (big ? 0.10 : 0.055) * s;
+      d.col = 0xffffff; d.col2 = PAL.sea; d.alpha = 1; d.alphaPow = 0.45; d.fadeIn = 0.01;
       d.tile = big ? TILE.droplet : TILE.blob;
-      d.stretch = 0.85; d.water = 1;
+      d.stretch = 1.25; d.water = 1;
+      this._push(this.alpha);
+    }
+
+    // 3b — a couple of tall spikes: the silhouette that says "splash" at a glance
+    const spikes = this._n(3 * rs, 2);
+    for (let i = 0; i < spikes; i++) {
+      const a = Math.random() * TAU;
+      const sp = (6.5 + Math.random() * 3.5) * rs;
+      d = this._s();
+      d.x = x + Math.cos(a) * 0.08 * s; d.y = y; d.z = z + Math.sin(a) * 0.08 * s;
+      d.vx = Math.cos(a) * 0.7 * rs; d.vy = sp; d.vz = Math.sin(a) * 0.7 * rs;
+      d.grav = -19; d.drag = 1.4;
+      d.life = 0.34 + Math.random() * 0.16;
+      d.size = 0.19 * s; d.size2 = 0.13 * s;
+      d.col = 0xffffff; d.col2 = tint; d.alpha = 1; d.alphaPow = 1.8; d.fadeIn = 0.01;
+      d.tile = TILE.blob; d.stretch = 2.4;
       this._push(this.alpha);
     }
 
@@ -442,8 +476,12 @@ export class Effects {
     // 5 — foam ring on the surface + the ocean shader's own vertex ripple
     if (o.decal !== false) {
       this.decals.spawn(x, z, {
-        r0: 0.18 * s, r1: 2.0 * s, life: 0.72, tile: TILE.ring,
-        col: PAL.foamCool, alpha: 0.95, alphaPow: 1.3, growPow: 0.45,
+        r0: 0.16 * s, r1: 1.25 * s, life: 0.45, tile: TILE.ring,
+        col: 0xffffff, alpha: 1, alphaPow: 1.7, growPow: 0.4,
+      }, this.t);
+      this.decals.spawn(x, z, {
+        r0: 0.3 * s, r1: 2.4 * s, life: 0.95, tile: TILE.ring,
+        col: PAL.foamCool, alpha: 0.55, alphaPow: 1.2, growPow: 0.4,
         spin: (Math.random() - 0.5) * 0.6,
       }, this.t);
     }
