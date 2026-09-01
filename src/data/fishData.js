@@ -1089,7 +1089,13 @@ const TIMES = ['any', 'day', 'night', 'dawn', 'dusk'];
 const WEATHERS = ['any', 'clear', 'rain', 'storm', 'fog'];
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
-if (import.meta.env?.DEV) {
+/**
+ * Structural check over the species table. Exported so `npm test` can gate on
+ * it: this used to run only under import.meta.env.DEV, which made a malformed
+ * field a console warning in one browser tab rather than something CI caught,
+ * and a bad pattern reached a commit that way.
+ */
+export function validateFishData() {
   const problems = [];
   const ids = new Set();
 
@@ -1155,6 +1161,11 @@ if (import.meta.env?.DEV) {
   }
   if (!variantIds.has('normal')) problems.push('VARIANTS is missing the "normal" entry');
 
+  return problems;
+}
+
+if (import.meta.env?.DEV) {
+  const problems = validateFishData();
   if (problems.length) {
     console.warn(`[fishData] ${problems.length} problem(s):\n  ` + problems.join('\n  '));
   } else {
