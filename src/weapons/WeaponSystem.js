@@ -174,6 +174,11 @@ export class WeaponSystem {
 
     this.loaded = this.reloadT <= 0 && this.cooldown <= 0 && this.ammoInMag > 0;
 
+    if (this._pendingBlow && game.time >= this._pendingBlow.at) {
+      const blow = this._pendingBlow; this._pendingBlow = null;
+      this._landBlow(game, blow);
+    }
+
     if (this._splats?.length) {
       for (let i = this._splats.length - 1; i >= 0; i--) {
         const sp = this._splats[i];
@@ -1418,12 +1423,27 @@ export class WeaponSystem {
    * something you did rather than a stat that changed.
    */
   _dispatchHeld(game, stats, pf) {
-    const pos = game.physics.getPosition(pf.entry, _pos).clone();
+    // The body is parked while carried; the fish is at the left hand.
+    const hand = game.get('held')?.leftHandWorld;
+    const pos = hand ? hand.clone() : game.physics.getPosition(pf.entry, _pos).clone();
     pf.alive = false;
     pf.energy = 0;
     pf.freshnessBonus = (pf.freshnessBonus || 1) * (stats.freshness || 1.1);
-    _e.copy(pos).add(_d.set(0, 0.35, 0));
+    // The swing starts now; the blood waits for the axe to land. The
+    // viewmodel takes about a quarter of a second to bring the head down,
+    // and blood that arrives before the blow reads as an explosion.
     bus.emit('held:chop', { pf });
+    game.audio?.play('cast_whoosh', { volume: 0.35, rate: 0.9 });
+    this._pendingBlow = { at: game.time + 0.27, pf, pos: pos.clone() };
+    bus.emit('fish:killed', { pf, held: true });
+  }
+
+  /** The axe lands: impact, blood, stain, and the fish darkens. */
+  _landBlow(game, { pf, pos }) {
+    // Re-sample the hand: the player may have moved during the swing.
+    const hand = game.get('held')?.leftHandWorld;
+    if (hand) pos.copy(hand);
+    _e.copy(pos).add(_d.set(0, 0.35, 0));
     bus.emit('fx:floatText', { position: _e.clone(), text: '+FRESH', color: '#ffc22e', size: 20 });
     bus.emit('fx:impact', { position: pos, normal: _d.set(0, 1, 0).clone(), kind: 'flesh', scale: 1.1 });
     bus.emit('fx:blood', { position: pos.clone(), count: 32, gouts: 8, scale: 1 });
@@ -1431,10 +1451,10 @@ export class WeaponSystem {
     bus.emit('fx:hitStop', 0.07);
     bus.emit('player:shake', 0.22);
     this._bloodOnFish(pf);
+    bus.emit('held:bloody', { pf });
     this._bloodSplat(game, pos);
     game.audio?.play('club_hit', { volume: 0.9, rate: rrange(0.72, 0.86), position: pos.clone() });
     game.audio?.play('splash_small', { volume: 0.35, rate: 0.6, position: pos.clone() });
-    bus.emit('fish:killed', { pf, held: true });
   }
 
   /** Darken and redden the fish's own materials so it stays visibly dead. */

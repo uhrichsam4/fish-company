@@ -132,7 +132,18 @@ export class Interaction {
     const mgr = game.get('physfish');
     const pf = mgr?.list.find((p) => p.entry === entry);
     this.held = { entry, pf, mass: entry.body.mass() };
-    if (pf) { pf.held = true; pf.toBucket = false; pf.autoStore = false; }
+    if (pf) {
+      pf.held = true; pf.toBucket = false; pf.autoStore = false;
+      // A fish is carried as a copy in the viewmodel hand (HeldItems). The
+      // body is parked out of the way and the world mesh hidden until it is
+      // put down: at hand distance the body sits inside the player's own
+      // collider and gets shoved back out every frame.
+      const at = game.physics.getPosition(entry, _v);
+      pf.parkedAt = { x: at.x, y: at.y, z: at.z };
+      entry.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      entry.body.setTranslation({ x: at.x, y: at.y - 40, z: at.z }, true);
+      pf.group.visible = false;
+    }
     // Reach down and rip it up.
     bus.emit('held:grab', { pf, alive: !!pf?.alive });
     entry.body.setGravityScale(0, true);
@@ -160,10 +171,12 @@ export class Interaction {
     const h = this.held;
     if (!h) return;
     const player = game.get('player');
+    if (h.pf) this._unparkFish(h, game, player);
     h.entry.body.setGravityScale(1, true);
     h.entry.body.setLinearDamping(0.28);
     h.entry.body.setAngularDamping(0.5);
     if (h.pf) h.pf.held = false;
+    bus.emit('held:release', {});
     if (throwPower > 0.02) {
       player.forward(_v);
       const speed = lerp(4, 15, throwPower) / Math.max(1, Math.pow(h.mass, 0.35));
@@ -188,42 +201,26 @@ export class Interaction {
     if (!h || h.entry.removed) { this.held = null; return; }
 
     player.forward(_v);
-    let target;
+    let cur;
     if (h.pf) {
-      // A fish is carried in the left hand: close, low and to the left, so
-      // the viewmodel hand and the physics body agree about where it is.
-      const d = clamp(0.58 + Math.pow(h.mass, 0.3) * 0.07, 0.58, 0.95);
-      target = _v2.copy(player.eyePosition).addScaledVector(_v, d)
-        .add(_v3.set(-_v.z, 0, _v.x).multiplyScalar(-0.17))
-        .add(_v3.set(0, -0.30, 0));
+      // The fish lives in the viewmodel hand while carried; nothing to spring.
       if (h.placing) {
-        // Lowering it into the bucket: the hand carries it to the rim.
         h.placing.t += dt;
-        const k = clamp01(h.placing.t / h.placing.dur);
-        const ease = k * k * (3 - 2 * k);
-        const b = h.placing.bucket.placed;
-        target.lerp(_v3.set(b.x, b.y + 0.36, b.z), ease);
-        if (k >= 1) { this._finishPlace(game, player); return; }
+        if (h.placing.t >= h.placing.dur) { this._finishPlace(game, player); return; }
       }
+      cur = _v3.copy(player.position);
     } else {
       const targetDist = clamp(this.holdDistance + Math.pow(h.mass, 0.3) * 0.16, 1.2, 3.2);
-      target = _v2.copy(player.eyePosition).addScaledVector(_v, targetDist).add(_v3.set(0, -0.25, 0));
+      const target = _v2.copy(player.eyePosition).addScaledVector(_v, targetDist).add(_v3.set(0, -0.25, 0));
+      cur = game.physics.getPosition(h.entry, _v3);
+      // Spring toward the carry point; heavy things lag and swing.
+      const stiffness = clamp(90 / Math.max(1, Math.pow(h.mass, 0.55)), 6, 90);
+      const delta = target.sub(cur);
+      const maxSpeed = clamp(26 / Math.max(1, Math.pow(h.mass, 0.4)), 2.5, 26);
+      delta.multiplyScalar(stiffness);
+      delta.clampLength(0, maxSpeed);
+      h.entry.body.setLinvel({ x: delta.x, y: delta.y, z: delta.z }, true);
     }
-    // A live fish fights the hand holding it.
-    if (h.pf?.alive) {
-      const t = game.time;
-      target.x += Math.sin(t * 23) * 0.05;
-      target.y += Math.sin(t * 31 + 1) * 0.045;
-      target.z += Math.sin(t * 19 + 2) * 0.04;
-    }
-    const cur = game.physics.getPosition(h.entry, _v3);
-    // Spring toward the carry point; heavy things lag and swing.
-    const stiffness = clamp(90 / Math.max(1, Math.pow(h.mass, 0.55)), 6, 90);
-    const delta = target.sub(cur);
-    const maxSpeed = clamp(26 / Math.max(1, Math.pow(h.mass, 0.4)), 2.5, 26);
-    delta.multiplyScalar(stiffness);
-    delta.clampLength(0, maxSpeed);
-    h.entry.body.setLinvel({ x: delta.x, y: delta.y, z: delta.z }, true);
 
     // Charge a throw with RMB, drop with G / release LMB.
     if (input.mouseDown(1)) {
@@ -264,18 +261,20 @@ export class Interaction {
       const inv = game.get('inventory');
       if (inv?.storeFish(h.pf.instance, { styleMult: h.pf.styleMult || 1 })) {
         game.audio.play('pickup', { volume: 0.6, rate: 1.2 });
-        bus.emit('fx:sparkle', { position: game.physics.getPosition(h.entry).clone(), count: 8, color: '#5ddb6a' });
+        bus.emit('fx:sparkle', { position: player.eyePosition.clone(), count: 8, color: '#5ddb6a' });
         const pf = h.pf;
+        pf.group.visible = true;
         this.held = null;
         player.walkSpeed = 4.6; player.sprintSpeed = 7.6;
         hud.setCastPower(null);
         game.get('physfish').despawn(pf);
+        bus.emit('held:release', {});
         return;
       }
     }
 
-    // Auto-sell when carried into a sell zone.
-    this.checkSellZones(game, cur, h);
+    // Auto-sell when carried into a sell zone (the fish is wherever you are).
+    this.checkSellZones(game, h.pf ? player.position : cur, h);
   }
 
   /** What the E key will do with what you are carrying, in the prompt. */
@@ -291,12 +290,25 @@ export class Interaction {
       : 'Put it in the bucket  ·  G drop';
   }
 
+  /** Put the parked body back where the hand is, visible again. */
+  _unparkFish(h, game, player) {
+    const hand = game.get('held')?.leftHandWorld;
+    const at = hand ? _v.copy(hand) : _v.copy(player.eyePosition).addScaledVector(player.forward(_v2), 0.8);
+    h.entry.body.setTranslation({ x: at.x, y: at.y, z: at.z }, true);
+    h.entry.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    h.pf.group.visible = true;
+    h.pf.parkedAt = null;
+  }
+
   /** The hand has reached the rim: the fish goes in. */
   _finishPlace(game, player) {
     const h = this.held;
     if (!h?.pf) return;
     const inv = game.get('inventory');
-    const pos = game.physics.getPosition(h.entry, _v).clone();
+    const b = h.placing?.bucket?.placed;
+    const pos = b ? _v.set(b.x, b.y + 0.3, b.z).clone() : _v.copy(player.position).clone();
+    // The pooled world mesh must go back visible or the next fish to use it is invisible.
+    h.pf.group.visible = true;
     if (inv?.storeFish(h.pf.instance, { styleMult: h.pf.styleMult || 1 })) {
       game.audio.play('fish_into_bucket', { volume: 0.8, position: pos.clone() });
       bus.emit('fx:sparkle', { position: pos, count: 10, color: '#5ddb6a' });
@@ -306,41 +318,12 @@ export class Interaction {
       if (player) { player.walkSpeed = 4.6; player.sprintSpeed = 7.6; }
       game.get('hud')?.setCastPower(null);
       game.get('physfish').despawn(pf);
+      bus.emit('held:release', {});
     } else {
       h.placing = null;
+      h.pf.group.visible = false;
       bus.emit('toast', { text: 'Bucket is full.', kind: 'error', duration: 2600 });
     }
-  }
-
-  /**
-   * Lob the carried fish at the bucket. A flat-time ballistic solve: pick a
-   * flight time, work out the launch velocity that lands on the rim, let
-   * physics do the arc. The fish tags itself so PhysicalFish knows to count
-   * it when it arrives.
-   */
-  throwInto(bucket, game, player) {
-    const h = this.held;
-    if (!h?.pf) return;
-    const from = game.physics.getPosition(h.entry, _v).clone();
-    const b = bucket.placed;
-    const T = 0.62;
-    const vx = (b.x - from.x) / T;
-    const vz = (b.z - from.z) / T;
-    const vy = ((b.y + 0.42) - from.y + 0.5 * 9.8 * T * T) / T;
-    h.entry.body.setGravityScale(1, true);
-    h.entry.body.setLinearDamping(0.05);
-    h.entry.body.setAngularDamping(0.5);
-    h.entry.body.setLinvel({ x: vx, y: vy, z: vz }, true);
-    h.entry.body.setAngvel({ x: rrange(-4, 4), y: rrange(-6, 6), z: rrange(-4, 4) }, true);
-    h.pf.held = false;
-    h.pf.toBucket = true;
-    h.pf.throwT = 0;
-    game.audio.play('cast_whoosh', { volume: 0.45, rate: 1.4 });
-    bus.emit('held:throw', { pf: h.pf });
-    if (player) { player.walkSpeed = 4.6; player.sprintSpeed = 7.6; }
-    this.held = null;
-    this.throwCharge = 0;
-    game.get('hud')?.setCastPower(null);
   }
 
   checkSellZones(game, position, held) {
