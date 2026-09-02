@@ -117,13 +117,23 @@ export class Input {
   // --- queries ---
   down(code) { return this.enabled && !this.uiCapture && this.keys.has(code); }
   justPressed(code) { return this.enabled && !this.uiCapture && this.pressed.has(code); }
+  /** Held with no gate at all -- for systems that must read a key while a panel owns the rest. */
+  rawDown(code) { return this.keys.has(code); }
   justReleased(code) { return this.enabled && this.released.has(code); }
   /** Ignores uiCapture — for Esc/Tab style global bindings. */
   rawPressed(code) { return this.pressed.has(code); }
   rawDown(code) { return this.keys.has(code); }
 
-  mouseDown(b = 0) { return this.enabled && !this.uiCapture && this.buttons[b]; }
-  mousePressed(b = 0) { return this.enabled && !this.uiCapture && this.buttonsPressed[b]; }
+  /**
+   * actionCapture blocks the mouse buttons and nothing else. Build mode sets
+   * it: placing a piece must not also cast the rod or swing the axe, but the
+   * player still has to be able to walk while they build. uiCapture is the
+   * heavier gate for real panels, and it takes movement too.
+   */
+  actionCapture = false;
+  mouseDown(b = 0) { return this.enabled && !this.uiCapture && !this.actionCapture && this.buttons[b]; }
+  mousePressed(b = 0) { return this.enabled && !this.uiCapture && !this.actionCapture && this.buttonsPressed[b]; }
+  rawMousePressed(b = 0) { return this.enabled && this.buttonsPressed[b]; }
   mouseReleased(b = 0) { return this.enabled && this.buttonsReleased[b]; }
 
   /** Normalized WASD vector {x: strafe, z: forward}. */

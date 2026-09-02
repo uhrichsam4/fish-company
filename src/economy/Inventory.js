@@ -221,7 +221,9 @@ export class Inventory {
 
   update(dt, game) {
     const input = game.input;
-    for (let i = 0; i < 9; i++) {
+    // While building, the number keys pick pieces, not hotbar slots.
+    const building = !!game.get('build')?.mode;
+    for (let i = 0; i < 9 && !building; i++) {
       if (input.justPressed(`Digit${i + 1}`)) this.setHotbarIndex(i);
     }
     const w = input.consumeWheel();

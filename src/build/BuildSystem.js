@@ -671,8 +671,8 @@ export class BuildSystem {
     // a tile also places whatever was already selected behind the menu.
     if (this.game.get('ui')?.cursorMode) return;
 
-    if (input.mousePressed(0)) this.placeAtGhost();
-    if (input.mousePressed(1)) {
+    if (input.rawMousePressed(0)) this.placeAtGhost();
+    if (input.rawMousePressed(1)) {
       const target = this.targetPiece(player);
       if (target) this.remove(target);
     }
@@ -699,9 +699,10 @@ export class BuildSystem {
     // Live, on screen, next to the ghost. A red box with the reason only
     // arriving as a toast after you click is a puzzle; the player has already
     // decided the game is broken by then.
-    if (check.why !== this._ghostWhy) {
-      this._ghostWhy = check.why;
-      bus.emit('build:ghost', { ok: check.ok, why: check.why || '', piece: def.name });
+    const sig = `${check.ok}|${check.why || ''}|${def.id}`;
+    if (sig !== this._ghostWhy) {
+      this._ghostWhy = sig;
+      bus.emit('build:ghost', { ok: check.ok, why: check.why || '', piece: def.name, icon: def.icon, cost: def.cost });
     }
   }
 

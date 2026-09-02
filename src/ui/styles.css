@@ -1046,3 +1046,8 @@ body.cursor-mode #crosshair { opacity: .25; }
   opacity: 0; transition: opacity .12s ease;
 }
 .build-hint.show { opacity: 1; }
+/* ghost readout: neutral while placing, red only when it cannot */
+.build-hint { background: rgba(12, 17, 24, 0.82); border-color: rgba(255,255,255,.12); color: var(--ink); font-weight: 700; }
+.build-hint.bad { background: rgba(28, 12, 16, 0.86); border-color: var(--danger); color: var(--danger); font-weight: 800; }
+.build-hint .bh-cost { font-family: var(--mono); color: var(--ink-dim); margin-left: 6px; }
+.build-hint .bh-key { color: var(--ink-faint); font-size: 11px; margin-left: 8px; font-weight: 600; }

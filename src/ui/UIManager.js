@@ -187,7 +187,11 @@ export class UIManager {
     // so it captures input the same way a panel does -- otherwise placing a
     // wall also swaps your hotbar slot and swings whatever you are holding.
     const building = !!game.get('build')?.mode;
-    input.uiCapture = anyOpen || !!debugOpen || lobbyOpen || building;
+    // Building no longer takes uiCapture: that gate also froze WASD, so you
+    // could not walk to where the piece needed to go. It takes the mouse
+    // buttons only.
+    input.uiCapture = anyOpen || !!debugOpen || lobbyOpen;
+    input.actionCapture = building;
 
     if (input.rawPressed('Escape')) {
       if (anyOpen) this.closeAll();
@@ -203,14 +207,40 @@ export class UIManager {
     // the B below this is unreachable while building -- the key that turned it
     // on could not turn it off, and the build-mode toast advertised that it
     // could.
-    if (building && !anyOpen && (input.rawPressed('KeyB') || input.rawPressed('KeyQ'))) bus.emit('build:toggle', {});
+    if (building && !anyOpen && (input.rawPressed('KeyB') || input.rawPressed('KeyQ'))) {
+      const menu = game.get('buildmenu');
+      // Placing with the palette hidden: Q brings it back rather than quitting.
+      if (menu && !menu.paletteOpen) menu.showPalette(true);
+      else bus.emit('build:toggle', {});
+    }
 
     // Cursor mode. Mouse-look and a mouse pointer are the same device, so a
     // first-person game has to pick one -- and building needs both: aim the
     // ghost, then click a tile in the palette. Alt swaps between them without
     // leaving the world, which is the Roblox shift-lock idea with the states
     // the other way round.
+    // Shift, tapped: toggle the cursor. Held while moving, Shift is sprint,
+    // so the tap has to be short and with no movement key down -- the same
+    // gesture Roblox uses for shift-lock, which is where players reach for it.
+    if (input.rawPressed('ShiftLeft') || input.rawPressed('ShiftRight')) {
+      this._shiftAt = performance.now(); this._shiftMoved = false;
+    }
+    if (input.rawDown('ShiftLeft') || input.rawDown('ShiftRight')) {
+      if (['KeyW','KeyA','KeyS','KeyD'].some((k) => input.rawDown(k))) this._shiftMoved = true;
+    }
+    if ((input.justReleased('ShiftLeft') || input.justReleased('ShiftRight'))
+        && !this._shiftMoved && performance.now() - (this._shiftAt || 0) < 320 && !anyOpen) {
+      this.toggleCursor();
+    }
     if (input.rawPressed('AltLeft') || input.rawPressed('AltRight')) this.toggleCursor();
+
+    // Palette flow. Q with the palette up leaves build mode; Q while placing
+    // brings the palette back. Opening it frees the cursor, since a palette you
+    // cannot click is decoration.
+    const menu = game.get('buildmenu');
+    if (building && menu) {
+      if (menu.paletteOpen && !this.cursorMode) this.setCursor(true);
+    }
     // Leaving build mode should not strand the player with a loose cursor --
     // but only on the transition. Checked every frame it fought the toggle
     // itself, switching cursor mode straight back off outside build mode.
@@ -222,8 +252,11 @@ export class UIManager {
       // Q and B both open building. Q because it is next to the movement keys
       // and is where players reach for it; B kept so nobody's muscle memory
       // breaks.
-      if (input.rawPressed('KeyQ')) bus.emit('build:toggle', {});
-      if (input.rawPressed('KeyB')) {
+      // Build mode has its own Q/B handling above; with uiCapture no longer
+      // set while building, this block runs then too and would toggle it
+      // straight back off.
+      if (!building && input.rawPressed('KeyQ')) bus.emit('build:toggle', {});
+      if (!building && input.rawPressed('KeyB')) {
         // Shift+B is the atlas; plain B is build mode, which is used far more.
         if (input.down('ShiftLeft') || input.down('ShiftRight')) this.toggle('atlas');
         else bus.emit('build:toggle', {});

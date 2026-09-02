@@ -69,6 +69,7 @@ export class BuildMenu {
     this.fab = document.createElement('div');
     this.fab.className = 'build-fab';
     this.fab.innerHTML = `<span class="bf-ico">🔨</span>Build<kbd>Q</kbd>`;
+    this.fab.title = 'Q opens the build palette. Tap Shift to free the mouse.';
     this.fab.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.fab.addEventListener('click', () => bus.emit('build:toggle', {}));
     root.appendChild(this.fab);
@@ -78,25 +79,37 @@ export class BuildMenu {
     this._offs.push(bus.on('build:selected', () => { if (this.open) this.render(); }));
     this._offs.push(bus.on('ui:cursorMode', ({ on }) => {
       this.el?.classList.toggle('cursor-on', on);
-      // Set outright rather than through a class. Two stylesheet blocks both
-      // claim pointer-events on this element and the cascade was not landing
-      // where specificity said it should; this is the one that has to be right
-      // or the palette is decorative.
-      if (this.el) this.el.style.pointerEvents = on ? 'auto' : 'none';
-      if (this.open) this.render();
+      // Set outright rather than through a class: two stylesheet blocks both
+      // claim pointer-events here and the cascade was not landing where
+      // specificity said it should.
+      if (this.el) this.el.style.pointerEvents = on && this._palette ? 'auto' : 'none';
+      if (this._palette) this.render();
     }));
     return this;
   }
 
+  /** Build mode on/off. The palette shows on entry and hides once you pick. */
   setOpen(on) {
     this.open = !!on;
-    this.el?.classList.toggle('show', this.open);
-    if (this.el) {
-      this.el.style.pointerEvents =
-        this.open && this.game.get('ui')?.cursorMode ? 'auto' : 'none';
-    }
     this.fab?.classList.toggle('on', this.open);
-    if (this.open) this.render();
+    this.showPalette(this.open);
+  }
+
+  get paletteOpen() { return !!this._palette; }
+
+  /**
+   * The palette is the choosing step, not the placing step. It comes up with
+   * the cursor freed, a click picks a piece, and it gets out of the way so
+   * the world is visible again -- Q brings it back. Keeping it up through
+   * placement covered half the screen and needed a second key to dismiss.
+   */
+  showPalette(on) {
+    this._palette = !!on && this.open;
+    this.el?.classList.toggle('show', this._palette);
+    const ui = this.game.get('ui');
+    if (this._palette) { ui?.setCursor?.(true); this.render(); }
+    else if (ui?.cursorMode) ui.setCursor(false);
+    if (this.el) this.el.style.pointerEvents = this._palette && ui?.cursorMode ? 'auto' : 'none';
   }
 
   _onClick(e) {
@@ -107,7 +120,8 @@ export class BuildMenu {
     if (item && !item.classList.contains('poor')) {
       const b = this.build;
       if (b) { b.selected = item.dataset.id; bus.emit('build:selected', { id: item.dataset.id }); }
-      this.render();
+      // Picked: back to the world, mouse locked, ghost following your aim.
+      this.showPalette(false);
       return;
     }
     const mat = e.target.closest?.('.bm-mat');
@@ -166,10 +180,10 @@ export class BuildMenu {
     this.el.innerHTML = `
       <div class="bm-head">
         <div class="bm-title">🔨 Build</div>
-        <div class="bm-hint"><kbd>Alt</kbd>cursor <kbd>LMB</kbd>place <kbd>R</kbd>rotate <kbd>RMB</kbd>remove <kbd>Q</kbd>close</div>
+        <div class="bm-hint"><kbd>Click</kbd>pick <kbd>Shift</kbd>cursor <kbd>R</kbd>rotate <kbd>RMB</kbd>remove <kbd>Q</kbd>close</div>
       </div>
       ${this.game.get('ui')?.cursorMode ? ''
-        : '<div class="bm-locked">Press <kbd>Alt</kbd> to free the mouse and click these</div>'}
+        : '<div class="bm-locked">Tap <kbd>Shift</kbd> to free the mouse and click these</div>'}
       <div class="bm-body">
         <div class="bm-cats">${cats}</div>
         <div class="bm-panel">

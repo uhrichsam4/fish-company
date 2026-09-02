@@ -364,8 +364,17 @@ export class HUD {
       this._buildHintEl = el;
     }
     const el = this._buildHintEl;
-    if (!gh || gh.ok) { el.classList.remove('show'); return; }
-    el.textContent = gh.why;
+    if (!gh) { el.classList.remove('show'); return; }
+    if (gh.ok) {
+      // What you are about to place and what it costs, so a hidden palette
+      // does not mean guessing.
+      const cost = Object.entries(gh.cost || {}).map(([id, n]) => `${RESOURCE_BY_ID[id]?.icon || id}${n}`).join(' ');
+      el.innerHTML = `<b>${gh.icon || ''} ${gh.piece}</b> <span class="bh-cost">${cost}</span> <span class="bh-key">LMB place · Q palette</span>`;
+      el.classList.remove('bad');
+    } else {
+      el.textContent = gh.why;
+      el.classList.add('bad');
+    }
     el.classList.add('show');
   }
 
