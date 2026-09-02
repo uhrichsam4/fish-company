@@ -544,6 +544,19 @@ export class FishingSystem {
 
     const waterY = waterHeightAt(f.position.x, f.position.z);
     const bed = worldHeight(f.position.x, f.position.z);
+
+    // ---- landing reach ----
+    // Measured horizontally: fishing from a dock or a boat puts the rod tip
+    // several metres above the water, so straight-line distance can never
+    // reach the threshold no matter how long you reel.
+    const landDist = lerp(1.9, 3.6, clamp01(inst.length / 3));
+    const horiz = Math.hypot(f.position.x - this.rodTip.x, f.position.z - this.rodTip.z);
+    // Under the rod the line is vertical, and reeling lifts the fish rather
+    // than dragging it closer. Without this a fish with stamina left sat on
+    // the seabed beneath the dock: within reach across, out of reach down,
+    // and the fight went on until it tired.
+    const underRod = this.reeling ? clamp01(1 - horiz / (landDist * 1.6)) : 0;
+
     // Jumping fish breach the surface.
     if (this.fightPhase === 'jump' && f.position.y > waterY - 0.4) {
       if (!this._jumped) {
@@ -556,7 +569,7 @@ export class FishingSystem {
     } else {
       this._jumped = false;
       // Tired fish near the boat ride the surface rather than hiding at depth.
-      const surfaceHold = clamp01((1 - this.fishStamina) * 1.2) * clamp01(1 - this.lineOut / 8);
+      const surfaceHold = Math.max(underRod, clamp01((1 - this.fishStamina) * 1.2) * clamp01(1 - this.lineOut / 8));
       const minY = lerp(bed + 0.25, waterY - 0.35, surfaceHold);
       f.position.y = clamp(f.position.y, minY, waterY - 0.1);
       if (surfaceHold > 0.4 && rchance(dt * 6 * surfaceHold)) {
@@ -603,14 +616,10 @@ export class FishingSystem {
     }
 
     // ---- landing ----
-    // Measured horizontally: fishing from a dock or a boat puts the rod tip
-    // several metres above the water, so straight-line distance can never
-    // reach the threshold no matter how long you reel.
-    const landDist = lerp(1.9, 3.6, clamp01(inst.length / 3));
-    const horiz = Math.hypot(f.position.x - this.rodTip.x, f.position.z - this.rodTip.z);
-    const atSurface = (waterHeightAt(f.position.x, f.position.z) - f.position.y) < 0.9;
+    const atSurface = (waterY - f.position.y) < 0.9;
     if ((horiz < landDist && atSurface) || this.lineOut < landDist
-        || (this.fightTime > 100 && horiz < landDist * 2.2)) {
+        || (underRod > 0.6 && horiz < landDist * 0.8)
+        || (this.fightTime > 40 && horiz < landDist * 2.2)) {
       this.landFish(game, player);
       return;
     }

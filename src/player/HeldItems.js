@@ -270,7 +270,7 @@ export class HeldItems {
         this.fishVm.visible = this.reachT < 0.55;     // appears once the hand has reached it
       }
       // Hand position in the world, for drops at the hand.
-      this.leftHandWorld.copy(_lpos).multiplyScalar(POS_K).add(this.root.position)
+      this._toMainCameraSpace(this.leftHandWorld.copy(_lpos).multiplyScalar(POS_K).add(this.root.position))
         .applyQuaternion(game.camera.quaternion).add(game.camera.position);
     }
 
@@ -292,17 +292,35 @@ export class HeldItems {
   }
 
   /**
-   * World-space position of the rod tip.
-   * The viewmodel lives in camera space, so we transform through the main
-   * camera's matrix and nudge forward to compensate for the narrower vm FOV.
+   * World-space position of the rod tip, where the line should start.
+   *
+   * The viewmodel is drawn through its own camera, which is narrower than
+   * the main one so the arms do not fisheye. A point taken straight out of
+   * that scene and dropped into the world therefore lands nearer the middle
+   * of the screen than the tip is drawn -- the line used to leave the rod
+   * from thin air a hand's width inboard of it. See _toMainCameraSpace.
    */
   getRodTipWorld(out) {
     const tipObj = this.current?.userData?.tip;
     if (!tipObj) return null;
     this.vmScene.updateMatrixWorld();
-    tipObj.getWorldPosition(out);
+    tipObj.getWorldPosition(out);            // vm camera space: camera at the origin, looking down -Z
+    this._toMainCameraSpace(out);
     out.applyMatrix4(this.game.camera.matrixWorld);
     return out;
+  }
+
+  /**
+   * Re-fit a viewmodel-camera-space point so that, seen through the main
+   * camera, it sits on the same pixel. Both cameras share the axis and the
+   * aspect, so the only difference is the half-FOV tangent: scale x and y by
+   * the ratio and keep the depth.
+   */
+  _toMainCameraSpace(p) {
+    const half = (deg) => Math.tan(THREE.MathUtils.DEG2RAD * deg * 0.5);
+    const k = half(this.game.camera.fov) / half(this.vmCamera.fov);
+    p.x *= k; p.y *= k;
+    return p;
   }
 
   /** Rendered after the main scene via Game's postRender hook. */
