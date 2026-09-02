@@ -29,6 +29,9 @@ export const STAGES = [
 ];
 /** After this long as `old`, a tree may come down on its own. */
 const OLD_FALL_AFTER = 25 * 60;
+/** How long a felled trunk lies on the ground before it sinks away, seconds. */
+const LOG_LINGER = 16;
+
 /** Regrowth delay after a stump is left alone. */
 const REGROW_AFTER = [45, 150];
 
@@ -138,7 +141,8 @@ export class TreeSystem {
     // leave dozens of live rigid bodies lying around.
     if (tree.object) {
       this.falling.push({
-        tree, object: tree.object, t: 0,
+        tree, object: tree.object, t: 0, landed: false,
+        baseY: tree.object.position.y,
         axis: Math.random() * Math.PI * 2,
         speed: rrange(1.5, 2.4),
       });
@@ -151,6 +155,36 @@ export class TreeSystem {
 
     tree.regrowAt = game.time + rrange(REGROW_AFTER[0], REGROW_AFTER[1]);
     return tree;
+  }
+
+  /**
+   * The felled trunk, lying along the direction it fell.
+   *
+   * Sampled at both ends and pitched to match, so it sits on a slope instead
+   * of hovering over one. Length comes from the tree's own scale, so a sapling
+   * does not leave the same log as a mature palm.
+   */
+  _makeLog(tree, axis) {
+    const len = 4.4 * (tree.baseScale || 1);
+    const dirX = Math.sin(axis), dirZ = -Math.cos(axis);
+    const midX = tree.x + dirX * len * 0.5;
+    const midZ = tree.z + dirZ * len * 0.5;
+
+    const g = new THREE.CylinderGeometry(0.24, 0.3, len, 7);
+    g.rotateZ(Math.PI / 2);                    // lie it along +X
+    const m = new THREE.MeshStandardMaterial({ color: 0x8a6136, roughness: 0.94, flatShading: true });
+    const log = new THREE.Mesh(g, m);
+
+    const y0 = worldHeight(tree.x, tree.z);
+    const y1 = worldHeight(tree.x + dirX * len, tree.z + dirZ * len);
+    log.position.set(midX, (y0 + y1) * 0.5 + 0.26, midZ);
+    log.rotation.y = -Math.atan2(dirZ, dirX);
+    log.rotation.z = Math.atan2(y1 - y0, len);  // follow the slope
+    log.castShadow = true; log.receiveShadow = true;
+    log.userData.noBatch = true;
+    log.userData.restY = log.position.y;
+    tree.object.parent?.add(log);
+    return log;
   }
 
   _makeStump(tree) {
@@ -168,6 +202,12 @@ export class TreeSystem {
 
   update(dt, game) {
     // ---- felled trunks tipping over ----
+    //
+    // The trunk used to vanish 0.8 s after it landed, which meant the fall was
+    // over before you had finished watching it and the tree read as having
+    // disappeared rather than fallen. It now lies where it fell, as a log, and
+    // is only cleared once it has been on the ground long enough to have been
+    // seen.
     for (let i = this.falling.length - 1; i >= 0; i--) {
       const f = this.falling[i];
       f.t += dt;
@@ -177,10 +217,41 @@ export class TreeSystem {
       const angle = (Math.PI / 2) * k * k;
       f.object.rotation.z = Math.cos(f.axis) * angle;
       f.object.rotation.x = Math.sin(f.axis) * angle;
-      if (f.t >= 2.4) {
-        f.object.visible = false;
+
+      // The moment it hits: thud, dust, stump at the base, and the standing
+      // palm is swapped for a log.
+      //
+      // The palm itself cannot be left lying down. It rotates about its own
+      // base, so on any slope the trunk ends up buried on the uphill side and
+      // floating on the downhill one, and the canopy sweeps through the
+      // terrain -- which is what made a felled tree read as not having fallen
+      // at all. A log laid along the fall direction and sat on the ground
+      // reads correctly on any ground.
+      if (!f.landed && k >= 1) {
+        f.landed = true;
+        const ground = worldHeight(f.tree.x, f.tree.z);
+        const at = new THREE.Vector3(f.tree.x, ground + 0.3, f.tree.z);
+        game.audio?.play('boss_slam', { volume: 0.65, rate: 0.75, position: at.clone() });
+        bus.emit('fx:dustPuff', { position: at.clone(), count: 18, scale: 1.6 });
+        bus.emit('player:shake', 0.22);
         this._makeStump(f.tree);
-        this.falling.splice(i, 1);
+        f.object.visible = false;
+        f.log = this._makeLog(f.tree, f.axis);
+      }
+
+      // Lie there, then sink out of sight rather than blinking off.
+      if (f.landed) {
+        const lying = f.t - 1.6;
+        if (lying > LOG_LINGER && f.log) {
+          const sink = (lying - LOG_LINGER) / 1.4;
+          f.log.position.y = f.log.userData.restY - sink * 1.6;
+          if (sink >= 1) {
+            f.log.parent?.remove(f.log);
+            f.log.geometry.dispose();
+            f.log = null;
+            this.falling.splice(i, 1);
+          }
+        }
       }
     }
 
@@ -219,8 +290,14 @@ export class TreeSystem {
     if (t.object) {
       t.object.visible = true;
       t.object.rotation.set(0, t.object.rotation.y, 0);
+      // A tree felled and regrown while its log was still sinking would come
+      // back underground.
+      const f = this.falling.find((e) => e.tree === t);
+      if (f?.log) { f.log.parent?.remove(f.log); f.log.geometry.dispose(); f.log = null; }
+      if (f) t.object.position.y = f.baseY;
       t.object.scale.setScalar(t.baseScale * STAGES[0].scale);
     }
+    this.falling = this.falling.filter((e) => e.tree !== t);
     bus.emit('trees:regrown', { tree: t });
   }
 

@@ -32,6 +32,16 @@ const DRY = 0.012;
 const FLOW = 0.22;
 /** Drains constantly: rain that fell an hour ago should not still be sitting there. */
 const SOAK = 0.06;
+/**
+ * Hard ceiling on standing water, metres.
+ *
+ * Rain added 0.11 m/s while soak only removed 0.06, so a long storm grew the
+ * whole grid without bound -- twelve metres deep was reachable in ten minutes.
+ * The visible symptom is not a flood: it is the near-vertical skirt between a
+ * deep cell and its dry neighbour, which renders as a black wall next to the
+ * camera. Surface water on land is ankle-to-waist or it is the sea.
+ */
+const MAX_DEPTH = 1.6;
 
 export class FloodSystem {
   constructor(game) {
@@ -180,10 +190,11 @@ export class FloodSystem {
     let peak = 0;
     for (let i = 0; i < depth.length; i++) {
       let v = depth[i] + delta[i];
-      // Soak away, and let anything below sea level drain to the ocean.
-      v -= SOAK * dt;
+      // Soak away, faster the deeper it is, so rain reaches an equilibrium
+      // instead of integrating forever.
+      v -= SOAK * dt * (1 + v * 1.5);
       if (ground[i] < 0.15) v *= 0.82;
-      depth[i] = v > 0 ? v : 0;
+      depth[i] = v > 0 ? (v < MAX_DEPTH ? v : MAX_DEPTH) : 0;
       if (depth[i] > peak) peak = depth[i];
     }
     this.peak = peak;

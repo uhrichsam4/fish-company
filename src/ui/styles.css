@@ -984,3 +984,39 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 .ht-bar i { display: block; height: 100%; background: var(--accent); transition: width .12s linear; }
 .ht-hint { font-size: 11px; color: var(--warn); margin-top: 4px; font-weight: 700; }
 .carry-chip.zero { opacity: .5; }
+
+/* ---- build menu: categories left, contents right --------------------- */
+.bm-body { display: flex; gap: 12px; align-items: flex-start; }
+.bm-cats { display: flex; flex-direction: column; gap: 5px; flex: 0 0 82px; }
+.bm-cat {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 4px 7px; border-radius: 10px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.04); border: 1.5px solid transparent;
+  transition: background .12s ease, border-color .12s ease;
+}
+.bm-cat:hover { background: rgba(255, 255, 255, 0.09); }
+.bm-cat.sel { border-color: var(--accent); background: rgba(47, 212, 196, 0.14); }
+.bm-cat.poor { opacity: .45; }
+.bm-cat-ico { font-size: 20px; line-height: 1.05; }
+.bm-cat-name { font-size: 11px; font-weight: 700; color: var(--ink-dim); }
+.bm-cat.sel .bm-cat-name { color: var(--ink); }
+.bm-panel { flex: 1; min-width: 0; }
+
+/* ---- always-there build button --------------------------------------- */
+.build-fab {
+  position: absolute; right: 18px; bottom: 96px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 15px 9px 12px; border-radius: 999px; cursor: pointer;
+  background: rgba(12, 17, 24, 0.8); border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px); color: var(--ink);
+  font-size: 13px; font-weight: 800; letter-spacing: .02em;
+  transition: background .14s ease, transform .14s ease, border-color .14s ease;
+  z-index: 35;
+}
+.build-fab:hover { background: rgba(24, 34, 46, 0.9); transform: translateY(-2px); }
+.build-fab.on { border-color: var(--accent); background: rgba(47, 212, 196, 0.18); }
+.build-fab .bf-ico { font-size: 17px; }
+.build-fab kbd {
+  background: rgba(255, 255, 255, 0.12); border-radius: 4px; padding: 1px 6px;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--ink-dim);
+}

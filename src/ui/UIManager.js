@@ -174,10 +174,14 @@ export class UIManager {
     // the B below this is unreachable while building -- the key that turned it
     // on could not turn it off, and the build-mode toast advertised that it
     // could.
-    if (building && !anyOpen && input.rawPressed('KeyB')) bus.emit('build:toggle', {});
+    if (building && !anyOpen && (input.rawPressed('KeyB') || input.rawPressed('KeyQ'))) bus.emit('build:toggle', {});
     if (input.rawPressed('Tab') && !anyOpen) this.show('inventory');
     else if (input.rawPressed('Tab') && anyOpen) this.closeAll();
     if (!input.uiCapture) {
+      // Q and B both open building. Q because it is next to the movement keys
+      // and is where players reach for it; B kept so nobody's muscle memory
+      // breaks.
+      if (input.rawPressed('KeyQ')) bus.emit('build:toggle', {});
       if (input.rawPressed('KeyB')) {
         // Shift+B is the atlas; plain B is build mode, which is used far more.
         if (input.down('ShiftLeft') || input.down('ShiftRight')) this.toggle('atlas');
