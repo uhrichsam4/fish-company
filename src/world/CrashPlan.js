@@ -19,22 +19,25 @@
  *   treeScale(x, z, h, base) -> scale
  *   landmarks: [{ id, builder, opts, x, z, rot, scale, yOffset, harvest, radius, collider:{hh,r}, dynamic }]
  *
- * The start area is sacrosanct: everything the player meets in the first
- * minute -- spawn, shop, sell station, dock, campfire, wreck, hire post and
- * the shoreline between them -- is excluded from every plan by construction.
+ * The start area is protected by default: everything the player meets in
+ * the first minute -- spawn, shop, sell station, dock, campfire, wreck, hire
+ * post and the shoreline between them -- is excluded unless a plan says
+ * otherwise with `startKeep` (metres; 0 hands the plan the whole island).
+ * The classic island stays selectable, so a plan that reshapes the start is
+ * an alternative, never a replacement.
  */
 
 import { ACTIVE_PLAN } from './plans/active.js';
 
-/** Radius around the start-area anchors that no plan may touch. */
-const START_KEEP = 34;
+/** Default radius around the start-area anchors that a plan may not touch. */
+const START_KEEP = 56;
 
-function startAreaExcluder(anchors) {
+function startAreaExcluder(anchors, keep) {
   const pts = ['spawn', 'shop', 'sell', 'campfire', 'wreck', 'hire', 'dockStart', 'shore']
     .map((k) => anchors?.[k]).filter(Boolean);
-  if (!pts.length) return () => false;
+  if (!pts.length || keep <= 0) return () => false;
   return (x, z) => {
-    for (const p of pts) if (Math.hypot(x - p.x, z - p.z) < START_KEEP) return true;
+    for (const p of pts) if (Math.hypot(x - p.x, z - p.z) < keep) return true;
     return false;
   };
 }
@@ -44,7 +47,7 @@ export function planFor(def, anchors) {
   if (def.id !== 'crash') return null;
   const base = ACTIVE_PLAN(def, anchors);
   if (!base) return null;
-  const inStart = startAreaExcluder(anchors);
+  const inStart = startAreaExcluder(anchors, base.startKeep ?? START_KEEP);
   return {
     ...base,
     inStart,

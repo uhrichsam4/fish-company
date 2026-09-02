@@ -446,7 +446,7 @@ export class World {
 
     this.buildGroundCover(s, def);
     await this.buildStructures(s, rng);
-    dressRegion(this, s, def, this.getAnchors(def.id));
+    dressRegion(this, s, def, this.getAnchors(def.id), plan);
   }
 
   /**

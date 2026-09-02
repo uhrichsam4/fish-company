@@ -1,9 +1,10 @@
 /**
- * Baseline plan: reproduces the island exactly as it was. Every hook answers
- * "as before", so this is the control the variants are graded against.
+ * The classic island: no plan at all.
+ *
+ * Returning null makes World.decorate() take the path it always took, so
+ * this layout is the shipped one exactly -- not a plan that happens to allow
+ * everything, which would still re-seed the scatter outside the start ring.
+ * It is the fallback the reformed layouts are measured against, and the one
+ * the player can go back to.
  */
-export function plan(def, anchors) {
-  return {
-    allow: () => true,
-  };
-}
+export function plan() { return null; }

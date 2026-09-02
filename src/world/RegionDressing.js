@@ -14,8 +14,14 @@ import { makeRNG, lerp, clamp, clamp01, rrange, TAU } from '../util/math.js';
  * Everything added here is static and gets swept into the region's batched
  * geometry, so the cost is a handful of draw calls per island.
  */
-export function dressRegion(world, state, def, anchors) {
-  const fn = DRESSERS[def.id] || DRESSERS[def.biome];
+/**
+ * A layout plan may bring its own dresser (`plan.dress`), which replaces the
+ * region's built-in one and gets the same helpers. That is how a reformed
+ * start area is built: the stations stay on their anchors, the camp around
+ * them is the plan's to lay out.
+ */
+export function dressRegion(world, state, def, anchors, plan = null) {
+  const fn = plan?.dress || DRESSERS[def.id] || DRESSERS[def.biome];
   if (!fn) return;
   const rng = makeRNG(hash(def.id + ':dress'));
   const group = new THREE.Group();
@@ -23,7 +29,7 @@ export function dressRegion(world, state, def, anchors) {
   _harvestGame = world.game;
   _harvestRegion = def.id;
   try {
-    fn({ world, state, def, anchors, rng, group, game: world.game });
+    fn({ world, state, def, anchors, rng, group, game: world.game, place, ringSpots, Props });
   } catch (e) {
     console.error(`[Dressing] ${def.id} failed:`, e);
   } finally {
