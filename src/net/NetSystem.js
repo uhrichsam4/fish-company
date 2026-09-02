@@ -365,7 +365,8 @@ export class NetSystem {
     try {
       // Seed off the id so a given player looks the same to everyone.
       const seed = [...p.id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
-      body = buildWorkerMesh(seed, { role: 'fisherman', level: 1 });
+      const chars = this.game.get('characters');
+      body = chars?.available() ? chars.build() : buildWorkerMesh(seed, { role: 'fisherman', level: 1 });
     } catch { /* fall through to the placeholder */ }
     if (!body) {
       body = new THREE.Mesh(
@@ -442,9 +443,23 @@ export class NetSystem {
       r.group.position.z = damp(r.group.position.z, r.target.z, SMOOTH, dt);
       r.yaw = dampAngle(r.yaw, r.targetYaw, 0.001, dt);
       r.group.rotation.y = r.yaw;
-      // Cheap walk bob so a moving player does not glide like a ghost.
+      // Walk cycle on the rig when there is one; the old bob otherwise.
       r.bob = r.moving ? r.bob + dt * 9 : 0;
-      r.body.position.y = (r.body.userData?.baseY ?? 0) + (r.moving ? Math.abs(Math.sin(r.bob)) * 0.07 : 0);
+      const rig = r.body.userData?.rig;
+      if (rig) {
+        const stride = r.moving ? 1 : 0;
+        const ph = r.bob;
+        const swing = Math.sin(ph) * 0.6 * stride, swing2 = Math.sin(ph + Math.PI) * 0.6 * stride;
+        rig.legs.L.hip.rotation.x = swing;
+        rig.legs.R.hip.rotation.x = swing2;
+        rig.legs.L.knee.rotation.x = Math.max(0, -Math.sin(ph) * 0.7) * stride;
+        rig.legs.R.knee.rotation.x = Math.max(0, -Math.sin(ph + Math.PI) * 0.7) * stride;
+        rig.arms.L.shoulder.rotation.x = swing2 * 0.7;
+        rig.arms.R.shoulder.rotation.x = swing * 0.7;
+        rig.hips.position.y = rig.legLen + 0.06 + Math.abs(Math.sin(ph)) * 0.035 * stride;
+      } else {
+        r.body.position.y = (r.body.userData?.baseY ?? 0) + (r.moving ? Math.abs(Math.sin(r.bob)) * 0.07 : 0);
+      }
     }
   }
 

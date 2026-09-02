@@ -150,7 +150,9 @@ export class Worker {
   // ------------------------------------------------------------- physical
   spawnPhysical(scene) {
     if (this.physical) return;
-    this.object = buildWorkerMesh(this.seed, { role: this.role, level: this.level });
+    const chars = this.game.get('characters');
+    this.object = chars?.available() ? chars.build()
+      : buildWorkerMesh(this.seed, { role: this.role, level: this.level });
     this.rig = this.object.userData.rig;
     this.object.position.copy(this.position);
     scene.add(this.object);

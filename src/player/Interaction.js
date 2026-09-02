@@ -132,7 +132,9 @@ export class Interaction {
     const mgr = game.get('physfish');
     const pf = mgr?.list.find((p) => p.entry === entry);
     this.held = { entry, pf, mass: entry.body.mass() };
-    if (pf) pf.held = true;
+    if (pf) { pf.held = true; pf.toBucket = false; pf.autoStore = false; }
+    // Reach down and rip it up.
+    bus.emit('held:grab', { pf, alive: !!pf?.alive });
     entry.body.setGravityScale(0, true);
     entry.body.setLinearDamping(6);
     entry.body.setAngularDamping(6);
@@ -188,6 +190,13 @@ export class Interaction {
     player.forward(_v);
     const targetDist = clamp(this.holdDistance + Math.pow(h.mass, 0.3) * 0.16, 1.2, 3.2);
     const target = _v2.copy(player.eyePosition).addScaledVector(_v, targetDist).add(_v3.set(0, -0.25, 0));
+    // A live fish fights the hand holding it.
+    if (h.pf?.alive) {
+      const t = game.time;
+      target.x += Math.sin(t * 23) * 0.05;
+      target.y += Math.sin(t * 31 + 1) * 0.045;
+      target.z += Math.sin(t * 19 + 2) * 0.04;
+    }
     const cur = game.physics.getPosition(h.entry, _v3);
     // Spring toward the carry point; heavy things lag and swing.
     const stiffness = clamp(90 / Math.max(1, Math.pow(h.mass, 0.55)), 6, 90);
@@ -206,12 +215,28 @@ export class Interaction {
       this.release(this.throwCharge);
       return;
     } else {
-      hud.setInteract('Drop  ·  Hold RMB to throw  ·  E to store', 'G');
+      hud.setInteract(this._carryPrompt(game, h), h.pf ? 'E' : 'G');
     }
     if (input.justPressed('KeyG')) { this.release(0); return; }
 
-    // E = store in inventory when carrying a fish.
+    // E with a fish: into the bucket. With the bucket set down that means a
+    // throw, and only a dead fish goes in -- kill it with the axe first.
     if (input.justPressed('KeyE') && h.pf) {
+      const bucket = game.get('bucket');
+      if (bucket?.placed) {
+        if (h.pf.alive) {
+          bus.emit('toast', { text: 'Still alive — swing your axe at it first', kind: 'error', duration: 2400 });
+          game.audio.play('ui_hover', { volume: 0.3, rate: 0.7 });
+          return;
+        }
+        const d = bucket.distanceTo(player.position.x, player.position.z);
+        if (d > 3.4) {
+          bus.emit('toast', { text: 'Take it to the bucket', kind: '', duration: 1800 });
+          return;
+        }
+        this.throwInto(bucket, game, player);
+        return;
+      }
       const inv = game.get('inventory');
       if (inv?.storeFish(h.pf.instance, { styleMult: h.pf.styleMult || 1 })) {
         game.audio.play('pickup', { volume: 0.6, rate: 1.2 });
@@ -227,6 +252,49 @@ export class Interaction {
 
     // Auto-sell when carried into a sell zone.
     this.checkSellZones(game, cur, h);
+  }
+
+  /** What the E key will do with what you are carrying, in the prompt. */
+  _carryPrompt(game, h) {
+    if (!h.pf) return 'Drop  ·  Hold RMB to throw';
+    const bucket = game.get('bucket');
+    if (!bucket?.placed) return 'Store  ·  G drop  ·  Hold RMB to throw';
+    if (h.pf.alive) return 'Kill it — swing your axe (2)  ·  G drop';
+    const player = game.get('player');
+    return bucket.distanceTo(player.position.x, player.position.z) > 3.4
+      ? 'Take it to the bucket  ·  G drop'
+      : 'Throw in bucket  ·  G drop';
+  }
+
+  /**
+   * Lob the carried fish at the bucket. A flat-time ballistic solve: pick a
+   * flight time, work out the launch velocity that lands on the rim, let
+   * physics do the arc. The fish tags itself so PhysicalFish knows to count
+   * it when it arrives.
+   */
+  throwInto(bucket, game, player) {
+    const h = this.held;
+    if (!h?.pf) return;
+    const from = game.physics.getPosition(h.entry, _v).clone();
+    const b = bucket.placed;
+    const T = 0.62;
+    const vx = (b.x - from.x) / T;
+    const vz = (b.z - from.z) / T;
+    const vy = ((b.y + 0.42) - from.y + 0.5 * 9.8 * T * T) / T;
+    h.entry.body.setGravityScale(1, true);
+    h.entry.body.setLinearDamping(0.05);
+    h.entry.body.setAngularDamping(0.5);
+    h.entry.body.setLinvel({ x: vx, y: vy, z: vz }, true);
+    h.entry.body.setAngvel({ x: rrange(-4, 4), y: rrange(-6, 6), z: rrange(-4, 4) }, true);
+    h.pf.held = false;
+    h.pf.toBucket = true;
+    h.pf.throwT = 0;
+    game.audio.play('cast_whoosh', { volume: 0.45, rate: 1.4 });
+    bus.emit('held:throw', { pf: h.pf });
+    if (player) { player.walkSpeed = 4.6; player.sprintSpeed = 7.6; }
+    this.held = null;
+    this.throwCharge = 0;
+    game.get('hud')?.setCastPower(null);
   }
 
   checkSellZones(game, position, held) {

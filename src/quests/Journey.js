@@ -27,11 +27,11 @@ const STEPS = [
     goal: 1, on: 'fishing:cast', reward: { money: 25 },
   },
   {
-    id: 'first_fish', title: 'Catch a Fish', how: 'Click the moment the line dips, then reel it in',
+    id: 'first_fish', title: 'Catch a Fish', how: 'Click when the line dips, reel it in, then E to grab the fish',
     goal: 1, on: 'fishing:caught', reward: { money: 60 },
   },
   {
-    id: 'fill_bucket', title: 'Fill the Bucket', how: 'Catch 4 more — they stow themselves',
+    id: 'fill_bucket', title: 'Fill the Bucket', how: 'Grab it (E), kill it with the axe (2), throw it in the bucket (E)',
     goal: 4, on: 'fishing:caught', reward: { money: 90 },
   },
   {

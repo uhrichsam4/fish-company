@@ -1292,6 +1292,15 @@ export class WeaponSystem {
     // swinging at a crate leaning on it.
     const reach = (stats.range ?? 3) + 0.6;
 
+    // A fish in your hand comes first. The world sweep skips held fish on
+    // purpose, so without this the one thing you are looking at is the one
+    // thing the axe cannot touch.
+    const heldPf = game.get('interaction')?.held?.pf;
+    if (heldPf?.alive && (stats.chop || stats.freshness || stats.damage)) {
+      this._dispatchHeld(game, stats, heldPf);
+      return;
+    }
+
     if (stats.chop) {
       const trees = game.get('trees');
       const target = trees?.targetAt(player.position, _fwd, reach);
@@ -1390,6 +1399,21 @@ export class WeaponSystem {
       this.flashCrosshair();
       bus.emit('player:shake', 0.12);
     }
+  }
+
+  /** Kill the fish being carried. Same freshness bookkeeping as a club blow on the ground. */
+  _dispatchHeld(game, stats, pf) {
+    const pos = game.physics.getPosition(pf.entry, _pos).clone();
+    pf.alive = false;
+    pf.energy = 0;
+    pf.freshnessBonus = (pf.freshnessBonus || 1) * (stats.freshness || 1.1);
+    _e.copy(pos).add(_d.set(0, 0.35, 0));
+    bus.emit('fx:floatText', { position: _e.clone(), text: '+FRESH', color: '#ffc22e', size: 20 });
+    bus.emit('fx:impact', { position: pos, normal: _fwd.clone().negate(), kind: 'flesh', scale: 0.9 });
+    bus.emit('fx:hitStop', 0.06);
+    bus.emit('player:shake', 0.18);
+    game.audio?.play('club_hit', { volume: 0.85, rate: rrange(0.85, 1.0), position: pos.clone() });
+    bus.emit('fish:killed', { pf, held: true });
   }
 
   _meleeHitPhysical(game, stats, pf, pos) {

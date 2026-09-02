@@ -135,6 +135,33 @@ export class PhysicalFishManager {
   }
 
   /** Convert a physical fish to inventory data (used by sell zones/storage). */
+  /**
+   * A thrown fish counts once it reaches the rim. Distance, not a collision
+   * test: the bucket has no collider and a fish is a capsule, so "in" is
+   * within half a bucket width of the top. A throw that misses lands and lies
+   * there for the player to pick up again.
+   */
+  _settleIntoBucket(pf, pos, bucket, dt, game) {
+    if (!bucket?.placed) { pf.toBucket = false; return false; }
+    pf.throwT = (pf.throwT || 0) + dt;
+    const b = bucket.placed;
+    const d = Math.hypot(pos.x - b.x, pos.y - (b.y + 0.3), pos.z - b.z);
+    const near = d < 0.5 || (pf.throwT > 1.3 && d < 1.2);
+    if (near) {
+      if (this.absorb(pf, 'inventory', { styleMult: pf.styleMult || 1 })) {
+        game.audio?.play('fish_into_bucket', { volume: 0.8, rate: 1.0, position: pos.clone() });
+        bus.emit('bucket:stowed', { instance: pf.instance });
+        bus.emit('fx:sparkle', { position: pos.clone(), count: 10, color: '#5ddb6a' });
+        return true;
+      }
+      pf.toBucket = false;
+      bus.emit('toast', { text: 'Bucket is full.', kind: 'error', duration: 2600 });
+      return false;
+    }
+    if (pf.throwT > 4) pf.toBucket = false;      // missed; it is just a fish on the ground now
+    return false;
+  }
+
   absorb(pf, into = 'inventory', opts = {}) {
     const inv = this.game.get('inventory');
     if (into === 'inventory' && inv) {
@@ -165,8 +192,13 @@ export class PhysicalFishManager {
       // fish that landed across the beach is one you have to walk over and
       // collect -- which is the point of setting it down at all.
       const bucket = game.get('bucket');
-      const inReach = !bucket || bucket.reaches(p.x, p.z);
-      if (pf.autoStore && inReach && pf.life > AUTO_STORE_MIN) {
+      // With the bucket set down nothing collects itself: you grab it, kill
+      // it, and throw it in. That loop is the reason the bucket can be set
+      // down at all. On the belt, the old self-collecting behaviour stands.
+      const manual = !!bucket?.placed;
+      if (pf.toBucket) {
+        if (this._settleIntoBucket(pf, p, bucket, dt, game)) continue;
+      } else if (pf.autoStore && !manual && pf.life > AUTO_STORE_MIN) {
         const settled = _v2.copy(phys.getVelocity(pf.entry)).length() < 2;
         if (settled || pf.life > AUTO_STORE_MAX) {
           if (this.absorb(pf, 'inventory', { styleMult: pf.styleMult || 1 })) {

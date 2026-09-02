@@ -22,6 +22,9 @@ const VM_OFFSET = new THREE.Vector3(0, 0.125, 0);
 const POS_K = 1.18;
 /** Seconds for the bucket stow animation, start to finish. */
 const STOW_TIME = 1.05;
+/** Seconds for the reach-down-and-rip when a fish is grabbed, and for the throw. */
+const REACH_TIME = 0.72;
+const THROW_TIME = 0.5;
 const INV_K = 1 / POS_K;
 const _restR = new THREE.Vector3(0.30, -0.30, -0.32);
 const _restL = new THREE.Vector3(-0.30, -0.30, -0.32);
@@ -103,8 +106,28 @@ export class HeldItems {
     this.rig.add(this.bucketRig);
 
     this.stowT = 0;
-    // Fires when a rod catch collects itself into the bucket.
-    bus.on('bucket:stowed', () => { this.stowT = 1; });
+    this.reachT = 0;
+    this.throwT = 0;
+    // The in-hand stow plays only when the bucket is actually in hand. With
+    // it set down, the fish was thrown -- the throw gesture already played.
+    bus.on('bucket:stowed', () => { if (!game.get('bucket')?.placed) this.stowT = 1; });
+    bus.on('held:grab', () => { this.reachT = 1; });
+    bus.on('held:throw', () => { this.throwT = 1; });
+
+    // The modelled bucket in place of the procedural pail, sized to what the
+    // pail was so the stow animation's framing still holds. Same asset as
+    // the one on the ground, so it is recognisably the same object.
+    const bm = await game.assets.model('assets/models/bucket.glb');
+    if (bm?.scene) {
+      for (const part of [pail, base, rim, handle]) this.bucketRig.remove(part);
+      const m = bm.scene.clone(true);
+      // Smaller than the pail it replaces: the model is wider, and at the
+      // stow distance the pail already filled a third of the view.
+      m.scale.setScalar(0.36);
+      m.position.y = -0.0825;                    // GLB origin is its base
+      m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.metalness = 0.4; o.material.roughness = 0.55; } });
+      this.bucketRig.add(m);
+    }
 
     bus.on('resize', () => {
       this.vmCamera.aspect = window.innerWidth / window.innerHeight;
@@ -201,14 +224,41 @@ export class HeldItems {
       if (this.stowFish) this.stowFish.visible = false;
     }
 
+    // ---- reach-and-rip, and the throw ----
+    // Both are offsets on the whole viewmodel rather than hand poses, so they
+    // work with whatever is in the hands and cannot fight the grip code.
+    let gy = 0, gz = 0, grx = 0;
+    if (this.reachT > 0) {
+      this.reachT = Math.max(0, this.reachT - dt / REACH_TIME);
+      const k = 1 - this.reachT;
+      if (k < 0.42) {                                  // bend down to it
+        const t = smoothstep(k / 0.42); gy = -0.30 * t; grx = 0.5 * t; gz = 0.05 * t;
+      } else if (k < 0.58) {                           // rip it up, fast
+        const t = (k - 0.42) / 0.16; gy = -0.30 + 0.40 * t; grx = 0.5 - 0.72 * t; gz = 0.05 - 0.02 * t;
+      } else {                                         // settle from the overshoot
+        const t = smoothstep((k - 0.58) / 0.42); gy = 0.10 * (1 - t); grx = -0.22 * (1 - t); gz = 0.03 * (1 - t);
+      }
+    }
+    if (this.throwT > 0) {
+      this.throwT = Math.max(0, this.throwT - dt / THROW_TIME);
+      const k = 1 - this.throwT;
+      if (k < 0.3) {                                   // wind back
+        const t = smoothstep(k / 0.3); grx += -0.32 * t; gz += 0.06 * t; gy += 0.04 * t;
+      } else if (k < 0.55) {                           // whip forward
+        const t = (k - 0.3) / 0.25; grx += -0.32 + 0.9 * t; gz += 0.06 - 0.22 * t; gy += 0.04 - 0.1 * t;
+      } else {
+        const t = smoothstep((k - 0.55) / 0.45); grx += 0.58 * (1 - t); gz += -0.16 * (1 - t); gy += -0.06 * (1 - t);
+      }
+    }
+
     const swapDrop = (1 - smoothstep(this.swapT)) * 0.42;
     this.root.position.set(
       VM_OFFSET.x + this.sway.x + this.bobOffset.x,
-      VM_OFFSET.y + this.sway.y + this.bobOffset.y - swapDrop,
-      VM_OFFSET.z + this.bobOffset.z - this.recoilT * 0.12,
+      VM_OFFSET.y + this.sway.y + this.bobOffset.y - swapDrop + gy,
+      VM_OFFSET.z + this.bobOffset.z - this.recoilT * 0.12 + gz,
     );
     this.root.rotation.set(
-      -this.sway.y * 1.8 + this.recoilT * 0.35,
+      -this.sway.y * 1.8 + this.recoilT * 0.35 + grx,
       this.sway.x * 1.8,
       -this.sway.x * 1.2 - swapDrop * 0.4,
     );

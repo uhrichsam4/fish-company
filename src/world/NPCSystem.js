@@ -255,7 +255,10 @@ export class NPCSystem {
 
   _spawn(n) {
     if (n.physical) return;
-    n.object = buildWorkerMesh(n.def.seed, { role: n.def.role });
+    // The rigged human when its model loaded; the block figure otherwise.
+    // Same rig contract either way, so nothing below cares which.
+    const chars = this.game.get('characters');
+    n.object = chars?.available() ? chars.build() : buildWorkerMesh(n.def.seed, { role: n.def.role });
     n.rig = n.object.userData.rig;
     n.object.position.copy(n.position);
     n.object.rotation.y = n.facing;

@@ -4,6 +4,26 @@ import { clamp01, formatWeight, formatMoneyExact } from '../util/math.js';
 import { worldHeight } from '../world/Terrain.js';
 
 const _THREE = THREE;
+const BUCKET_URL = 'assets/models/bucket.glb';
+
+/** Modelled bucket if it loaded, the procedural one otherwise. */
+function bucketMeshFrom(model) {
+  if (model) {
+    const g = model.clone(true);
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = true;
+      // A metallic map with no environment to reflect renders near-black in
+      // the world scene; dial the metal back so it reads as galvanised steel.
+      const mat = o.material;
+      if (mat && !mat.userData.tuned) { mat.metalness = 0.35; mat.roughness = 0.62; mat.userData.tuned = true; }
+    });
+    g.userData.noBatch = true;
+    g.name = 'bucket-placed';
+    return g;
+  }
+  return buildBucketMesh();
+}
 
 /** The bucket as it stands in the world -- same shape as the viewmodel. */
 function buildBucketMesh() {
@@ -89,6 +109,15 @@ export class BucketSystem {
       this.tierId = 'bucket_old'; this.carried = false; this.pickUp();
     });
     bus.on('bucket:toggleGround', () => this.togglePlaced());
+    // Casting with the bucket still on your belt sets it down behind you.
+    // The catch loop -- grab, kill, throw it in -- needs a bucket in the
+    // world to throw into, and a player who has to remember to place it
+    // first is a player who fishes for ten minutes and then wonders where the
+    // fish went.
+    bus.on('fishing:cast', () => { if (!this.placed) this.setDown({ behind: true }); });
+    // The modelled bucket. Preloaded here because setDown() is synchronous.
+    const m = await this.game.assets.model(BUCKET_URL);
+    if (m?.scene) this._model = m.scene;
     // A fish only enters the world alive; everything else about it is the
     // inventory's business.
     bus.on('inventory:fishStored', () => this._tagNewest());
@@ -97,19 +126,29 @@ export class BucketSystem {
 
   togglePlaced() { return this.placed ? this.pickUp() : this.setDown(); }
 
-  /** Stand the bucket on the ground in front of the player. */
-  setDown() {
+  /**
+   * Stand the bucket on the ground near the player: in front by default,
+   * behind when set down automatically on a cast -- in front is the water.
+   * Refuses rather than dropping it in the sea.
+   */
+  setDown(opts = {}) {
     const game = this.game;
     const player = game.get('player');
     if (!player) return false;
     const THREE = _THREE;
     const fwd = new THREE.Vector3();
     player.forward(fwd);
-    const x = player.position.x + fwd.x * 1.5;
-    const z = player.position.z + fwd.z * 1.5;
+    const sign = opts.behind ? -1 : 1;
+    let x = player.position.x + fwd.x * 1.4 * sign;
+    let z = player.position.z + fwd.z * 1.4 * sign;
+    if (worldHeight(x, z) < 0.1) {
+      // Try beside instead; if that is water too, keep it on the belt.
+      x = player.position.x - fwd.z * 1.3; z = player.position.z + fwd.x * 1.3;
+      if (worldHeight(x, z) < 0.1) return false;
+    }
     const y = worldHeight(x, z);
 
-    if (!this.mesh) this.mesh = buildBucketMesh();
+    if (!this.mesh) this.mesh = bucketMeshFrom(this._model);
     this.mesh.position.set(x, y, z);
     this.mesh.rotation.y = Math.random() * Math.PI * 2;
     if (!this.mesh.parent) game.scene.add(this.mesh);
@@ -118,8 +157,9 @@ export class BucketSystem {
     this.placed = { x, y, z };
     game.audio?.play('crate_break', { volume: 0.3, rate: 1.5 });
     bus.emit('toast', {
-      text: `🪣 Bucket set down — catches within ${BucketSystem.REACH} m go straight in`,
-      kind: 'gold', duration: 3400,
+      text: opts.behind ? '🪣 Bucket set down behind you — grab each catch and throw it in'
+        : '🪣 Bucket set down — grab each catch and throw it in',
+      kind: 'gold', duration: 3600,
     });
     bus.emit('bucket:placed', { at: this.placed });
     bus.emit('bucket:changed');
@@ -266,7 +306,7 @@ export class BucketSystem {
     if (BUCKET_BY_ID[d.tier]) this.tierId = d.tier;
     this.carried = !!d.carried;
     if (d.placed) {
-      if (!this.mesh) this.mesh = buildBucketMesh();
+      if (!this.mesh) this.mesh = bucketMeshFrom(this._model);
       this.mesh.position.set(d.placed.x, d.placed.y, d.placed.z);
       if (!this.mesh.parent) this.game.scene.add(this.mesh);
       this.mesh.visible = true;

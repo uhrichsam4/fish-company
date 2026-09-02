@@ -93,6 +93,7 @@ async function boot() {
     ['./submarines/SubSystem.js', 'SubSystem'],
     ['./submarines/DeepSea.js', 'DeepSea'],
     ['./net/NetSystem.js', 'NetSystem'],
+    ['./characters/CharacterModel.js', 'CharacterModel'],
     ['./world/LobbySystem.js', 'LobbySystem'],
     ['./world/EventSystem.js', 'EventSystem'],
     ['./world/NPCSystem.js', 'NPCSystem'],
