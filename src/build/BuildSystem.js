@@ -84,6 +84,12 @@ export class BuildSystem {
     this.selected = 'foundation';
     this.material = 'wood';
     this.rotation = 0;
+    /**
+     * Snap on: pieces land on the 2 m grid and a foundation next to another
+     * takes its neighbour's height, so a platform on a slope stays level
+     * instead of stair-stepping down the hill. Snap off: free placement.
+     */
+    this.snapGrid = true;
     this.ghost = null;
     /** Pieces currently falling as debris. */
     this.debris = [];
@@ -281,12 +287,19 @@ export class BuildSystem {
 
   /** Snap a world point to the build grid. */
   snap(x, y, z, def) {
-    const sx = Math.round(x / GRID) * GRID;
-    const sz = Math.round(z / GRID) * GRID;
+    const sx = this.snapGrid ? Math.round(x / GRID) * GRID : x;
+    const sz = this.snapGrid ? Math.round(z / GRID) * GRID : z;
     let sy = y;
     if (def.ground) sy = worldHeight(sx, sz) + def.size[1] / 2 - 0.05;
-    else if (def.base) sy = worldHeight(sx, sz) + def.size[1] / 2;
-    else {
+    else if (def.base) {
+      sy = worldHeight(sx, sz) + def.size[1] / 2;
+      if (this.snapGrid) {
+        // Match the neighbour up or down: a platform is one level, and which
+        // side you started building from should not decide its shape.
+        const n = this._neighbourBaseY(sx, sz, def);
+        if (n != null) sy = n;
+      }
+    } else {
       // Stack on whatever is directly below at this cell.
       const below = this._topAt(sx, sz);
       if (below) sy = below.y + below.def.size[1] / 2 + def.size[1] / 2;
@@ -296,6 +309,19 @@ export class BuildSystem {
   }
 
   _cellKey(x, z) { return `${Math.round(x / GRID)},${Math.round(z / GRID)}`; }
+
+  /** Height of the highest same-kind base piece in the four adjacent cells, or null. */
+  _neighbourBaseY(sx, sz, def) {
+    let best = null;
+    for (const p of this.pieces.values()) {
+      if (p.detached || !p.def.base || p.def.ground || p.def.size[1] !== def.size[1]) continue;
+      const dx = Math.abs(p.x - sx), dz = Math.abs(p.z - sz);
+      const adjacent = (dx < GRID + 0.1 && dz < 0.1) || (dz < GRID + 0.1 && dx < 0.1);
+      if (!adjacent) continue;
+      if (best == null || p.y > best) best = p.y;
+    }
+    return best;
+  }
 
   /** Highest piece occupying a grid cell. */
   _topAt(x, z) {
@@ -336,6 +362,10 @@ export class BuildSystem {
         Math.abs(worldHeight(pos.x, pos.z + 1) - h),
       );
       if (spread > 1.7) return { ok: false, why: 'Ground is too steep here.' };
+      // Levelled to a neighbour: the legs reach about two metres down, and a
+      // deck more than a metre into the hillside is a buried deck.
+      if (pos.y - def.size[1] / 2 - h > 2.4) return { ok: false, why: 'Too high off the ground here.' };
+      if (h - (pos.y + def.size[1] / 2) > 1.0) return { ok: false, why: 'Too far into the hill here.' };
     } else {
       const below = this._topAt(pos.x, pos.z);
       // Naming the fix rather than the problem. "Needs something underneath"
@@ -666,6 +696,12 @@ export class BuildSystem {
       }
     }
     if (input.rawPressed('KeyR')) this.rotation += Math.PI / 2;
+    if (input.rawPressed('KeyT')) {
+      this.snapGrid = !this.snapGrid;
+      bus.emit('build:snap', { on: this.snapGrid });
+      bus.emit('toast', { text: this.snapGrid ? '📐 Snap to grid: on' : '📐 Snap to grid: off — free placement', kind: '', duration: 1600 });
+      this._ghostWhy = null;                          // force the readout to refresh
+    }
 
     // In cursor mode the mouse belongs to the palette. Without this, clicking
     // a tile also places whatever was already selected behind the menu.
@@ -699,10 +735,10 @@ export class BuildSystem {
     // Live, on screen, next to the ghost. A red box with the reason only
     // arriving as a toast after you click is a puzzle; the player has already
     // decided the game is broken by then.
-    const sig = `${check.ok}|${check.why || ''}|${def.id}`;
+    const sig = `${check.ok}|${check.why || ''}|${def.id}|${this.snapGrid}`;
     if (sig !== this._ghostWhy) {
       this._ghostWhy = sig;
-      bus.emit('build:ghost', { ok: check.ok, why: check.why || '', piece: def.name, icon: def.icon, cost: def.cost });
+      bus.emit('build:ghost', { ok: check.ok, why: check.why || '', piece: def.name, icon: def.icon, cost: def.cost, snap: this.snapGrid });
     }
   }
 

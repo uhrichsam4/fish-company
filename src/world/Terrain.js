@@ -88,12 +88,24 @@ export function worldHeight(x, z) {
       const target = r.seabedDepth ?? -40;
       shelf = lerp(1.0, target, Math.pow(s, 1.5));
       shelf += (fbm2(x * 0.03, z * 0.03, 3) - 0.5) * 5.5 * (0.25 + s);
-      // Occasional reef bumps and rock outcrops on the shelf.
+      // Occasional reef bumps and rock outcrops on the shelf -- clear of the
+      // beach. The shelf band starts inside the island's own beach apron, and
+      // an outcrop that fired there stood on the sand as a six-metre cone
+      // next to the shop.
       const reef = fbm2(x * 0.055 + 31, z * 0.055 - 17, 3);
-      if (reef > 0.66) shelf += (reef - 0.66) * 34 * (1 - s * 0.6);
+      if (reef > 0.66 && t > 1.08) shelf += (reef - 0.66) * 34 * (1 - s * 0.6);
     }
 
-    const contrib = Math.max(land, shelf);
+    let contrib = Math.max(land, shelf);
+    // Named spots pressed flat. The warp that lobes an island's outline can
+    // push a finger of its dome out onto the beach as a bare cone; a flatten
+    // entry removes one such spot without touching the rest of the island.
+    if (r.flatten) {
+      for (const f of r.flatten) {
+        const fd = Math.hypot(x - f.x, z - f.z);
+        if (fd < f.r) contrib = lerp(contrib, f.h, smootherstep(1 - fd / f.r));
+      }
+    }
     if (contrib > h) h = contrib;
   }
   return h;
@@ -319,9 +331,16 @@ export function buildRegionTerrain(region, phys) {
   // --- physics heightfield ---
   let body = null;
   if (phys) {
+    // Rapier's heightfield rows run along local Z and its columns along local
+    // X, column-major -- the opposite of the mesh's row-per-Z layout. Filling
+    // it index-for-index produced a collider that was the island transposed:
+    // right on the symmetric shore, up to ten metres off on the hillsides,
+    // which is where players walked into the ground or fell out of it.
+    // Measured against the mesh with vertical raycasts: identity fill 2.43 m
+    // mean error, transposed fill 0.07 m.
     const hf = new Float32Array(n * n);
     for (let j = 0; j < n; j++) {
-      for (let i = 0; i < n; i++) hf[i + j * n] = heights[j * n + i];
+      for (let i = 0; i < n; i++) hf[j + i * n] = heights[j * n + i];
     }
     // Collision keeps the full rect even where the mesh yields to a neighbour:
     // the surfaces are identical, so overlapping heightfields agree, and a

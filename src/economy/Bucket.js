@@ -4,6 +4,7 @@ import { clamp01, formatWeight, formatMoneyExact } from '../util/math.js';
 import { worldHeight } from '../world/Terrain.js';
 
 const _THREE = THREE;
+const _dir = new THREE.Vector3();
 const BUCKET_URL = 'assets/models/bucket.glb';
 
 /** Modelled bucket if it loaded, the procedural one otherwise. */
@@ -109,12 +110,8 @@ export class BucketSystem {
       this.tierId = 'bucket_old'; this.carried = false; this.pickUp();
     });
     bus.on('bucket:toggleGround', () => this.togglePlaced());
-    // Casting with the bucket still on your belt sets it down behind you.
-    // The catch loop -- grab, kill, throw it in -- needs a bucket in the
-    // world to throw into, and a player who has to remember to place it
-    // first is a player who fishes for ten minutes and then wonders where the
-    // fish went.
-    bus.on('fishing:cast', () => { if (!this.placed) this.setDown({ behind: true }); });
+    // E on the standing bucket picks it back up (see _registerInteractable).
+    bus.on('interact:bucket', () => this.pickUp());
     // The modelled bucket. Preloaded here because setDown() is synchronous.
     const m = await this.game.assets.model(BUCKET_URL);
     if (m?.scene) this._model = m.scene;
@@ -139,9 +136,10 @@ export class BucketSystem {
     const fwd = new THREE.Vector3();
     player.forward(fwd);
     const sign = opts.behind ? -1 : 1;
-    let x = player.position.x + fwd.x * 1.4 * sign;
-    let z = player.position.z + fwd.z * 1.4 * sign;
+    let x = opts.at ? opts.at.x : player.position.x + fwd.x * 1.4 * sign;
+    let z = opts.at ? opts.at.z : player.position.z + fwd.z * 1.4 * sign;
     if (worldHeight(x, z) < 0.1) {
+      if (opts.at) return false;
       // Try beside instead; if that is water too, keep it on the belt.
       x = player.position.x - fwd.z * 1.3; z = player.position.z + fwd.x * 1.3;
       if (worldHeight(x, z) < 0.1) return false;
@@ -155,6 +153,8 @@ export class BucketSystem {
     this.mesh.visible = true;
 
     this.placed = { x, y, z };
+    this._registerInteractable();
+    if (this.ghost) this.ghost.visible = false;
     game.audio?.play('crate_break', { volume: 0.3, rate: 1.5 });
     bus.emit('toast', {
       text: opts.behind ? '🪣 Bucket set down behind you — grab each catch and throw it in'
@@ -169,11 +169,88 @@ export class BucketSystem {
   pickUp() {
     if (!this.placed) return false;
     this.placed = null;
+    this._unregisterInteractable();
     if (this.mesh) this.mesh.visible = false;
     bus.emit('toast', { text: '🪣 Bucket back on your belt', kind: '', duration: 2000 });
     bus.emit('bucket:placed', { at: null });
     bus.emit('bucket:changed');
     return true;
+  }
+
+  /** The standing bucket is a world interactable: look at it, press E, it is back in hand. */
+  _registerInteractable() {
+    const world = this.game.get('world');
+    if (!world?.interactables || !this.placed) return;
+    this._unregisterInteractable();
+    world.interactables.push({
+      region: null, kind: 'bucket', label: 'Pick up bucket', key: 'E',
+      position: new _THREE.Vector3(this.placed.x, this.placed.y + 0.35, this.placed.z), radius: 3.2,
+      data: {},
+    });
+  }
+
+  _unregisterInteractable() {
+    const world = this.game.get('world');
+    if (world?.interactables) world.interactables = world.interactables.filter((i) => i.kind !== 'bucket');
+  }
+
+  /**
+   * Placement preview. With the bucket slot selected and the bucket in hand,
+   * a ghost follows where you look on the ground; click to set it there.
+   * Same idea as the build ghost, so it needs no explaining to anyone who
+   * has placed a foundation.
+   */
+  _updatePlacement(dt, game) {
+    const inv = game.get('inventory');
+    const input = game.input;
+    const want = inv?.activeKind === 'bucket' && !this.placed && !input.uiCapture && !game.get('build')?.mode;
+    if (!want) {
+      if (this.ghost?.visible) { this.ghost.visible = false; bus.emit('build:ghost', null); }
+      return;
+    }
+    if (!this.ghost) this.ghost = this._makeGhost();
+    const cam = game.camera;
+    cam.getWorldDirection(_dir);
+    let hit = null;
+    for (let t = 0.8; t <= 4.6; t += 0.12) {
+      const px = cam.position.x + _dir.x * t, py = cam.position.y + _dir.y * t, pz = cam.position.z + _dir.z * t;
+      const h = worldHeight(px, pz);
+      if (py <= h + 0.05) { hit = { x: px, y: h, z: pz }; break; }
+    }
+    let ok = !!hit;
+    if (!hit) {
+      const t = 2.4;
+      hit = { x: cam.position.x + _dir.x * t, z: cam.position.z + _dir.z * t };
+      hit.y = worldHeight(hit.x, hit.z);
+    }
+    if (hit.y < 0.1) ok = false;
+    this.ghost.position.set(hit.x, hit.y, hit.z);
+    this.ghost.visible = true;
+    this._ghostTint(ok);
+    bus.emit('build:ghost', {
+      ok, why: ok ? '' : (hit.y < 0.1 ? 'Too close to the water' : 'Look at the ground to place it'),
+      piece: 'Bucket', icon: '🪣', cost: {}, keys: 'LMB put it down',
+    });
+    if (ok && input.mousePressed(0)) this.setDown({ at: hit });
+  }
+
+  _makeGhost() {
+    const g = this._model ? this._model.clone(true) : buildBucketMesh();
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      o.material = new _THREE.MeshBasicMaterial({ color: 0x5ddb6a, transparent: true, opacity: 0.45, depthWrite: false });
+      o.castShadow = false;
+    });
+    g.userData.noBatch = true;
+    g.name = 'bucket-ghost';
+    g.visible = false;
+    this.game.scene.add(g);
+    return g;
+  }
+
+  _ghostTint(ok) {
+    const hex = ok ? 0x5ddb6a : 0xff5470;
+    this.ghost.traverse((o) => { if (o.isMesh) o.material.color.setHex(hex); });
   }
 
   /** Metres to the standing bucket, or 0 when it is being carried. */
@@ -288,7 +365,8 @@ export class BucketSystem {
     return res;
   }
 
-  update() {
+  update(dt, game) {
+    this._updatePlacement(dt, game ?? this.game);
     const hud = this.game.get('hud');
     if (hud?.setBucket) {
       hud.setBucket({
@@ -311,6 +389,7 @@ export class BucketSystem {
       if (!this.mesh.parent) this.game.scene.add(this.mesh);
       this.mesh.visible = true;
       this.placed = d.placed;
+      this._registerInteractable();
     } else this.pickUp();
     // Fish saved before the bucket existed have no alive flag. Treat them as
     // already processed rather than resurrecting a boatload of them.

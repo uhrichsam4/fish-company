@@ -277,14 +277,14 @@ export class HUD {
   }
 
   setHotbar(slots, activeIndex) {
-    const sig = slots.map((s) => `${s?.id || ''}:${s?.count || 0}:${(s?.durability ?? 1).toFixed(2)}`).join('|') + '#' + activeIndex;
+    const sig = slots.map((s) => `${s?.id || ''}:${s?.count || 0}:${(s?.durability ?? 1).toFixed(2)}:${s?.placed ? 1 : 0}`).join('|') + '#' + activeIndex;
     if (sig === this._hotbarSig) return;
     this._hotbarSig = sig;
     this.hotbar.innerHTML = slots.map((s, i) => {
       if (!s) return `<div class="slot empty"><span class="slot-num">${i + 1}</span></div>`;
       const dur = s.durability != null && s.durability < 1
         ? `<div class="slot-dur" style="width:${Math.round(s.durability * 100)}%"></div>` : '';
-      return `<div class="slot ${i === activeIndex ? 'active' : ''}">
+      return `<div class="slot ${i === activeIndex ? 'active' : ''} ${s.placed ? 'placed' : ''}">
         <span class="slot-num">${i + 1}</span>
         <span class="slot-icon">${s.icon || '❔'}</span>
         ${s.count > 1 ? `<span class="slot-count">${s.count}</span>` : ''}
@@ -369,7 +369,8 @@ export class HUD {
       // What you are about to place and what it costs, so a hidden palette
       // does not mean guessing.
       const cost = Object.entries(gh.cost || {}).map(([id, n]) => `${RESOURCE_BY_ID[id]?.icon || id}${n}`).join(' ');
-      el.innerHTML = `<b>${gh.icon || ''} ${gh.piece}</b> <span class="bh-cost">${cost}</span> <span class="bh-key">LMB place · Q palette</span>`;
+      const keys = gh.keys || `LMB place · Q palette · T snap ${gh.snap === false ? 'off' : 'on'}`;
+      el.innerHTML = `<b>${gh.icon || ''} ${gh.piece}</b> <span class="bh-cost">${cost}</span> <span class="bh-key">${keys}</span>`;
       el.classList.remove('bad');
     } else {
       el.textContent = gh.why;

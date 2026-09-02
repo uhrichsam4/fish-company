@@ -77,6 +77,7 @@ export class BuildMenu {
     this._offs.push(bus.on('build:mode', ({ on }) => this.setOpen(on)));
     this._offs.push(bus.on('resources:changed', () => { if (this.open) this.render(); }));
     this._offs.push(bus.on('build:selected', () => { if (this.open) this.render(); }));
+    this._offs.push(bus.on('build:snap', () => { if (this.paletteOpen) this.render(); }));
     this._offs.push(bus.on('ui:cursorMode', ({ on }) => {
       this.el?.classList.toggle('cursor-on', on);
       // Set outright rather than through a class: two stylesheet blocks both
@@ -180,7 +181,7 @@ export class BuildMenu {
     this.el.innerHTML = `
       <div class="bm-head">
         <div class="bm-title">🔨 Build</div>
-        <div class="bm-hint"><kbd>Click</kbd>pick <kbd>Shift</kbd>cursor <kbd>R</kbd>rotate <kbd>RMB</kbd>remove <kbd>Q</kbd>close</div>
+        <div class="bm-hint"><kbd>Click</kbd>pick <kbd>Shift</kbd>cursor <kbd>R</kbd>rotate <kbd>T</kbd>snap ${b.snapGrid ? 'on' : 'off'} <kbd>RMB</kbd>remove <kbd>Q</kbd>close</div>
       </div>
       ${this.game.get('ui')?.cursorMode ? ''
         : '<div class="bm-locked">Tap <kbd>Shift</kbd> to free the mouse and click these</div>'}

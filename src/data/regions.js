@@ -36,6 +36,8 @@ export const REGIONS = [
     dockAngle: 0.6, hasShop: true, hasSell: true, hasHarbor: false,
     spawnDepthBands: [[0.5, 6, 1.0], [6, 16, 0.6]],
     maxFish: 34,
+    // The warp lobe that stood as a six-metre cone between the shop and the dock.
+    flatten: [{ x: 70, z: 55, r: 15, h: 0.7 }, { x: 82, z: 55, r: 9, h: 0.45 }],
   },
   {
     id: 'rocky', name: 'Rocky Isle', short: 'Rocky',

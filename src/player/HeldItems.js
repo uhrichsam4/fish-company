@@ -141,6 +141,20 @@ export class HeldItems {
     // the one on the ground, so it is recognisably the same object.
     const bm = await game.assets.model('assets/models/bucket.glb');
     if (bm?.scene) {
+      // The bucket as a hotbar item: carried in the right hand by the handle.
+      this._bucketModel = bm.scene;
+      BUILDERS.bucket = () => {
+        const g = new THREE.Group();
+        const m = this._bucketModel.clone(true);
+        m.scale.setScalar(0.5);
+        m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.metalness = 0.4; o.material.roughness = 0.55; } });
+        m.position.y = -0.02;
+        g.add(m);
+        g.position.set(0.27, -0.42, -0.50);
+        g.rotation.set(0.04, -0.3, 0.06);
+        g.userData.grips = { R: new THREE.Vector3(0.27, -0.24, -0.50), rollR: 0.2 };
+        return g;
+      };
       for (const part of [pail, base, rim, handle]) this.bucketRig.remove(part);
       const m = bm.scene.clone(true);
       // Smaller than the pail it replaces: the model is wider, and at the
@@ -359,6 +373,11 @@ export class HeldItems {
         this.hands.userData.pose('R', _restR);
         this.hands.userData.pose('L', _restL);
       }
+    }
+
+    // The bucket slot with the bucket standing in the world: empty hands.
+    if (this.currentId === 'bucket' && this.current) {
+      this.current.visible = !game.get('bucket')?.placed;
     }
 
     // ---- the left hand, when there is a fish in it ----

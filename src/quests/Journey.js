@@ -23,6 +23,10 @@ import { RARITY_ORDER } from '../data/fishData.js';
 
 const STEPS = [
   {
+    id: 'bucket', title: 'Set Your Bucket Down', how: 'Pick the bucket (slot 5), look at the sand, click',
+    goal: 1, on: 'bucket:placed', match: (e) => !!e.at, reward: { money: 15 },
+  },
+  {
     id: 'cast', title: 'Wet a Line', how: 'Hold left mouse to charge, release to cast',
     goal: 1, on: 'fishing:cast', reward: { money: 25 },
   },
