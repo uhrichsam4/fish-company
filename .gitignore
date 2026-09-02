@@ -15,3 +15,9 @@ tools/shots/
 
 # Generated audio cache (regenerable, and large)
 public/assets/audio/generated/
+
+# Raw model sources. Multi-hundred-MB .blend/.obj/4K-texture drops get
+# converted to compressed GLB in public/assets/models/ and only that ships --
+# a public repo Render deploys from should not carry 350 MB of source art.
+assets/incoming/
+*.blend1
