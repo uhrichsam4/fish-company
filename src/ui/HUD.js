@@ -222,6 +222,8 @@ export class HUD {
     });
     bus.on('hud:visible', (v) => { this.visible = v; this.root.style.display = v ? '' : 'none'; });
     bus.on('journey:changed', (j) => this.setJourney(j));
+    bus.on('build:ghost', (gh) => this.setBuildHint(gh));
+    bus.on('build:mode', ({ on }) => { if (!on) this.setBuildHint(null); });
     bus.on('resources:changed', () => this.refreshCarry());
     bus.on('inventory:changed', () => this.refreshCarry());
     bus.on('bucket:changed', () => this.refreshCarry());
@@ -351,6 +353,20 @@ export class HUD {
       <div class="hb-row"><span>${b.count} fish</span>${b.alive ? `<em>${b.alive} alive</em>` : ''}</div>
       <div class="hb-bar ${full > 0.92 ? 'full' : full > 0.7 ? 'warn' : ''}"><i style="width:${Math.min(100, full * 100)}%"></i></div>
       <div class="hb-row sub"><span>${formatWeight(b.weight)} / ${formatWeight(b.capacity)}</span><b>${formatMoneyExact(b.value)}</b></div>`;
+  }
+
+  /** Why the build ghost is red, shown where the player is already looking. */
+  setBuildHint(gh) {
+    if (!this._buildHintEl) {
+      const el = document.createElement('div');
+      el.className = 'build-hint';
+      (document.getElementById('ui-root') || document.body).appendChild(el);
+      this._buildHintEl = el;
+    }
+    const el = this._buildHintEl;
+    if (!gh || gh.ok) { el.classList.remove('show'); return; }
+    el.textContent = gh.why;
+    el.classList.add('show');
   }
 
   /**

@@ -96,6 +96,9 @@ export class UIManager {
 
   anyOpen() { for (const p of this.panels.values()) if (p.open) return true; return false; }
 
+  /** True while the mouse is a pointer rather than a look control. */
+  cursorMode = false;
+
   show(id, data) {
     const p = this.panels.get(id);
     if (!p) { console.warn('[UI] no panel', id); return; }
@@ -111,6 +114,32 @@ export class UIManager {
   }
 
   closeAll() { for (const p of this.panels.values()) p.close(); }
+
+  /**
+   * Cursor mode: release the pointer so the mouse is a pointer again.
+   *
+   * Mouse-look and a mouse cursor are the same physical device, so a
+   * first-person game has to choose one at a time. Building needs both -- aim
+   * the ghost in the world, then click a tile in the palette -- and with the
+   * pointer locked the palette was unclickable, which made the whole build
+   * menu decorative.
+   *
+   * Deliberately a toggle rather than hold-to-free: you need both hands for
+   * WASD and the mouse while placing, and holding a modifier through a
+   * drag-and-click is exactly the thing that is awkward on a laptop.
+   */
+  setCursor(on) {
+    const want = !!on;
+    if (want === this.cursorMode) return;
+    this.cursorMode = want;
+    const input = this.game.input;
+    if (want) input.exitLock();
+    else if (!this.anyOpen()) input.requestLock();
+    document.body.classList.toggle('cursor-mode', want);
+    bus.emit('ui:cursorMode', { on: want });
+  }
+
+  toggleCursor() { this.setCursor(!this.cursorMode); }
 
   /** [E] on a sell station: sell everything stored, with feedback. */
   sellHere(d) {
@@ -175,6 +204,15 @@ export class UIManager {
     // on could not turn it off, and the build-mode toast advertised that it
     // could.
     if (building && !anyOpen && (input.rawPressed('KeyB') || input.rawPressed('KeyQ'))) bus.emit('build:toggle', {});
+
+    // Cursor mode. Mouse-look and a mouse pointer are the same device, so a
+    // first-person game has to pick one -- and building needs both: aim the
+    // ghost, then click a tile in the palette. Alt swaps between them without
+    // leaving the world, which is the Roblox shift-lock idea with the states
+    // the other way round.
+    if (input.rawPressed('AltLeft') || input.rawPressed('AltRight')) this.toggleCursor();
+    // Leaving build mode should not strand the player with a loose cursor.
+    if (this.cursorMode && !building && !anyOpen) this.setCursor(false);
     if (input.rawPressed('Tab') && !anyOpen) this.show('inventory');
     else if (input.rawPressed('Tab') && anyOpen) this.closeAll();
     if (!input.uiCapture) {

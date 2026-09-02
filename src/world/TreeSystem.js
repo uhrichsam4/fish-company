@@ -29,8 +29,13 @@ export const STAGES = [
 ];
 /** After this long as `old`, a tree may come down on its own. */
 const OLD_FALL_AFTER = 25 * 60;
-/** How long a felled trunk lies on the ground before it sinks away, seconds. */
-const LOG_LINGER = 16;
+/**
+ * How long a felled trunk lies on the ground before it sinks away, seconds.
+ *
+ * Long enough to walk over to it and see that the tree came down, rather than
+ * the fall being tidied away while you are still turning round.
+ */
+const LOG_LINGER = 60;
 
 /** Regrowth delay after a stump is left alone. */
 const REGROW_AFTER = [45, 150];
@@ -235,8 +240,14 @@ export class TreeSystem {
         bus.emit('fx:dustPuff', { position: at.clone(), count: 18, scale: 1.6 });
         bus.emit('player:shake', 0.22);
         this._makeStump(f.tree);
-        f.object.visible = false;
+        // Log first: both _makeStump and _makeLog attach through
+        // tree.object.parent, so detaching the palm before them would leave
+        // them with nowhere to go.
         f.log = this._makeLog(f.tree, f.axis);
+        f.parent = f.object.parent;
+        f.tree._parent = f.parent;
+        f.object.visible = false;
+        f.object.parent?.remove(f.object);
       }
 
       // Lie there, then sink out of sight rather than blinking off.
@@ -289,6 +300,8 @@ export class TreeSystem {
     if (t.stump) { t.stump.parent?.remove(t.stump); t.stump = null; }
     if (t.object) {
       t.object.visible = true;
+      const back = this.falling.find((e) => e.tree === t)?.parent || t._parent;
+      if (!t.object.parent && back) back.add(t.object);
       t.object.rotation.set(0, t.object.rotation.y, 0);
       // A tree felled and regrown while its log was still sinking would come
       // back underground.

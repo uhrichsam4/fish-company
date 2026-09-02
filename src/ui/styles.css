@@ -1020,3 +1020,29 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   background: rgba(255, 255, 255, 0.12); border-radius: 4px; padding: 1px 6px;
   font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--ink-dim);
 }
+
+/* ---- cursor mode ------------------------------------------------------ */
+body.cursor-mode { cursor: default; }
+body.cursor-mode #crosshair { opacity: .25; }
+.bm-locked {
+  margin: 0 0 9px; padding: 6px 10px; border-radius: 8px;
+  background: rgba(240, 190, 80, 0.13); border: 1px solid rgba(240, 190, 80, 0.3);
+  font-size: 12px; font-weight: 700; color: var(--gold); text-align: center;
+}
+.bm-locked kbd {
+  background: rgba(255,255,255,.14); border-radius: 4px; padding: 1px 6px;
+  font-family: var(--mono); font-size: 11px;
+}
+/* The palette only accepts clicks when the mouse is actually a pointer. */
+.build-menu { pointer-events: none; }
+.build-menu.show.cursor-on { pointer-events: auto; }
+
+/* ---- why the build ghost is red -------------------------------------- */
+.build-hint {
+  position: absolute; left: 50%; top: 56%; transform: translateX(-50%);
+  padding: 7px 14px; border-radius: 9px; pointer-events: none;
+  background: rgba(28, 12, 16, 0.86); border: 1px solid var(--danger);
+  color: var(--danger); font-size: 13px; font-weight: 800;
+  opacity: 0; transition: opacity .12s ease;
+}
+.build-hint.show { opacity: 1; }

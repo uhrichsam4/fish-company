@@ -161,7 +161,14 @@ export class HarvestSystem {
       text: `${node.def.icon} +${got.join(' · ')}`, kind: 'success', duration: 2200,
     });
 
-    if (node.object) node.object.visible = false;
+    // Removed from the scene, not just hidden. `visible = false` on a group
+    // whose children were re-parented or batched elsewhere leaves parts of the
+    // rock standing, which is what "they don't actually disappear" was.
+    if (node.object) {
+      node.parent = node.object.parent || node.parent;
+      node.object.visible = false;
+      node.object.parent?.remove(node.object);
+    }
     if (node.body) { try { game.physics.remove(node.body); } catch { /* already gone */ } node.body = null; }
     if (this.target === node) this.target = null;
     bus.emit('harvest:broken', { node });
@@ -186,7 +193,10 @@ export class HarvestSystem {
         if (!n.broken || game.time < n.respawnAt) continue;
         n.broken = false;
         n.health = n.maxHealth;
-        if (n.object) n.object.visible = true;
+        if (n.object) {
+          n.object.visible = true;
+          if (!n.object.parent && n.parent) n.parent.add(n.object);
+        }
       }
     }
 
@@ -212,7 +222,11 @@ export class HarvestSystem {
       if (health != null) { n.health = health; continue; }
       n.broken = true;
       n.respawnAt = respawnAt;
-      if (n.object) n.object.visible = false;
+      if (n.object) {
+        n.parent = n.object.parent || n.parent;
+        n.object.visible = false;
+        n.object.parent?.remove(n.object);
+      }
       if (n.body) { try { this.game.physics.remove(n.body); } catch { /* gone */ } n.body = null; }
     }
   }

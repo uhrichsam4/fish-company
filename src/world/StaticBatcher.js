@@ -19,9 +19,26 @@ export function batchStatic(root, opts = {}) {
   const keep = [];
 
   root.updateMatrixWorld(true);
+  /**
+   * noBatch has to be inherited.
+   *
+   * Prop builders return a Group of meshes, and callers set the flag on the
+   * group they were handed -- which is the only object they have. Testing only
+   * the mesh meant a rock or tree marked "keep me individual" was merged into
+   * shared geometry anyway, its original detached from the scene, and every
+   * later attempt to hide or move it silently did nothing to what was on
+   * screen. That is why broken rocks stayed standing.
+   */
+  const excluded = (o) => {
+    for (let n = o; n && n !== root.parent; n = n.parent) {
+      if (n.userData?.dynamic || n.userData?.noBatch) return true;
+    }
+    return false;
+  };
+
   root.traverse((o) => {
     if (!o.isMesh) return;
-    if (o.userData?.dynamic || o.userData?.noBatch) return;
+    if (excluded(o)) return;
     if (skip(o)) return;
     const mat = o.material;
     if (Array.isArray(mat)) return;                 // multi-material, leave it

@@ -76,6 +76,10 @@ export class BuildMenu {
     this._offs.push(bus.on('build:mode', ({ on }) => this.setOpen(on)));
     this._offs.push(bus.on('resources:changed', () => { if (this.open) this.render(); }));
     this._offs.push(bus.on('build:selected', () => { if (this.open) this.render(); }));
+    this._offs.push(bus.on('ui:cursorMode', ({ on }) => {
+      this.el?.classList.toggle('cursor-on', on);
+      if (this.open) this.render();
+    }));
     return this;
   }
 
@@ -153,8 +157,10 @@ export class BuildMenu {
     this.el.innerHTML = `
       <div class="bm-head">
         <div class="bm-title">🔨 Build</div>
-        <div class="bm-hint"><kbd>LMB</kbd>place <kbd>R</kbd>rotate <kbd>RMB</kbd>remove <kbd>Q</kbd>close</div>
+        <div class="bm-hint"><kbd>Alt</kbd>cursor <kbd>LMB</kbd>place <kbd>R</kbd>rotate <kbd>RMB</kbd>remove <kbd>Q</kbd>close</div>
       </div>
+      ${this.game.get('ui')?.cursorMode ? ''
+        : '<div class="bm-locked">Press <kbd>Alt</kbd> to free the mouse and click these</div>'}
       <div class="bm-body">
         <div class="bm-cats">${cats}</div>
         <div class="bm-panel">

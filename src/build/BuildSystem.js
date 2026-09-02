@@ -36,7 +36,8 @@ export const MATERIALS = {
  * it. A foundation needs nothing, which is what terminates the support walk.
  */
 export const PIECES = [
-  { id: 'foundation', name: 'Foundation', icon: '⬜', cost: { wood: 4 }, size: [GRID, 0.4, GRID], needs: null, base: true },
+  { id: 'foundation', name: 'Foundation', icon: '⬜', cost: { wood: 4 }, size: [GRID, 0.4, GRID], needs: null, base: true,
+    desc: 'Legs driven into the ground. Everything else needs one of these under it.' },
   { id: 'floor', name: 'Floor', icon: '▫️', cost: { wood: 3 }, size: [GRID, 0.2, GRID], needs: 'any' },
   { id: 'wall', name: 'Wall', icon: '🧱', cost: { wood: 4 }, size: [GRID, WALL_H, 0.25], needs: 'floor', vertical: true },
   { id: 'wall_window', name: 'Window Wall', icon: '🪟', cost: { wood: 5 }, size: [GRID, WALL_H, 0.25], needs: 'floor', vertical: true },
@@ -183,6 +184,7 @@ export class BuildSystem {
       case 'foundation':
       case 'walkway':
       case 'floor': {
+        // Foundations get legs; see below.
         // Decking: planks with a groove between them, on a slab, with a rim.
         const thick = h * (def.id === 'foundation' ? 0.55 : 0.7);
         box(w, thick, d, 0, -h / 2 + thick / 2, 0);
@@ -191,8 +193,11 @@ export class BuildSystem {
           box(pw - 0.055, h * 0.42, d - 0.12,
             -w / 2 + 0.06 + pw * (i + 0.5), h / 2 - h * 0.21, 0);
         }
+        // Legs, long enough to read as driven into the ground on a slope.
+        // A foundation that floats on a dune looks like a bug; one on stilts
+        // looks like the support the player was told to place.
         if (def.id === 'foundation') for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-          box(0.22, h * 1.5, 0.22, sx * (w / 2 - 0.11), -h * 0.1, sz * (d / 2 - 0.11));
+          box(0.26, h * 4.2, 0.26, sx * (w / 2 - 0.13), -h * 1.6, sz * (d / 2 - 0.13));
         }
         break;
       }
@@ -321,16 +326,22 @@ export class BuildSystem {
         }
         return { ok: true };
       }
-      // Foundations want reasonably flat, dry ground.
-      if (h < 0.6) return { ok: false, why: 'Too close to the water.' };
+      // Foundations drive legs into whatever they stand on, so they only need
+      // to be out of the sea and not on a cliff. The old rule wanted ground
+      // above 0.6 m, which is most of the way up the beach -- in a fishing
+      // game, the entire shoreline a player wants to build on was refused.
+      if (h < -0.35) return { ok: false, why: 'Too deep — build back from the water.' };
       const spread = Math.max(
         Math.abs(worldHeight(pos.x + 1, pos.z) - h),
         Math.abs(worldHeight(pos.x, pos.z + 1) - h),
       );
-      if (spread > 0.9) return { ok: false, why: 'Ground is too steep.' };
+      if (spread > 1.7) return { ok: false, why: 'Ground is too steep here.' };
     } else {
       const below = this._topAt(pos.x, pos.z);
-      if (!below) return { ok: false, why: 'Needs something underneath.' };
+      // Naming the fix rather than the problem. "Needs something underneath"
+      // is true and useless; the player has to be told the two-step -- put a
+      // foundation down first, then build on it.
+      if (!below) return { ok: false, why: 'Put a Foundation here first' };
     }
     // One piece per cell per level.
     for (const p of this.pieces.values()) {
@@ -656,6 +667,10 @@ export class BuildSystem {
     }
     if (input.rawPressed('KeyR')) this.rotation += Math.PI / 2;
 
+    // In cursor mode the mouse belongs to the palette. Without this, clicking
+    // a tile also places whatever was already selected behind the menu.
+    if (this.game.get('ui')?.cursorMode) return;
+
     if (input.mousePressed(0)) this.placeAtGhost();
     if (input.mousePressed(1)) {
       const target = this.targetPiece(player);
@@ -681,6 +696,13 @@ export class BuildSystem {
     this._ghostMat.color.setHex(check.ok ? 0x5ddb6a : 0xff5470);
     this._ghostPos = pos;
     this._ghostOk = check.ok;
+    // Live, on screen, next to the ghost. A red box with the reason only
+    // arriving as a toast after you click is a puzzle; the player has already
+    // decided the game is broken by then.
+    if (check.why !== this._ghostWhy) {
+      this._ghostWhy = check.why;
+      bus.emit('build:ghost', { ok: check.ok, why: check.why || '', piece: def.name });
+    }
   }
 
   /** Called by input handling while in build mode. */
