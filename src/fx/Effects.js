@@ -168,6 +168,7 @@ export class Effects {
     on('fx:explosion', (p) => this.explosion(P(p), p || {}));
     on('fx:moneyBurst', (p) => this.moneyBurst(P(p), p || {}));
     on('fx:sparkle', (p) => this.sparkle(P(p), p || {}));
+    on('fx:blood', (p) => this.blood(P(p), p || {}));
     on('fx:rareAura', (p) => this.rareAura(p?.object || p?.target, p || {}));
     on('fx:dustPuff', (p) => this.dustPuff(P(p), p || {}));
     on('fx:leafBurst', (p) => this.leafBurst(P(p)));
@@ -971,6 +972,46 @@ export class Effects {
       d.tile = TILE.star; d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 6;
       d.delay = Math.random() * 0.5;
       this._push(this.add);
+    }
+  }
+
+  /**
+   * Blood: a spray of dark droplets that fall like liquid, and a few heavier
+   * gouts. On the alpha pool, not the additive one -- additive sprites start
+   * white and read as sparks whatever colour they are told to be, which is
+   * why the first attempt at this looked like a firework.
+   */
+  blood(position, o = {}) {
+    if (!this.enabled) return;
+    const p = this._read(position);
+    const s = o.scale ?? 1;
+    const n = this._n(o.count ?? 28, 6);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * TAU, up = 0.3 + Math.random() * 0.7, r = Math.sqrt(1 - up * up);
+      const sp = (1.1 + Math.random() * 2.8) * s;
+      const d = this._s();
+      d.x = p.x; d.y = p.y; d.z = p.z;
+      d.vx = Math.cos(a) * r * sp; d.vy = up * sp + 0.4; d.vz = Math.sin(a) * r * sp;
+      d.grav = -7.5; d.drag = 1.1; d.turb = 0.05;
+      d.life = 0.32 + Math.random() * 0.4;
+      d.size = 0.035 * s * (0.6 + Math.random() * 0.8); d.size2 = 0.055 * s; d.sizePow = 0.9;
+      d.col = 0x9c1219; d.col2 = 0x3c0509; d.alpha = 1; d.alphaPow = 0.5; d.fadeIn = 0.01;
+      d.tile = TILE.foam; d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 4;
+      this._push(this.alpha);
+    }
+    const gouts = this._n(o.gouts ?? 7, 2);
+    for (let i = 0; i < gouts; i++) {
+      const a = Math.random() * TAU, up = 0.5 + Math.random() * 0.5, r = Math.sqrt(1 - up * up);
+      const sp = (0.6 + Math.random() * 1.4) * s;
+      const d = this._s();
+      d.x = p.x; d.y = p.y; d.z = p.z;
+      d.vx = Math.cos(a) * r * sp; d.vy = up * sp + 0.3; d.vz = Math.sin(a) * r * sp;
+      d.grav = -6; d.drag = 1.6; d.turb = 0.1;
+      d.life = 0.45 + Math.random() * 0.45;
+      d.size = 0.09 * s; d.size2 = 0.17 * s; d.sizePow = 0.5;
+      d.col = 0x7e0d12; d.col2 = 0x2a0406; d.alpha = 1; d.alphaPow = 0.7; d.fadeIn = 0.02;
+      d.tile = TILE.foam; d.rot = Math.random() * TAU; d.spin = (Math.random() - 0.5) * 2;
+      this._push(this.alpha);
     }
   }
 

@@ -188,8 +188,27 @@ export class Interaction {
     if (!h || h.entry.removed) { this.held = null; return; }
 
     player.forward(_v);
-    const targetDist = clamp(this.holdDistance + Math.pow(h.mass, 0.3) * 0.16, 1.2, 3.2);
-    const target = _v2.copy(player.eyePosition).addScaledVector(_v, targetDist).add(_v3.set(0, -0.25, 0));
+    let target;
+    if (h.pf) {
+      // A fish is carried in the left hand: close, low and to the left, so
+      // the viewmodel hand and the physics body agree about where it is.
+      const d = clamp(0.58 + Math.pow(h.mass, 0.3) * 0.07, 0.58, 0.95);
+      target = _v2.copy(player.eyePosition).addScaledVector(_v, d)
+        .add(_v3.set(-_v.z, 0, _v.x).multiplyScalar(-0.17))
+        .add(_v3.set(0, -0.30, 0));
+      if (h.placing) {
+        // Lowering it into the bucket: the hand carries it to the rim.
+        h.placing.t += dt;
+        const k = clamp01(h.placing.t / h.placing.dur);
+        const ease = k * k * (3 - 2 * k);
+        const b = h.placing.bucket.placed;
+        target.lerp(_v3.set(b.x, b.y + 0.36, b.z), ease);
+        if (k >= 1) { this._finishPlace(game, player); return; }
+      }
+    } else {
+      const targetDist = clamp(this.holdDistance + Math.pow(h.mass, 0.3) * 0.16, 1.2, 3.2);
+      target = _v2.copy(player.eyePosition).addScaledVector(_v, targetDist).add(_v3.set(0, -0.25, 0));
+    }
     // A live fish fights the hand holding it.
     if (h.pf?.alive) {
       const t = game.time;
@@ -218,6 +237,7 @@ export class Interaction {
       hud.setInteract(this._carryPrompt(game, h), h.pf ? 'E' : 'G');
     }
     if (input.justPressed('KeyG')) { this.release(0); return; }
+    if (h.placing) return;                             // hands busy lowering it in
 
     // E with a fish: into the bucket. With the bucket set down that means a
     // throw, and only a dead fish goes in -- kill it with the axe first.
@@ -230,11 +250,15 @@ export class Interaction {
           return;
         }
         const d = bucket.distanceTo(player.position.x, player.position.z);
-        if (d > 3.4) {
-          bus.emit('toast', { text: 'Take it to the bucket', kind: '', duration: 1800 });
+        if (d > 1.9) {
+          bus.emit('toast', { text: 'Walk up to the bucket', kind: '', duration: 1800 });
           return;
         }
-        this.throwInto(bucket, game, player);
+        if (!h.placing) {
+          h.placing = { t: 0, dur: 0.8, bucket };
+          bus.emit('held:place', { pf: h.pf });
+          game.audio.play('ui_hover', { volume: 0.25, rate: 1.4 });
+        }
         return;
       }
       const inv = game.get('inventory');
@@ -259,11 +283,33 @@ export class Interaction {
     if (!h.pf) return 'Drop  ·  Hold RMB to throw';
     const bucket = game.get('bucket');
     if (!bucket?.placed) return 'Store  ·  G drop  ·  Hold RMB to throw';
-    if (h.pf.alive) return 'Kill it — swing your axe (2)  ·  G drop';
+    if (h.pf.alive) return 'Kill it — axe (2), swing down on it  ·  G drop';
+    if (h.placing) return 'Putting it in…';
     const player = game.get('player');
-    return bucket.distanceTo(player.position.x, player.position.z) > 3.4
-      ? 'Take it to the bucket  ·  G drop'
-      : 'Throw in bucket  ·  G drop';
+    return bucket.distanceTo(player.position.x, player.position.z) > 1.9
+      ? 'Walk up to the bucket  ·  G drop'
+      : 'Put it in the bucket  ·  G drop';
+  }
+
+  /** The hand has reached the rim: the fish goes in. */
+  _finishPlace(game, player) {
+    const h = this.held;
+    if (!h?.pf) return;
+    const inv = game.get('inventory');
+    const pos = game.physics.getPosition(h.entry, _v).clone();
+    if (inv?.storeFish(h.pf.instance, { styleMult: h.pf.styleMult || 1 })) {
+      game.audio.play('fish_into_bucket', { volume: 0.8, position: pos.clone() });
+      bus.emit('fx:sparkle', { position: pos, count: 10, color: '#5ddb6a' });
+      bus.emit('bucket:stowed', { instance: h.pf.instance });
+      const pf = h.pf;
+      this.held = null;
+      if (player) { player.walkSpeed = 4.6; player.sprintSpeed = 7.6; }
+      game.get('hud')?.setCastPower(null);
+      game.get('physfish').despawn(pf);
+    } else {
+      h.placing = null;
+      bus.emit('toast', { text: 'Bucket is full.', kind: 'error', duration: 2600 });
+    }
   }
 
   /**

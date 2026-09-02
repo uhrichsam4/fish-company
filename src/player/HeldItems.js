@@ -25,6 +25,13 @@ const STOW_TIME = 1.05;
 /** Seconds for the reach-down-and-rip when a fish is grabbed, and for the throw. */
 const REACH_TIME = 0.72;
 const THROW_TIME = 0.5;
+const PLACE_TIME = 0.8;
+const CHOP_TIME = 0.55;
+/** Left-hand positions: holding a fish, reaching out for one, lowering one into the bucket. */
+const _holdL = new THREE.Vector3(-0.22, -0.30, -0.44);
+const _reachL = new THREE.Vector3(-0.10, -0.40, -0.82);
+const _placeL = new THREE.Vector3(-0.06, -0.44, -0.84);
+const _lpos = new THREE.Vector3();
 const INV_K = 1 / POS_K;
 const _restR = new THREE.Vector3(0.30, -0.30, -0.32);
 const _restL = new THREE.Vector3(-0.30, -0.30, -0.32);
@@ -113,6 +120,9 @@ export class HeldItems {
     bus.on('bucket:stowed', () => { if (!game.get('bucket')?.placed) this.stowT = 1; });
     bus.on('held:grab', () => { this.reachT = 1; });
     bus.on('held:throw', () => { this.throwT = 1; });
+    bus.on('held:place', () => { this.placeT = 1; });
+    bus.on('held:chop', () => { this.chopT = 1; });
+    this.placeT = 0; this.chopT = 0;
 
     // The modelled bucket in place of the procedural pail, sized to what the
     // pail was so the stow animation's framing still holds. Same asset as
@@ -224,19 +234,22 @@ export class HeldItems {
       if (this.stowFish) this.stowFish.visible = false;
     }
 
-    // ---- reach-and-rip, and the throw ----
-    // Both are offsets on the whole viewmodel rather than hand poses, so they
-    // work with whatever is in the hands and cannot fight the grip code.
+    // ---- body english: a small lean when reaching, and the axe coming down ----
     let gy = 0, gz = 0, grx = 0;
     if (this.reachT > 0) {
-      this.reachT = Math.max(0, this.reachT - dt / REACH_TIME);
       const k = 1 - this.reachT;
-      if (k < 0.42) {                                  // bend down to it
-        const t = smoothstep(k / 0.42); gy = -0.30 * t; grx = 0.5 * t; gz = 0.05 * t;
-      } else if (k < 0.58) {                           // rip it up, fast
-        const t = (k - 0.42) / 0.16; gy = -0.30 + 0.40 * t; grx = 0.5 - 0.72 * t; gz = 0.05 - 0.02 * t;
-      } else {                                         // settle from the overshoot
-        const t = smoothstep((k - 0.58) / 0.42); gy = 0.10 * (1 - t); grx = -0.22 * (1 - t); gz = 0.03 * (1 - t);
+      const t = k < 0.5 ? smoothstep(k / 0.5) : 1 - smoothstep((k - 0.5) / 0.5);
+      gy = -0.06 * t; grx = 0.16 * t;
+    }
+    if (this.chopT > 0) {
+      this.chopT = Math.max(0, this.chopT - dt / CHOP_TIME);
+      const k = 1 - this.chopT;
+      if (k < 0.32) {                                  // raise
+        const t = smoothstep(k / 0.32); gy += 0.10 * t; grx += -0.30 * t;
+      } else if (k < 0.5) {                            // drive it down
+        const t = (k - 0.32) / 0.18; gy += 0.10 - 0.20 * t; grx += -0.30 + 0.72 * t;
+      } else {                                         // hold on it, then recover
+        const t = smoothstep((k - 0.5) / 0.5); gy += -0.10 * (1 - t); grx += 0.42 * (1 - t);
       }
     }
     if (this.throwT > 0) {
@@ -280,6 +293,33 @@ export class HeldItems {
         this.hands.userData.pose('R', _restR);
         this.hands.userData.pose('L', _restL);
       }
+    }
+
+    // ---- the left hand, when there is a fish in it ----
+    // Reaching for a fish, holding it, and putting it in the bucket are all
+    // the left hand going somewhere the item grip did not ask for. Done as an
+    // override after the grip pose so it works whatever is in the right hand:
+    // rod, axe, or nothing.
+    const carrying = !!game.get('interaction')?.held?.pf;
+    if (this.hands.userData.pose && (carrying || this.reachT > 0 || this.placeT > 0)) {
+      const hold = _holdL;                            // where a held fish sits
+      _lpos.copy(hold);
+      if (this.reachT > 0) {
+        this.reachT = Math.max(0, this.reachT - dt / REACH_TIME);
+        const k = 1 - this.reachT;
+        // Out and down to it, then back up with the catch.
+        const out = k < 0.5 ? smoothstep(k / 0.5) : 1 - smoothstep((k - 0.5) / 0.5);
+        _lpos.lerpVectors(hold, _reachL, out);
+      }
+      if (this.placeT > 0) {
+        this.placeT = Math.max(0, this.placeT - dt / PLACE_TIME);
+        const k = 1 - this.placeT;
+        const out = k < 0.55 ? smoothstep(k / 0.55) : 1 - smoothstep((k - 0.55) / 0.45);
+        _lpos.lerpVectors(hold, _placeL, out);
+      }
+      this.hands.visible = true;
+      this.hands.userData.setVisible('L', true);
+      this.hands.userData.pose('L', _lpos, { roll: -0.35 });
     }
 
     // ---- rod-specific animation ----
