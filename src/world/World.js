@@ -223,12 +223,14 @@ export class World {
      * start-area trees even with allow() forced there; all three plan authors
      * caught that independently.
      */
+    // 'bush' + 's' is not a word, and a plan's bush count was never read.
+    const PLURAL = { tree: 'trees', bush: 'bushes', rock: 'rocks', boulder: 'boulders' };
     const scatterPlanned = (kind, count, opts) => {
       const base = scatterOnLand(def, count, opts);
       if (!plan) return base;
       const keep = base.filter((sp) => plan.inStart(sp.x, sp.z));
       for (const sp of keep) sp.start = true;
-      const want = Math.max(0, (plan.counts?.[kind + 's'] ?? count) - keep.length);
+      const want = Math.max(0, (plan.counts?.[PLURAL[kind]] ?? count) - keep.length);
       const tune = kind === 'tree' ? (plan.trees || {}) : kind === 'rock' ? (plan.rocks || {}) : {};
       const rest = scatterOnLand(def, want, {
         ...opts, ...tune, seed: hashStr(def.id + kind + ':plan'),
@@ -281,7 +283,13 @@ export class World {
     if (plan?.landmarks?.length && P) {
       for (const lm of plan.landmarks) {
         const lrng = makeRNG(hashStr(def.id + ':lm:' + lm.id));
-        const obj = P[lm.builder]?.(lrng, lm.opts || {});
+        // Plans name builders the short way ('driftwood'); the props module
+        // exports them the long way ('buildDriftwood'). Accept either, and
+        // say so when neither exists -- a landmark that silently fails to
+        // build is a plan being judged on things that are not there.
+        const build = P[lm.builder] || P['build' + lm.builder.charAt(0).toUpperCase() + lm.builder.slice(1)];
+        if (!build) { console.warn(`[World] landmark ${lm.id}: no builder '${lm.builder}'`); continue; }
+        const obj = build(lrng, lm.opts || {});
         if (!obj) continue;
         const y = lm.y ?? worldHeight(lm.x, lm.z);
         obj.position.set(lm.x, y + (lm.yOffset || 0), lm.z);
