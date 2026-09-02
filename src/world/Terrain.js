@@ -434,6 +434,9 @@ export function scatterOnLand(region, count, opts = {}) {
     // A region can keep its middle clear -- the lobby needs an open plaza for
     // the start pads, not a palm grove on top of them.
     if (region.clearRadius && Math.hypot(x - region.x, z - region.z) < region.clearRadius) continue;
+    // Layout hooks: a plan can veto a spot outright or thin it by a 0..1 weight.
+    if (opts.accept && !opts.accept(x, z, h)) continue;
+    if (opts.weight) { const wgt = opts.weight(x, z, h); if (!(wgt > 0) || rng() > wgt) continue; }
     if (opts.minSpacing) {
       let ok = true;
       for (const p of out) { if (Math.hypot(p.x - x, p.z - z) < opts.minSpacing) { ok = false; break; } }
