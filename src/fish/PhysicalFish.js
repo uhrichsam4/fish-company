@@ -161,7 +161,12 @@ export class PhysicalFishManager {
       // is the good part; making the player then find it, press E to pick it
       // up and E again to stow it is a chore, and a fish that lands back in
       // the water is otherwise just lost.
-      if (pf.autoStore && pf.life > AUTO_STORE_MIN) {
+      // Only if the bucket can actually reach. With the bucket set down, a
+      // fish that landed across the beach is one you have to walk over and
+      // collect -- which is the point of setting it down at all.
+      const bucket = game.get('bucket');
+      const inReach = !bucket || bucket.reaches(p.x, p.z);
+      if (pf.autoStore && inReach && pf.life > AUTO_STORE_MIN) {
         const settled = _v2.copy(phys.getVelocity(pf.entry)).length() < 2;
         if (settled || pf.life > AUTO_STORE_MAX) {
           if (this.absorb(pf, 'inventory', { styleMult: pf.styleMult || 1 })) {

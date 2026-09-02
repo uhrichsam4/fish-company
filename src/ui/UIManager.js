@@ -211,8 +211,11 @@ export class UIManager {
     // leaving the world, which is the Roblox shift-lock idea with the states
     // the other way round.
     if (input.rawPressed('AltLeft') || input.rawPressed('AltRight')) this.toggleCursor();
-    // Leaving build mode should not strand the player with a loose cursor.
-    if (this.cursorMode && !building && !anyOpen) this.setCursor(false);
+    // Leaving build mode should not strand the player with a loose cursor --
+    // but only on the transition. Checked every frame it fought the toggle
+    // itself, switching cursor mode straight back off outside build mode.
+    if (this._wasBuilding && !building && this.cursorMode) this.setCursor(false);
+    this._wasBuilding = building;
     if (input.rawPressed('Tab') && !anyOpen) this.show('inventory');
     else if (input.rawPressed('Tab') && anyOpen) this.closeAll();
     if (!input.uiCapture) {
@@ -230,6 +233,8 @@ export class UIManager {
       if (input.rawPressed('KeyO')) this.toggle('company');
       if (input.rawPressed('KeyJ')) this.toggle('quests');
       if (input.rawPressed('KeyG')) bus.emit('traps:place', {});
+      // Set the bucket down / pick it back up.
+      if (input.rawPressed('KeyH')) bus.emit('bucket:toggleGround', {});
       if (input.rawPressed('KeyK')) this.toggle('contracts');
       if (input.rawPressed('KeyP')) this.toggle('processing');
     }

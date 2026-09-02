@@ -219,10 +219,16 @@ async function boot() {
     enter();
   });
   bus.on('pointer:unlocked', () => {
-    if (!game.get('ui')?.anyOpen?.()) ctp.classList.remove('hidden');
+    // Cursor mode releases the pointer on purpose so the player can click the
+    // build palette. Treating that as "they tabbed away" put the click-to-play
+    // card, at z-index 900, straight over the thing they released the pointer
+    // to reach.
+    const ui = game.get('ui');
+    if (!ui?.anyOpen?.() && !ui?.cursorMode) ctp.classList.remove('hidden');
   });
   bus.on('pointer:locked', () => ctp.classList.add('hidden'));
   bus.on('ui:opened', () => ctp.classList.add('hidden'));
+  bus.on('ui:cursorMode', ({ on }) => { if (on) ctp.classList.add('hidden'); });
   bus.on('ui:closed', () => { if (!game.input.locked) game.input.requestLock(); });
 
   if (import.meta.env?.DEV || location.search.includes('test')) {

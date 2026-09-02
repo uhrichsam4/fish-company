@@ -78,6 +78,11 @@ export class BuildMenu {
     this._offs.push(bus.on('build:selected', () => { if (this.open) this.render(); }));
     this._offs.push(bus.on('ui:cursorMode', ({ on }) => {
       this.el?.classList.toggle('cursor-on', on);
+      // Set outright rather than through a class. Two stylesheet blocks both
+      // claim pointer-events on this element and the cascade was not landing
+      // where specificity said it should; this is the one that has to be right
+      // or the palette is decorative.
+      if (this.el) this.el.style.pointerEvents = on ? 'auto' : 'none';
       if (this.open) this.render();
     }));
     return this;
@@ -86,6 +91,10 @@ export class BuildMenu {
   setOpen(on) {
     this.open = !!on;
     this.el?.classList.toggle('show', this.open);
+    if (this.el) {
+      this.el.style.pointerEvents =
+        this.open && this.game.get('ui')?.cursorMode ? 'auto' : 'none';
+    }
     this.fab?.classList.toggle('on', this.open);
     if (this.open) this.render();
   }

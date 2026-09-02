@@ -1,5 +1,39 @@
+import * as THREE from 'three';
 import { bus } from '../core/EventBus.js';
 import { clamp01, formatWeight, formatMoneyExact } from '../util/math.js';
+import { worldHeight } from '../world/Terrain.js';
+
+const _THREE = THREE;
+
+/** The bucket as it stands in the world -- same shape as the viewmodel. */
+function buildBucketMesh() {
+  const g = new THREE.Group();
+  const pail = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.23, 0.175, 0.33, 14, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0x9aa4ad, roughness: 0.55, metalness: 0.35, side: THREE.DoubleSide }),
+  );
+  pail.position.y = 0.165;
+  const base = new THREE.Mesh(
+    new THREE.CircleGeometry(0.175, 14).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x767f87, roughness: 0.7, metalness: 0.3 }),
+  );
+  base.position.y = 0.002;
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(0.23, 0.016, 6, 18).rotateX(Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0xb6c0c8, roughness: 0.4, metalness: 0.5 }),
+  );
+  rim.position.y = 0.33;
+  const handle = new THREE.Mesh(
+    new THREE.TorusGeometry(0.224, 0.012, 5, 16, Math.PI),
+    new THREE.MeshStandardMaterial({ color: 0x8d949a, roughness: 0.45, metalness: 0.5 }),
+  );
+  handle.position.y = 0.34;
+  g.add(pail, base, rim, handle);
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  g.userData.noBatch = true;
+  g.name = 'bucket-placed';
+  return g;
+}
 
 /**
  * The fish bucket.
@@ -35,14 +69,83 @@ export class BucketSystem {
     this.tierId = 'bucket_old';
     /** Set true while the player is physically holding the bucket. */
     this.carried = false;
+    /**
+     * Where the bucket is standing, or null when it is on your belt.
+     *
+     * A bucket you always have makes the catch loop one button: hook, and it
+     * is banked. Setting it down puts a place in the world back into the loop
+     * -- you fish near it, and a fish landed out of range is one you have to
+     * carry over.
+     */
+    this.placed = null;
+    this.mesh = null;
   }
 
+  /** How far from the bucket a landed catch will still put itself away. */
+  static get REACH() { return 11; }
+
   async init() {
-    bus.on('game:newgame', () => { this.tierId = 'bucket_old'; this.carried = false; });
+    bus.on('game:newgame', () => {
+      this.tierId = 'bucket_old'; this.carried = false; this.pickUp();
+    });
+    bus.on('bucket:toggleGround', () => this.togglePlaced());
     // A fish only enters the world alive; everything else about it is the
     // inventory's business.
     bus.on('inventory:fishStored', () => this._tagNewest());
     return this;
+  }
+
+  togglePlaced() { return this.placed ? this.pickUp() : this.setDown(); }
+
+  /** Stand the bucket on the ground in front of the player. */
+  setDown() {
+    const game = this.game;
+    const player = game.get('player');
+    if (!player) return false;
+    const THREE = _THREE;
+    const fwd = new THREE.Vector3();
+    player.forward(fwd);
+    const x = player.position.x + fwd.x * 1.5;
+    const z = player.position.z + fwd.z * 1.5;
+    const y = worldHeight(x, z);
+
+    if (!this.mesh) this.mesh = buildBucketMesh();
+    this.mesh.position.set(x, y, z);
+    this.mesh.rotation.y = Math.random() * Math.PI * 2;
+    if (!this.mesh.parent) game.scene.add(this.mesh);
+    this.mesh.visible = true;
+
+    this.placed = { x, y, z };
+    game.audio?.play('crate_break', { volume: 0.3, rate: 1.5 });
+    bus.emit('toast', {
+      text: `🪣 Bucket set down — catches within ${BucketSystem.REACH} m go straight in`,
+      kind: 'gold', duration: 3400,
+    });
+    bus.emit('bucket:placed', { at: this.placed });
+    bus.emit('bucket:changed');
+    return true;
+  }
+
+  pickUp() {
+    if (!this.placed) return false;
+    this.placed = null;
+    if (this.mesh) this.mesh.visible = false;
+    bus.emit('toast', { text: '🪣 Bucket back on your belt', kind: '', duration: 2000 });
+    bus.emit('bucket:placed', { at: null });
+    bus.emit('bucket:changed');
+    return true;
+  }
+
+  /** Metres to the standing bucket, or 0 when it is being carried. */
+  distanceTo(x, z) {
+    if (!this.placed) return 0;
+    return Math.hypot(this.placed.x - x, this.placed.z - z);
+  }
+
+  /** Can a fish that landed here put itself away? */
+  reaches(x, z) {
+    if (!this.placed) return true;              // carried: always in reach
+    return this.distanceTo(x, z) <= BucketSystem.REACH;
   }
 
   get tier() { return BUCKET_BY_ID[this.tierId] || BUCKET_TIERS[0]; }
@@ -156,12 +259,19 @@ export class BucketSystem {
     }
   }
 
-  save() { return { tier: this.tierId, carried: this.carried }; }
+  save() { return { tier: this.tierId, carried: this.carried, placed: this.placed }; }
 
   load(d) {
     if (!d) return;
     if (BUCKET_BY_ID[d.tier]) this.tierId = d.tier;
     this.carried = !!d.carried;
+    if (d.placed) {
+      if (!this.mesh) this.mesh = buildBucketMesh();
+      this.mesh.position.set(d.placed.x, d.placed.y, d.placed.z);
+      if (!this.mesh.parent) this.game.scene.add(this.mesh);
+      this.mesh.visible = true;
+      this.placed = d.placed;
+    } else this.pickUp();
     // Fish saved before the bucket existed have no alive flag. Treat them as
     // already processed rather than resurrecting a boatload of them.
     for (const f of this.fish) if (f.alive === undefined) f.alive = false;
