@@ -261,7 +261,7 @@ export class TrapSystem {
     return best;
   }
 
-  /** Empty a trap into the bucket. Leaves the trap fishing. */
+  /** Empty a trap into the inventory. Leaves the trap fishing. */
   collect(trap) {
     const caught = this.catchesFor(trap);
     if (!caught.length) {
@@ -273,7 +273,7 @@ export class TrapSystem {
     for (const inst of [...caught]) {
       if (inv?.storeFish(inst, { fromTrap: true })) { taken++; caught.shift(); } else { left++; break; }
     }
-    // Soak restarts from what was actually taken, so a full bucket does not
+    // Soak restarts from what was actually taken, so a full inventory does not
     // silently bin the rest of the catch.
     if (taken) {
       trap.lastCollected = this.game.time;
@@ -282,11 +282,11 @@ export class TrapSystem {
       this.game.audio?.play('splash_small', { volume: 0.4 });
       bus.emit('traps:collected', { trap, count: taken });
       bus.emit('toast', {
-        text: `${trap.def.icon} +${taken} fish${left ? ' — bucket full, rest left in the trap' : ''}`,
+        text: `${trap.def.icon} +${taken} fish${left ? ' — no room for the rest, left in the trap' : ''}`,
         kind: 'success', duration: 3400,
       });
     } else {
-      bus.emit('toast', { text: 'Bucket is full.', kind: 'error', duration: 2600 });
+      bus.emit('toast', { text: 'No room for more fish.', kind: 'error', duration: 2600 });
     }
     bus.emit('traps:changed');
     return { count: taken, remaining: caught.length };

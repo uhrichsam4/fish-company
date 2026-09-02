@@ -153,18 +153,6 @@ export class FishingSystem {
     this.bobber.visible = false;
     this.activeBait = null;
     if (canAct && input.mousePressed(0)) {
-      // The catch loop needs a bucket standing in the world. Refuse the cast
-      // and say so, rather than letting the fish land with nowhere to go.
-      const bk = this.game.get('bucket');
-      if (bk && !bk.placed) {
-        const now = this.game.time;
-        if (!(this._bucketNagAt > now - 2.5)) {
-          this._bucketNagAt = now;
-          bus.emit('toast', { text: '🪣 Put your bucket down first — pick it in slot 5 and click the ground', kind: 'error', duration: 3400 });
-          this.game.audio?.play('ui_hover', { volume: 0.3, rate: 0.7 });
-        }
-        return;
-      }
       this.state = CAST_STATE.CHARGING;
       this.stateTime = 0;
       this.castCharge = 0;

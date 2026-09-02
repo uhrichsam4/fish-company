@@ -50,7 +50,6 @@ const _rgt = new THREE.Vector3();
 const _muzzle = new THREE.Vector3();
 const _centre = new THREE.Vector3();
 const _pos = new THREE.Vector3();
-const _bloodTint = new THREE.Color(0x5a0c0f);
 const _q = new THREE.Quaternion();
 
 export class WeaponSystem {
@@ -174,20 +173,6 @@ export class WeaponSystem {
 
     this.loaded = this.reloadT <= 0 && this.cooldown <= 0 && this.ammoInMag > 0;
 
-    if (this._pendingBlow && game.time >= this._pendingBlow.at) {
-      const blow = this._pendingBlow; this._pendingBlow = null;
-      this._landBlow(game, blow);
-    }
-
-    if (this._splats?.length) {
-      for (let i = this._splats.length - 1; i >= 0; i--) {
-        const sp = this._splats[i];
-        sp.t += dt;
-        if (sp.t > 40) sp.m.material.opacity = Math.max(0, 0.85 * (1 - (sp.t - 40) / 12));
-        if (sp.t > 52) { game.scene.remove(sp.m); sp.m.geometry.dispose(); sp.m.material.dispose(); this._splats.splice(i, 1); }
-      }
-    }
-
     this._updateKnockback(dt, game);
     this._updateProjectiles(dt, game, input, player);
   }
@@ -220,42 +205,8 @@ export class WeaponSystem {
     const wants = (stats.rate ?? 1) >= 3 ? input.mouseDown(0) : input.mousePressed(0);
     if (!wants || this.cooldown > 0) return;
 
-    // Processing a fish is a strike the player aims and throws, not something
-    // the game does for them on pickup: look down into your own bucket with a
-    // spear or knife in hand and hit it. Consumes the click so the same swing
-    // does not also launch a spear into the sand.
-    if (this._tryProcessCatch(game, item, stats, player)) return;
     if (this.ammoInMag <= 0) { this._startReload(game, stats); return; }
     this._fire(game, item, stats, player);
-  }
-
-  /**
-   * @returns {boolean} true if the swing was spent on the bucket.
-   */
-  _tryProcessCatch(game, item, stats, player) {
-    const bucket = game.get('bucket');
-    if (!bucket) return false;
-    // Only close-quarters tools; a harpoon gun is not a filleting implement.
-    const melee = (stats.range ?? 99) <= 40 && /spear|knife|harpoon/i.test(`${item.id} ${stats.projectile || ''}`);
-    if (!melee) return false;
-    if (player.pitch > -0.5) return false;              // must actually be looking down at it
-    const target = bucket.firstAlive();
-    if (!target) return false;
-
-    bucket.process(target.index);
-    this.swingT = 0.22;
-    this.cooldown = Math.max(this.cooldown, 0.35);
-    const pos = player.position.clone();
-    game.audio?.play('spear_thrust', { volume: 0.5, rate: 1.0, position: pos });
-    game.audio?.play('spear_fish_hit', { volume: 0.6, rate: 0.98, position: pos });
-    bus.emit('player:shake', 0.06);
-    bus.emit('fx:sparkle', { position: pos, count: 5, color: '#9fb7c4' });
-    const left = bucket.aliveCount;
-    bus.emit('toast', {
-      text: left ? `Processed — ${left} still flopping.` : 'Whole catch processed.',
-      kind: left ? '' : 'success', duration: 2200,
-    });
-    return true;
   }
 
   _setAiming(on, player) {
@@ -1307,15 +1258,6 @@ export class WeaponSystem {
     // swinging at a crate leaning on it.
     const reach = (stats.range ?? 3) + 0.6;
 
-    // A fish in your hand comes first. The world sweep skips held fish on
-    // purpose, so without this the one thing you are looking at is the one
-    // thing the axe cannot touch.
-    const heldPf = game.get('interaction')?.held?.pf;
-    if (heldPf?.alive && (stats.chop || stats.freshness || stats.damage)) {
-      this._dispatchHeld(game, stats, heldPf);
-      return;
-    }
-
     if (stats.chop) {
       const trees = game.get('trees');
       const target = trees?.targetAt(player.position, _fwd, reach);
@@ -1414,78 +1356,6 @@ export class WeaponSystem {
       this.flashCrosshair();
       bus.emit('player:shake', 0.12);
     }
-  }
-
-  /**
-   * Kill the fish being carried: the axe comes down on it. Same freshness
-   * bookkeeping as a club blow on the ground, plus blood -- a burst, a splat
-   * on the sand under it, and the fish itself darkened, so the kill is
-   * something you did rather than a stat that changed.
-   */
-  _dispatchHeld(game, stats, pf) {
-    // The body is parked while carried; the fish is at the left hand.
-    const hand = game.get('held')?.leftHandWorld;
-    const pos = hand ? hand.clone() : game.physics.getPosition(pf.entry, _pos).clone();
-    pf.alive = false;
-    pf.energy = 0;
-    pf.freshnessBonus = (pf.freshnessBonus || 1) * (stats.freshness || 1.1);
-    // The swing starts now; the blood waits for the axe to land. The
-    // viewmodel takes about a quarter of a second to bring the head down,
-    // and blood that arrives before the blow reads as an explosion.
-    bus.emit('held:chop', { pf });
-    game.audio?.play('cast_whoosh', { volume: 0.35, rate: 0.9 });
-    this._pendingBlow = { at: game.time + 0.27, pf, pos: pos.clone() };
-    bus.emit('fish:killed', { pf, held: true });
-  }
-
-  /** The axe lands: impact, blood, stain, and the fish darkens. */
-  _landBlow(game, { pf, pos }) {
-    // Re-sample the hand: the player may have moved during the swing.
-    const hand = game.get('held')?.leftHandWorld;
-    if (hand) pos.copy(hand);
-    _e.copy(pos).add(_d.set(0, 0.35, 0));
-    bus.emit('fx:floatText', { position: _e.clone(), text: '+FRESH', color: '#ffc22e', size: 20 });
-    bus.emit('fx:impact', { position: pos, normal: _d.set(0, 1, 0).clone(), kind: 'flesh', scale: 1.1 });
-    bus.emit('fx:blood', { position: pos.clone(), count: 32, gouts: 8, scale: 1 });
-    bus.emit('fx:screenFlash', { color: 'rgba(160,10,20,0.16)', duration: 140 });
-    bus.emit('fx:hitStop', 0.07);
-    bus.emit('player:shake', 0.22);
-    this._bloodOnFish(pf);
-    bus.emit('held:bloody', { pf });
-    this._bloodSplat(game, pos);
-    game.audio?.play('club_hit', { volume: 0.9, rate: rrange(0.72, 0.86), position: pos.clone() });
-    game.audio?.play('splash_small', { volume: 0.35, rate: 0.6, position: pos.clone() });
-  }
-
-  /** Darken and redden the fish's own materials so it stays visibly dead. */
-  _bloodOnFish(pf) {
-    pf.group?.traverse?.((o) => {
-      if (!o.isMesh || !o.material) return;
-      if (!o.userData.bloodied) {
-        o.material = Array.isArray(o.material) ? o.material.map((m) => m.clone()) : o.material.clone();
-        o.userData.bloodied = true;
-      }
-      const mats = Array.isArray(o.material) ? o.material : [o.material];
-      for (const m of mats) if (m.color) m.color.lerp(_bloodTint, 0.55);
-    });
-  }
-
-  /** A dark stain on the ground under the kill. Fades and goes. */
-  _bloodSplat(game, pos) {
-    const y = worldHeight(pos.x, pos.z);
-    const r = 0.28 + Math.random() * 0.16;
-    const geo = new THREE.CircleGeometry(r, 9);
-    geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({ color: 0x6b0a10, transparent: true, opacity: 0.85, depthWrite: false });
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(pos.x + rrange(-0.1, 0.1), y + 0.03, pos.z + rrange(-0.1, 0.1));
-    m.rotation.y = Math.random() * Math.PI * 2;
-    m.scale.set(1 + Math.random() * 0.4, 1, 1);
-    m.renderOrder = 4;
-    m.userData.noBatch = true;
-    game.scene.add(m);
-    this._splats = this._splats || [];
-    this._splats.push({ m, t: 0 });
   }
 
   _meleeHitPhysical(game, stats, pf, pos) {

@@ -266,8 +266,6 @@ export class UIManager {
       if (input.rawPressed('KeyO')) this.toggle('company');
       if (input.rawPressed('KeyJ')) this.toggle('quests');
       if (input.rawPressed('KeyG')) bus.emit('traps:place', {});
-      // Set the bucket down / pick it back up.
-      if (input.rawPressed('KeyH')) bus.emit('bucket:toggleGround', {});
       if (input.rawPressed('KeyK')) this.toggle('contracts');
       if (input.rawPressed('KeyP')) this.toggle('processing');
     }

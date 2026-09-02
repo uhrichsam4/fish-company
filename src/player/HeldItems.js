@@ -20,22 +20,13 @@ const VM_OFFSET = new THREE.Vector3(0, 0.125, 0);
  * this is the single knob for "the gun/arms are too big".
  */
 const POS_K = 1.18;
-/** Seconds for the bucket stow animation, start to finish. */
-const STOW_TIME = 1.05;
 /** Seconds for the reach-down-and-rip when a fish is grabbed, and for the throw. */
 const REACH_TIME = 0.9;
 const THROW_TIME = 0.5;
-const PLACE_TIME = 1.0;
-const CHOP_TIME = 0.72;
-const _chopDelta = new THREE.Vector3();
-const _chopTo = new THREE.Vector3();
-const _gripTmp = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
-const _bloodTint = new THREE.Color(0x5a0c0f);
-/** Left-hand positions: holding a fish, reaching out for one, lowering one into the bucket. */
+/** Left-hand positions: holding a fish, and reaching out for one. */
 const _holdL = new THREE.Vector3(-0.22, -0.30, -0.44);
 const _reachL = new THREE.Vector3(-0.10, -0.40, -0.82);
-const _placeL = new THREE.Vector3(-0.06, -0.44, -0.84);
 const _lpos = new THREE.Vector3();
 const INV_K = 1 / POS_K;
 const _restR = new THREE.Vector3(0.30, -0.30, -0.32);
@@ -83,87 +74,16 @@ export class HeldItems {
     this.hands = buildHands();
     this.rig.add(this.hands);
 
-    // Bucket viewmodel, built once and hidden until a catch is stowed.
-    this.bucketRig = new THREE.Group();
-    const pail = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.115, 0.088, 0.165, 14, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0x9aa4ad, roughness: 0.55, metalness: 0.35, side: THREE.DoubleSide }),
-    );
-    const base = new THREE.Mesh(
-      new THREE.CircleGeometry(0.088, 14).rotateX(-Math.PI / 2),
-      new THREE.MeshStandardMaterial({ color: 0x767f87, roughness: 0.7, metalness: 0.3 }),
-    );
-    base.position.y = -0.0825;
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.115, 0.008, 6, 18).rotateX(Math.PI / 2),
-      new THREE.MeshStandardMaterial({ color: 0xb6c0c8, roughness: 0.4, metalness: 0.5 }),
-    );
-    rim.position.y = 0.0825;
-    const handle = new THREE.Mesh(
-      new THREE.TorusGeometry(0.112, 0.006, 5, 16, Math.PI),
-      new THREE.MeshStandardMaterial({ color: 0x8d949a, roughness: 0.45, metalness: 0.5 }),
-    );
-    handle.position.y = 0.085;
-    this.bucketRig.add(pail, base, rim, handle);
-    // Stand-in for the catch going in: a small fish-shaped blob is all that
-    // reads at this size and for this long.
-    this.stowFish = new THREE.Mesh(
-      new THREE.SphereGeometry(0.042, 8, 6),
-      new THREE.MeshStandardMaterial({ color: 0x6fa8d6, roughness: 0.45 }),
-    );
-    this.stowFish.scale.set(1.5, 0.72, 0.6);
-    this.stowFish.visible = false;
-    this.bucketRig.add(this.stowFish);
-    this.bucketRig.visible = false;
-    this.rig.add(this.bucketRig);
-
-    this.stowT = 0;
     this.reachT = 0;
     this.throwT = 0;
-    // The in-hand stow plays only when the bucket is actually in hand. With
-    // it set down, the fish was thrown -- the throw gesture already played.
-    bus.on('bucket:stowed', () => { if (!game.get('bucket')?.placed) this.stowT = 1; });
     bus.on('held:grab', ({ pf }) => { this.reachT = 1; this._attachFish(pf); });
     bus.on('held:throw', () => { this.throwT = 1; });
-    bus.on('held:place', () => { this.placeT = 1; });
-    bus.on('held:chop', () => { this.chopT = 1; });
-    bus.on('held:bloody', () => this._bloodyFish());
     bus.on('held:release', () => this._detachFish());
-    this.placeT = 0; this.chopT = 0;
     /** A copy of the carried fish, living in the hand. See _attachFish. */
     this.fishVm = null;
     this._fishPf = null;
     /** Where the left hand is in the world, for effects that happen at it. */
     this.leftHandWorld = new THREE.Vector3();
-
-    // The modelled bucket in place of the procedural pail, sized to what the
-    // pail was so the stow animation's framing still holds. Same asset as
-    // the one on the ground, so it is recognisably the same object.
-    const bm = await game.assets.model('assets/models/bucket.glb');
-    if (bm?.scene) {
-      // The bucket as a hotbar item: carried in the right hand by the handle.
-      this._bucketModel = bm.scene;
-      BUILDERS.bucket = () => {
-        const g = new THREE.Group();
-        const m = this._bucketModel.clone(true);
-        m.scale.setScalar(0.5);
-        m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.metalness = 0.4; o.material.roughness = 0.55; } });
-        m.position.y = -0.02;
-        g.add(m);
-        g.position.set(0.27, -0.42, -0.50);
-        g.rotation.set(0.04, -0.3, 0.06);
-        g.userData.grips = { R: new THREE.Vector3(0.27, -0.24, -0.50), rollR: 0.2 };
-        return g;
-      };
-      for (const part of [pail, base, rim, handle]) this.bucketRig.remove(part);
-      const m = bm.scene.clone(true);
-      // Smaller than the pail it replaces: the model is wider, and at the
-      // stow distance the pail already filled a third of the view.
-      m.scale.setScalar(0.36);
-      m.position.y = -0.0825;                    // GLB origin is its base
-      m.traverse((o) => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.metalness = 0.4; o.material.roughness = 0.55; } });
-      this.bucketRig.add(m);
-    }
 
     bus.on('resize', () => {
       this.vmCamera.aspect = window.innerWidth / window.innerHeight;
@@ -207,7 +127,7 @@ export class HeldItems {
    * player's own collider at hand distance and gets shoved back out every
    * frame, which is why it never arrived. Interaction parks the body and
    * hides the world mesh; this shows a copy in the viewmodel, which is what
-   * the player sees, and reports the hand's world position for the blood.
+   * the player sees, and reports the hand's world position for effects there.
    */
   _attachFish(pf) {
     this._detachFish();
@@ -224,16 +144,6 @@ export class HeldItems {
   _detachFish() {
     if (this.fishVm) { this.rig.remove(this.fishVm); this.fishVm = null; }
     this._fishPf = null;
-  }
-
-  /** Darken the copy in the hand; the world mesh is tinted by the weapon code. */
-  _bloodyFish() {
-    this.fishVm?.traverse((o) => {
-      if (!o.isMesh || !o.material) return;
-      o.material = Array.isArray(o.material) ? o.material.map((m) => m.clone()) : o.material.clone();
-      const mats = Array.isArray(o.material) ? o.material : [o.material];
-      for (const m of mats) if (m.color) m.color.lerp(_bloodTint, 0.55);
-    });
   }
 
   update(dt, game) {
@@ -270,44 +180,12 @@ export class HeldItems {
       Math.sin(ph) * 0.008 * bobA,
     );
 
-    // ---- bucket stow ----
-    // Plays when a catch is collected: the bucket swings up into frame, the
-    // fish goes in, and it drops back out. Driven off one 0..1 timeline so it
-    // cannot desync from the viewmodel's own sway and bob.
-    if (this.stowT > 0) {
-      this.stowT = Math.max(0, this.stowT - dt / STOW_TIME);
-      const k = 1 - this.stowT;                       // 0 -> 1 over the anim
-      // Up fast, hold, down slower: the hold is what reads as "putting it in".
-      const rise = k < 0.28 ? smoothstep(k / 0.28)
-        : k < 0.62 ? 1
-        : 1 - smoothstep((k - 0.62) / 0.38);
-      this.bucketRig.visible = rise > 0.01;
-      this.bucketRig.position.set(0.055, -0.20 + rise * 0.155, -0.20 - rise * 0.045);
-      this.bucketRig.rotation.set(rise * -0.32, 0.5 - rise * 0.22, rise * 0.16);
-      // The fish arcs down into it during the hold.
-      const drop = clamp01((k - 0.3) / 0.3);
-      if (this.stowFish) {
-        this.stowFish.visible = drop > 0.02 && drop < 0.98;
-        this.stowFish.position.set(0, 0.10 - drop * 0.115, 0.012);
-        this.stowFish.rotation.z = drop * 2.1;
-      }
-    } else if (this.bucketRig?.visible) {
-      this.bucketRig.visible = false;
-      if (this.stowFish) this.stowFish.visible = false;
-    }
-
-    // ---- body english: a small lean when reaching, and the axe coming down ----
+    // ---- body english: a small lean when reaching ----
     let gy = 0, gz = 0, grx = 0;
     if (this.reachT > 0) {
       const k = 1 - this.reachT;
       const t = k < 0.5 ? smoothstep(k / 0.5) : 1 - smoothstep((k - 0.5) / 0.5);
       gy = -0.06 * t; grx = 0.16 * t;
-    }
-    if (this.chopT > 0) {
-      const k = 1 - this.chopT;                        // ticked with the axe motion below
-      if (k < 0.34) { const t = smoothstep(k / 0.34); grx += -0.08 * t; }
-      else if (k < 0.5) { const t = (k - 0.34) / 0.16; gy += -0.05 * t; grx += -0.08 + 0.2 * t; }
-      else { const t = smoothstep((k - 0.5) / 0.5); gy += -0.05 * (1 - t); grx += 0.12 * (1 - t); }
     }
     if (this.throwT > 0) {
       this.throwT = Math.max(0, this.throwT - dt / THROW_TIME);
@@ -333,27 +211,9 @@ export class HeldItems {
       -this.sway.x * 1.2 - swapDrop * 0.4,
     );
 
-    // ---- the chop: the tool itself comes down on the fish in the other hand ----
-    _chopDelta.set(0, 0, 0); let chopRx = 0;
-    if (this.chopT > 0) {
-      this.chopT = Math.max(0, this.chopT - dt / CHOP_TIME);
-      const k = 1 - this.chopT;
-      // Where the head has to land: on the fish, which sits at the left hand.
-      _chopTo.copy(_holdL).add(_v3.set(0.26, 0.10, 0.02)).sub(this.current?.userData?.basePos || _v3.set(0, 0, 0));
-      if (k < 0.34) {                                  // raise
-        const t = smoothstep(k / 0.34); _chopDelta.set(0.02 * t, 0.16 * t, 0.06 * t); chopRx = -0.95 * t;
-      } else if (k < 0.5) {                            // drive down onto it
-        const t = smoothstep((k - 0.34) / 0.16);
-        _chopDelta.set(0.02, 0.16, 0.06).lerp(_chopTo, t); chopRx = -0.95 + 1.55 * t;
-      } else if (k < 0.7) {                            // hold on it
-        _chopDelta.copy(_chopTo); chopRx = 0.6;
-      } else {                                         // recover
-        const t = smoothstep((k - 0.7) / 0.3); _chopDelta.copy(_chopTo).multiplyScalar(1 - t); chopRx = 0.6 * (1 - t);
-      }
-    }
     if (this.current?.userData?.basePos) {
-      this.current.position.copy(this.current.userData.basePos).add(_chopDelta);
-      this.current.rotation.x = this.current.userData.baseRot.x + chopRx;
+      this.current.position.copy(this.current.userData.basePos);
+      this.current.rotation.x = this.current.userData.baseRot.x;
     }
 
     // ---- arm posing: hands follow the held item's grip points ----
@@ -362,8 +222,8 @@ export class HeldItems {
       this.hands.visible = true;
       this.hands.userData.setVisible('R', !!grips.R);
       this.hands.userData.setVisible('L', !!grips.L);
-      if (grips.R) this.hands.userData.pose('R', _gripTmp.copy(grips.R).add(_chopDelta), { roll: grips.rollR || 0 });
-      if (grips.L) this.hands.userData.pose('L', _gripTmp.copy(grips.L).add(_chopDelta), { roll: grips.rollL || 0 });
+      if (grips.R) this.hands.userData.pose('R', grips.R, { roll: grips.rollR || 0 });
+      if (grips.L) this.hands.userData.pose('L', grips.L, { roll: grips.rollL || 0 });
     } else {
       // No grips declared: rest pose at the lower corners.
       this.hands.visible = !!this.current;
@@ -375,18 +235,13 @@ export class HeldItems {
       }
     }
 
-    // The bucket slot with the bucket standing in the world: empty hands.
-    if (this.currentId === 'bucket' && this.current) {
-      this.current.visible = !game.get('bucket')?.placed;
-    }
-
     // ---- the left hand, when there is a fish in it ----
-    // Reaching for a fish, holding it, and putting it in the bucket are all
-    // the left hand going somewhere the item grip did not ask for. Done as an
+    // Reaching for a fish and holding it are both the left hand going
+    // somewhere the item grip did not ask for. Done as an
     // override after the grip pose so it works whatever is in the right hand:
     // rod, axe, or nothing.
     const carrying = !!game.get('interaction')?.held?.pf;
-    if (this.hands.userData.pose && (carrying || this.reachT > 0 || this.placeT > 0)) {
+    if (this.hands.userData.pose && (carrying || this.reachT > 0)) {
       const hold = _holdL;                            // where a held fish sits
       _lpos.copy(hold);
       if (this.reachT > 0) {
@@ -395,12 +250,6 @@ export class HeldItems {
         // Out and down to it, then back up with the catch.
         const out = k < 0.5 ? smoothstep(k / 0.5) : 1 - smoothstep((k - 0.5) / 0.5);
         _lpos.lerpVectors(hold, _reachL, out);
-      }
-      if (this.placeT > 0) {
-        this.placeT = Math.max(0, this.placeT - dt / PLACE_TIME);
-        const k = 1 - this.placeT;
-        const out = k < 0.55 ? smoothstep(k / 0.55) : 1 - smoothstep((k - 0.55) / 0.45);
-        _lpos.lerpVectors(hold, _placeL, out);
       }
       this.hands.visible = true;
       this.hands.userData.setVisible('L', true);
@@ -420,7 +269,7 @@ export class HeldItems {
         if (alive) this.fishVm.position.x += Math.sin(t * 29) * 0.012;
         this.fishVm.visible = this.reachT < 0.55;     // appears once the hand has reached it
       }
-      // Hand position in the world, for blood and drops at the hand.
+      // Hand position in the world, for drops at the hand.
       this.leftHandWorld.copy(_lpos).multiplyScalar(POS_K).add(this.root.position)
         .applyQuaternion(game.camera.quaternion).add(game.camera.position);
     }

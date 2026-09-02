@@ -23,19 +23,15 @@ import { RARITY_ORDER } from '../data/fishData.js';
 
 const STEPS = [
   {
-    id: 'bucket', title: 'Set Your Bucket Down', how: 'Pick the bucket (slot 5), look at the sand, click',
-    goal: 1, on: 'bucket:placed', match: (e) => !!e.at, reward: { money: 15 },
-  },
-  {
     id: 'cast', title: 'Wet a Line', how: 'Hold left mouse to charge, release to cast',
     goal: 1, on: 'fishing:cast', reward: { money: 25 },
   },
   {
-    id: 'first_fish', title: 'Catch a Fish', how: 'Click when the line dips, reel it in, then E to grab the fish',
+    id: 'first_fish', title: 'Catch a Fish', how: 'Click when the line dips and reel it in — it lands straight in your inventory',
     goal: 1, on: 'fishing:caught', reward: { money: 60 },
   },
   {
-    id: 'fill_bucket', title: 'Fill the Bucket', how: 'Grab it (E), kill it with the axe (2), throw it in the bucket (E)',
+    id: 'four_fish', title: 'Catch Four Fish', how: 'Keep casting — every catch goes straight into your inventory',
     goal: 4, on: 'fishing:caught', reward: { money: 90 },
   },
   {
@@ -259,11 +255,15 @@ export class Journey {
     return null;
   }
 
-  save() { return { index: this.index, progress: this.progress, done: this.done, seed: this._seed }; }
+  save() { return { id: this.step?.id ?? null, index: this.index, progress: this.progress, done: this.done, seed: this._seed }; }
 
   load(d) {
     if (!d) return;
-    this.index = Math.min(d.index ?? 0, STEPS.length);
+    // Found by id, because the list has changed shape: a bucket step used to
+    // sit first, so an index saved against that list points one step late.
+    const byId = d.id ? STEPS.findIndex((s) => s.id === d.id) : -1;
+    const legacy = Math.max(0, (d.index ?? 0) - (d.id === undefined ? 1 : 0));
+    this.index = Math.min(byId >= 0 ? byId : legacy, STEPS.length);
     this.progress = d.progress ?? 0;
     this.done = !!d.done || this.index >= STEPS.length;
     this._seed = d.seed || Object.create(null);

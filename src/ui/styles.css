@@ -791,8 +791,8 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 @media (max-width: 980px) { .tut-hint { bottom: 190px; } }
 
 
-/* ---- bucket readout ------------------------------------------------- */
-.hud-bucket {
+/* ---- catch readout ------------------------------------------------- */
+.hud-catch {
   position: fixed; top: 52px; right: 14px; z-index: 30;
   width: 178px; padding: 10px 12px;
   background: rgba(13,23,33,.78); border: 1px solid var(--line);
@@ -802,18 +802,18 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   transition: opacity .22s ease, transform .22s ease;
   pointer-events: none;
 }
-.hud-bucket.show { opacity: 1; transform: none; }
-.hud-bucket .hb-head { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
-.hud-bucket .hb-head b { font-weight: 800; color: var(--ink); }
-.hud-bucket .hb-head i { font-style: normal; float: right; color: var(--accent); font-size: 10.5px; letter-spacing: .04em; }
-.hud-bucket .hb-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 700; }
-.hud-bucket .hb-row em { font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--warn); }
-.hud-bucket .hb-row.sub { font-size: 11.5px; font-weight: 600; color: var(--ink-faint); margin-top: 5px; }
-.hud-bucket .hb-row.sub b { color: var(--gold); font-weight: 800; }
-.hud-bucket .hb-bar { height: 5px; margin-top: 6px; border-radius: 3px; background: var(--bg-3); overflow: hidden; }
-.hud-bucket .hb-bar i { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
-.hud-bucket .hb-bar.warn i { background: var(--warn); }
-.hud-bucket .hb-bar.full i { background: var(--danger); }
+.hud-catch.show { opacity: 1; transform: none; }
+.hud-catch .hb-head { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 6px; }
+.hud-catch .hb-head b { font-weight: 800; color: var(--ink); }
+.hud-catch .hb-head i { font-style: normal; float: right; color: var(--accent); font-size: 10.5px; letter-spacing: .04em; }
+.hud-catch .hb-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; font-weight: 700; }
+.hud-catch .hb-row em { font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--warn); }
+.hud-catch .hb-row.sub { font-size: 11.5px; font-weight: 600; color: var(--ink-faint); margin-top: 5px; }
+.hud-catch .hb-row.sub b { color: var(--gold); font-weight: 800; }
+.hud-catch .hb-bar { height: 5px; margin-top: 6px; border-radius: 3px; background: var(--bg-3); overflow: hidden; }
+.hud-catch .hb-bar i { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
+.hud-catch .hb-bar.warn i { background: var(--warn); }
+.hud-catch .hb-bar.full i { background: var(--danger); }
 
 
 /* ---- performance panel ------------------------------------------------ */
@@ -873,19 +873,19 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 
 
 /* ---- HUD consolidation ------------------------------------------------ */
-/* One right-hand column: minimap, money, bucket. They previously overlapped
+/* One right-hand column: minimap, money, catch. They previously overlapped
    in the same corner and fought for the same 170px. */
 .minimap { top: 14px; right: 14px; }
 .hud-tr { top: 196px !important; right: 16px !important; text-align: right; }
-/* In the top-right column flow -- see HUD.setBucket. */
-.hud-bucket { position: static; margin: 10px 0 0 auto; text-align: left; }
+/* In the top-right column flow -- see HUD.setCatch. */
+.hud-catch { position: static; margin: 10px 0 0 auto; text-align: left; }
 
 /* Health and stamina fade out when they have nothing to report. */
 .hud-bl > div { transition: opacity .35s ease; }
 .hud-bl > div.idle { opacity: 0.18; }
 .hud-bl > div.idle:hover { opacity: 1; }
 
-/* The old bottom-right storage readout is retired; the bucket widget covers it. */
+/* The old bottom-right storage readout is retired; the catch widget covers it. */
 .hud-br { display: none; }
 
 /* ---- carry strip: fish + materials, under the money ------------------- */
@@ -1051,6 +1051,3 @@ body.cursor-mode #crosshair { opacity: .25; }
 .build-hint.bad { background: rgba(28, 12, 16, 0.86); border-color: var(--danger); color: var(--danger); font-weight: 800; }
 .build-hint .bh-cost { font-family: var(--mono); color: var(--ink-dim); margin-left: 6px; }
 .build-hint .bh-key { color: var(--ink-faint); font-size: 11px; margin-left: 8px; font-weight: 600; }
-/* hotbar: the bucket while it stands in the world */
-.slot.placed .slot-icon { opacity: .35; }
-.slot.placed .slot-name { opacity: .6; }

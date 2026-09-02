@@ -17,7 +17,7 @@ export class Inventory {
     this.consumables = { };     // itemId -> count
     /** @type {Array<{instance, freshness, processLevel, caughtAt}>} */
     this.fish = [];
-    this.hotbar = ['rod', 'tool', 'weapon', 'bait', 'bucket', null, null, null, null];
+    this.hotbar = ['rod', 'tool', 'weapon', 'bait', null, null, null, null, null];
     this.hotbarIndex = 0;
     this.capacityBonus = 0;
   }
@@ -206,14 +206,6 @@ export class Inventory {
         const i = this.bait; if (!i) return null;
         return { id: i.id, icon: i.icon, name: i.name, count: i.consumable ? (this.consumables[i.id] || 0) : 0 };
       }
-      if (kind === 'bucket') {
-        // The bucket: in hand until you put it down, then greyed while it
-        // stands in the world.
-        const b = this.game.get('bucket');
-        const t = b?.tier;
-        if (!t) return null;
-        return { id: 'bucket', icon: '🪣', name: b.placed ? `${t.name} (down)` : t.name, placed: !!b.placed };
-      }
       const item = getItem(kind);
       return item && { id: item.id, icon: item.icon, name: item.name };
     });
@@ -229,14 +221,6 @@ export class Inventory {
 
   update(dt, game) {
     const input = game.input;
-    // Saves from before the bucket was a hotbar item: give it its slot.
-    if (!this._bucketSlotChecked) {
-      this._bucketSlotChecked = true;
-      if (!this.hotbar.includes('bucket')) {
-        const i = this.hotbar.indexOf(null);
-        if (i >= 0) this.hotbar[i] = 'bucket';
-      }
-    }
     // While building, the number keys pick pieces, not hotbar slots.
     const building = !!game.get('build')?.mode;
     for (let i = 0; i < 9 && !building; i++) {
@@ -257,7 +241,13 @@ export class Inventory {
     const hud = game.get('hud');
     if (hud) {
       hud.setHotbar(this.hotbarSlots(), this.hotbarIndex);
-      hud.setStorage(this.usedWeight, this.capacity, this.fish.length);
+      // Pricing the whole catch is a few dozen lookups; four times a second
+      // is plenty for a readout, and the HUD skips unchanged values anyway.
+      this._catchT = (this._catchT || 0) + dt;
+      if (this._catchT >= 0.25) {
+        this._catchT = 0;
+        hud.setCatch?.({ count: this.fish.length, weight: this.usedWeight, capacity: this.capacity, value: this.totalValue() });
+      }
     }
   }
 

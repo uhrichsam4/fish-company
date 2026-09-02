@@ -237,9 +237,6 @@ export class Player {
     // Standing floodwater. Separate from submergence, which is the sea:
     // rain can pool knee-deep on ground that is nowhere near the ocean.
     if (this.floodDrag > 0) speed *= (1 - this.floodDrag);
-    // Carrying a full bucket is felt rather than announced.
-    const carry = this.game?.get?.('bucket')?.carryPenalty || 0;
-    if (carry > 0) speed *= (1 - carry);
 
     const targetX = wishDir.x * speed * wishLen;
     const targetZ = wishDir.z * speed * wishLen;

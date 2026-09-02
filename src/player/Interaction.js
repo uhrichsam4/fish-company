@@ -133,7 +133,7 @@ export class Interaction {
     const pf = mgr?.list.find((p) => p.entry === entry);
     this.held = { entry, pf, mass: entry.body.mass() };
     if (pf) {
-      pf.held = true; pf.toBucket = false; pf.autoStore = false;
+      pf.held = true; pf.autoStore = false;
       // A fish is carried as a copy in the viewmodel hand (HeldItems). The
       // body is parked out of the way and the world mesh hidden until it is
       // put down: at hand distance the body sits inside the player's own
@@ -204,10 +204,6 @@ export class Interaction {
     let cur;
     if (h.pf) {
       // The fish lives in the viewmodel hand while carried; nothing to spring.
-      if (h.placing) {
-        h.placing.t += dt;
-        if (h.placing.t >= h.placing.dur) { this._finishPlace(game, player); return; }
-      }
       cur = _v3.copy(player.position);
     } else {
       const targetDist = clamp(this.holdDistance + Math.pow(h.mass, 0.3) * 0.16, 1.2, 3.2);
@@ -234,30 +230,9 @@ export class Interaction {
       hud.setInteract(this._carryPrompt(game, h), h.pf ? 'E' : 'G');
     }
     if (input.justPressed('KeyG')) { this.release(0); return; }
-    if (h.placing) return;                             // hands busy lowering it in
 
-    // E with a fish: into the bucket. With the bucket set down that means a
-    // throw, and only a dead fish goes in -- kill it with the axe first.
+    // E with a fish: straight into the inventory.
     if (input.justPressed('KeyE') && h.pf) {
-      const bucket = game.get('bucket');
-      if (bucket?.placed) {
-        if (h.pf.alive) {
-          bus.emit('toast', { text: 'Still alive — swing your axe at it first', kind: 'error', duration: 2400 });
-          game.audio.play('ui_hover', { volume: 0.3, rate: 0.7 });
-          return;
-        }
-        const d = bucket.distanceTo(player.position.x, player.position.z);
-        if (d > 1.9) {
-          bus.emit('toast', { text: 'Walk up to the bucket', kind: '', duration: 1800 });
-          return;
-        }
-        if (!h.placing) {
-          h.placing = { t: 0, dur: 0.8, bucket };
-          bus.emit('held:place', { pf: h.pf });
-          game.audio.play('ui_hover', { volume: 0.25, rate: 1.4 });
-        }
-        return;
-      }
       const inv = game.get('inventory');
       if (inv?.storeFish(h.pf.instance, { styleMult: h.pf.styleMult || 1 })) {
         game.audio.play('pickup', { volume: 0.6, rate: 1.2 });
@@ -280,14 +255,7 @@ export class Interaction {
   /** What the E key will do with what you are carrying, in the prompt. */
   _carryPrompt(game, h) {
     if (!h.pf) return 'Drop  ·  Hold RMB to throw';
-    const bucket = game.get('bucket');
-    if (!bucket?.placed) return 'Store  ·  G drop  ·  Hold RMB to throw';
-    if (h.pf.alive) return 'Kill it — axe (2), swing down on it  ·  G drop';
-    if (h.placing) return 'Putting it in…';
-    const player = game.get('player');
-    return bucket.distanceTo(player.position.x, player.position.z) > 1.9
-      ? 'Walk up to the bucket  ·  G drop'
-      : 'Put it in the bucket  ·  G drop';
+    return 'Store  ·  G drop  ·  Hold RMB to throw';
   }
 
   /** Put the parked body back where the hand is, visible again. */
@@ -298,32 +266,6 @@ export class Interaction {
     h.entry.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     h.pf.group.visible = true;
     h.pf.parkedAt = null;
-  }
-
-  /** The hand has reached the rim: the fish goes in. */
-  _finishPlace(game, player) {
-    const h = this.held;
-    if (!h?.pf) return;
-    const inv = game.get('inventory');
-    const b = h.placing?.bucket?.placed;
-    const pos = b ? _v.set(b.x, b.y + 0.3, b.z).clone() : _v.copy(player.position).clone();
-    // The pooled world mesh must go back visible or the next fish to use it is invisible.
-    h.pf.group.visible = true;
-    if (inv?.storeFish(h.pf.instance, { styleMult: h.pf.styleMult || 1 })) {
-      game.audio.play('fish_into_bucket', { volume: 0.8, position: pos.clone() });
-      bus.emit('fx:sparkle', { position: pos, count: 10, color: '#5ddb6a' });
-      bus.emit('bucket:stowed', { instance: h.pf.instance });
-      const pf = h.pf;
-      this.held = null;
-      if (player) { player.walkSpeed = 4.6; player.sprintSpeed = 7.6; }
-      game.get('hud')?.setCastPower(null);
-      game.get('physfish').despawn(pf);
-      bus.emit('held:release', {});
-    } else {
-      h.placing = null;
-      h.pf.group.visible = false;
-      bus.emit('toast', { text: 'Bucket is full.', kind: 'error', duration: 2600 });
-    }
   }
 
   checkSellZones(game, position, held) {

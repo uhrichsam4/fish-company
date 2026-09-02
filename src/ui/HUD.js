@@ -226,7 +226,6 @@ export class HUD {
     bus.on('build:mode', ({ on }) => { if (!on) this.setBuildHint(null); });
     bus.on('resources:changed', () => this.refreshCarry());
     bus.on('inventory:changed', () => this.refreshCarry());
-    bus.on('bucket:changed', () => this.refreshCarry());
   }
 
   _buildCompass() {
@@ -277,14 +276,14 @@ export class HUD {
   }
 
   setHotbar(slots, activeIndex) {
-    const sig = slots.map((s) => `${s?.id || ''}:${s?.count || 0}:${(s?.durability ?? 1).toFixed(2)}:${s?.placed ? 1 : 0}`).join('|') + '#' + activeIndex;
+    const sig = slots.map((s) => `${s?.id || ''}:${s?.count || 0}:${(s?.durability ?? 1).toFixed(2)}`).join('|') + '#' + activeIndex;
     if (sig === this._hotbarSig) return;
     this._hotbarSig = sig;
     this.hotbar.innerHTML = slots.map((s, i) => {
       if (!s) return `<div class="slot empty"><span class="slot-num">${i + 1}</span></div>`;
       const dur = s.durability != null && s.durability < 1
         ? `<div class="slot-dur" style="width:${Math.round(s.durability * 100)}%"></div>` : '';
-      return `<div class="slot ${i === activeIndex ? 'active' : ''} ${s.placed ? 'placed' : ''}">
+      return `<div class="slot ${i === activeIndex ? 'active' : ''}">
         <span class="slot-num">${i + 1}</span>
         <span class="slot-icon">${s.icon || '❔'}</span>
         ${s.count > 1 ? `<span class="slot-count">${s.count}</span>` : ''}
@@ -328,29 +327,29 @@ export class HUD {
   }
 
   /**
-   * Bucket readout. Deliberately terse -- count, load, and only the alive
-   * tally when there is something still flopping to deal with.
+   * Catch readout: how many fish you are carrying, how heavy, and what the
+   * seller will pay for the lot. Terse on purpose.
    */
-  setBucket(b) {
-    if (!this._bucketEl) {
+  setCatch(b) {
+    if (!this._catchEl) {
       const el = document.createElement('div');
-      el.className = 'hud-bucket';
+      el.className = 'hud-catch';
       // Into the top-right column, not free-floating on ui-root. Absolutely
       // positioned at a fixed top, it sat on top of the carry strip -- two
       // widgets in one corner each assuming they owned it.
       (this.trEl || document.getElementById('ui-root') || document.body).appendChild(el);
-      this._bucketEl = el;
+      this._catchEl = el;
     }
-    const el = this._bucketEl;
+    const el = this._catchEl;
     if (!b || !b.count) { el.classList.remove('show'); return; }
     el.classList.add('show');
     const full = b.weight / Math.max(1, b.capacity);
-    const sig = `${b.count}|${b.alive}|${b.weight.toFixed(1)}|${b.capacity}|${b.value}`;
-    if (sig === this._bucketSig) return;      // rebuilding every frame throws away the transition
-    this._bucketSig = sig;
+    const sig = `${b.count}|${b.weight.toFixed(1)}|${b.capacity}|${b.value}`;
+    if (sig === this._catchSig) return;      // rebuilding every frame throws away the transition
+    this._catchSig = sig;
     el.innerHTML = `
-      <div class="hb-head">🪣 <b>Bucket</b>${b.carried ? '<i>carried</i>' : ''}</div>
-      <div class="hb-row"><span>${b.count} fish</span>${b.alive ? `<em>${b.alive} alive</em>` : ''}</div>
+      <div class="hb-head">🐟 <b>Catch</b></div>
+      <div class="hb-row"><span>${b.count} fish</span></div>
       <div class="hb-bar ${full > 0.92 ? 'full' : full > 0.7 ? 'warn' : ''}"><i style="width:${Math.min(100, full * 100)}%"></i></div>
       <div class="hb-row sub"><span>${formatWeight(b.weight)} / ${formatWeight(b.capacity)}</span><b>${formatMoneyExact(b.value)}</b></div>`;
   }
@@ -448,9 +447,9 @@ export class HUD {
   refreshCarry() {
     if (!this.carryEl) return;
     const res = this.game.get('resources');
-    const bucket = this.game.get('bucket') || this.game.get('inventory');
-    const fish = bucket?.count ?? bucket?.fish?.length ?? 0;
-    const cap = bucket?.capacity ?? 0;
+    const inv = this.game.get('inventory');
+    const fish = inv?.fish?.length ?? 0;
+    const cap = inv?.capacity ?? 0;
 
     // Four digits of wood makes the chip wider than the minimap.
     const compact = (n) => (n >= 10000 ? `${(n / 1000).toFixed(0)}k`
@@ -461,7 +460,7 @@ export class HUD {
     // wrong here: a strip that is empty until you happen to find something
     // teaches nobody that wood is a thing the game has, and reads as a
     // missing HUD rather than as an empty pocket.
-    const chips = [['🐟', compact(fish), fish && cap && (bucket.weight / cap) > 0.9 ? 'full' : '']];
+    const chips = [['🐟', compact(fish), fish && cap && (inv.usedWeight / cap) > 0.9 ? 'full' : '']];
     const always = ['wood', 'stone'];
     if (res) {
       for (const id of always) {
@@ -479,12 +478,6 @@ export class HUD {
       `<span class="carry-chip ${cls}"><i>${icon}</i>${n}</span>`).join('');
   }
 
-  /**
-   * Superseded by the bucket widget, which shows the same load plus what is
-   * still alive. Kept as a no-op because Inventory calls it every frame, and
-   * two readouts of one number is how they end up disagreeing.
-   */
-  setStorage() { if (this.storageEl) this.storageEl.textContent = ''; }
 
   /**
    * Mirror the live world events into the strip. Rows are rebuilt only when the
