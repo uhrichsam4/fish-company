@@ -440,6 +440,7 @@ export function scatterOnLand(region, count, opts = {}) {
     if (opts.minSpacing) {
       let ok = true;
       for (const p of out) { if (Math.hypot(p.x - x, p.z - z) < opts.minSpacing) { ok = false; break; } }
+      if (ok && opts.avoid) for (const p of opts.avoid) { if (Math.hypot(p.x - x, p.z - z) < opts.minSpacing) { ok = false; break; } }
       if (!ok) continue;
     }
     out.push({ x, y: h, z, rot: rng() * Math.PI * 2, scale: lerp(opts.scaleMin ?? 0.8, opts.scaleMax ?? 1.2, rng()), rng: rng() });

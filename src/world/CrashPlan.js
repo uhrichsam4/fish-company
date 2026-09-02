@@ -47,9 +47,7 @@ export function planFor(def, anchors) {
   const inStart = startAreaExcluder(anchors);
   return {
     ...base,
-    allow: (kind, x, z, h) => !inStart(x, z) ? (base.allow ? base.allow(kind, x, z, h) : true) : startAllows(kind),
+    inStart,
+    allow: (kind, x, z, h) => (base.allow ? base.allow(kind, x, z, h) : true),
   };
 }
-
-/** Inside the start area the original scatter stands: trees and rocks as they were. */
-function startAllows() { return true; }

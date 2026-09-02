@@ -213,29 +213,47 @@ export class World {
     // dense, which species, plus landmarks and paths. The generic pass below
     // still does the placing; the plan only steers it. No plan, no change.
     const plan = planFor(def, this.buildAnchors(def));
-    const acceptTree = plan ? (x, z, h) => plan.allow('tree', x, z, h) : undefined;
-    const weightTree = plan?.density ? (x, z, h) => plan.density('tree', x, z, h) : undefined;
-    const acceptRock = plan ? (x, z, h) => plan.allow('rock', x, z, h) : undefined;
-    const weightRock = plan?.density ? (x, z, h) => plan.density('rock', x, z, h) : undefined;
-    const acceptBush = plan ? (x, z, h) => plan.allow('bush', x, z, h) : undefined;
-    const weightBush = plan?.density ? (x, z, h) => plan.density('bush', x, z, h) : undefined;
+    /**
+     * Planned scatter is two passes. Pass one is the exact call the island
+     * always made -- same seed, same parameters, no plan -- and everything it
+     * put inside the start area is kept as-is, so the player's first minute
+     * is byte-identical whatever the plan does. Pass two, on its own seed,
+     * fills the rest of the island to the plan's rules. A single pass with
+     * the plan consulted inline shifts the shared random stream, which moved
+     * start-area trees even with allow() forced there; all three plan authors
+     * caught that independently.
+     */
+    const scatterPlanned = (kind, count, opts) => {
+      const base = scatterOnLand(def, count, opts);
+      if (!plan) return base;
+      const keep = base.filter((sp) => plan.inStart(sp.x, sp.z));
+      for (const sp of keep) sp.start = true;
+      const want = Math.max(0, (plan.counts?.[kind + 's'] ?? count) - keep.length);
+      const tune = kind === 'tree' ? (plan.trees || {}) : kind === 'rock' ? (plan.rocks || {}) : {};
+      const rest = scatterOnLand(def, want, {
+        ...opts, ...tune, seed: hashStr(def.id + kind + ':plan'),
+        accept: (x, z, h) => !plan.inStart(x, z) && plan.allow(kind, x, z, h),
+        weight: plan.density ? (x, z, h) => plan.density(kind, x, z, h) : undefined,
+        avoid: keep,
+      });
+      return keep.concat(rest);
+    };
 
     // ---- vegetation ----
-    const treeCount = plan?.counts?.trees ?? ({ tropical: 74, jungle: 128, rocky: 34, industrial: 20, storm: 30, arctic: 26, station: 4, abyss: 0 }[biome] ?? 30);
-    const treeSpots = scatterOnLand(def, treeCount, {
-      seed: hashStr(def.id + 'trees'), minH: plan?.trees?.minH ?? 2.0, maxH: plan?.trees?.maxH ?? def.peak * 0.82,
-      maxSlope: plan?.trees?.maxSlope ?? 0.5, minSpacing: plan?.trees?.minSpacing ?? 6.5, rMax: def.radius * 0.92,
-      accept: acceptTree, weight: weightTree,
+    const treeCount = { tropical: 74, jungle: 128, rocky: 34, industrial: 20, storm: 30, arctic: 26, station: 4, abyss: 0 }[biome] ?? 30;
+    const treeSpots = scatterPlanned('tree', treeCount, {
+      seed: hashStr(def.id + 'trees'), minH: 2.0, maxH: def.peak * 0.82,
+      maxSlope: 0.5, minSpacing: 6.5, rMax: def.radius * 0.92,
     });
     const treeGroup = new THREE.Group();
     for (const sp of treeSpots) {
       let tree = null;
       const trng = makeRNG((sp.rng * 1e9) | 0);
-      const species = plan?.treeSpecies ? plan.treeSpecies(sp.x, sp.z, sp.y, trng) : null;
+      const species = (plan?.treeSpecies && !sp.start) ? plan.treeSpecies(sp.x, sp.z, sp.y, trng) : null;
       if (P) {
         if (species === 'pine') tree = P.buildPineTree?.(trng, { height: lerp(5, 11, sp.rng) });
         else if (species === 'dead') tree = P.buildDeadTree?.(trng, {});
-        else if (species === 'palm') tree = P.buildPalmTree?.(trng, { height: plan?.treeHeight ? plan.treeHeight(sp.x, sp.z, sp.y, sp.rng) : lerp(5.5, 11, sp.rng) });
+        else if (species === 'palm') tree = P.buildPalmTree?.(trng, { height: (plan?.treeHeight && !sp.start) ? plan.treeHeight(sp.x, sp.z, sp.y, sp.rng) : lerp(5.5, 11, sp.rng) });
         else if (biome === 'arctic' || biome === 'rocky') tree = P.buildPineTree?.(trng, { height: lerp(5, 11, sp.rng) });
         else if (biome === 'storm') tree = trng() < 0.5 ? P.buildDeadTree?.(trng, {}) : P.buildPineTree?.(trng, {});
         else if (biome === 'industrial') tree = P.buildPineTree?.(trng, { height: lerp(4, 8, sp.rng) });
@@ -244,7 +262,7 @@ export class World {
       if (!tree) tree = fallbackTree(trng, biome);
       tree.position.set(sp.x, sp.y - 0.25, sp.z);
       tree.rotation.y = sp.rot;
-      tree.scale.setScalar(plan?.treeScale ? plan.treeScale(sp.x, sp.z, sp.y, sp.scale) : sp.scale);
+      tree.scale.setScalar((plan?.treeScale && !sp.start) ? plan.treeScale(sp.x, sp.z, sp.y, sp.scale) : sp.scale);
       setShadows(tree);
       // Kept out of the static batch so it can be felled, tilted and regrown.
       // A batched tree is geometry inside a shared mesh and cannot be touched
@@ -272,20 +290,25 @@ export class World {
         setShadows(obj);
         obj.userData.noBatch = !!lm.dynamic;
         group.add(obj);
-        if (lm.harvest) this.game.get('harvest')?.register({ object: obj, kind: lm.harvest, x: lm.x, y, z: lm.z, radius: lm.radius ?? 1.2, region: def.id, scale: lm.scale ?? 1 });
+        let body = null;
         if (lm.collider) {
-          s.bodies.push(this.game.physics.addBody({
+          body = this.game.physics.addBody({
             type: 'fixed', position: { x: lm.x, y: y + lm.collider.hh, z: lm.z },
             shape: { kind: 'cylinder', hh: lm.collider.hh, r: lm.collider.r }, tag: 'rock', events: false,
-          }));
+          });
+          s.bodies.push(body);
+        }
+        // Registered with its body, so breaking it takes the collider too.
+        if (lm.harvest) {
+          obj.userData.noBatch = true;
+          this.game.get('harvest')?.register({ object: obj, kind: lm.harvest, x: lm.x, y, z: lm.z, radius: lm.radius ?? 1.2, region: def.id, scale: lm.scale ?? 1, body });
         }
       }
     }
 
     // ---- bushes / ground cover ----
-    const bushSpots = scatterOnLand(def, plan?.counts?.bushes ?? treeCount * 2.1, {
+    const bushSpots = scatterPlanned('bush', treeCount * 2.1, {
       seed: hashStr(def.id + 'bush'), minH: 1.1, maxSlope: 0.66, minSpacing: 2.4, rMax: def.radius * 1.0,
-      accept: acceptBush, weight: weightBush,
     });
     for (const sp of bushSpots) {
       const brng = makeRNG((sp.rng * 1e9) | 0);
@@ -302,10 +325,9 @@ export class World {
     // Rocks: mostly small boulders. `size` and `scale` multiply, so both are
     // kept modest — the first pass produced 7 m grey monoliths all over the
     // island.
-    const rockSpots = scatterOnLand(def, plan?.counts?.rocks ?? 82, {
-      seed: hashStr(def.id + 'rocks'), minH: -1.6, maxSlope: 1.0, minSpacing: plan?.rocks?.minSpacing ?? 3.2, rMax: def.radius * 1.16,
+    const rockSpots = scatterPlanned('rock', 82, {
+      seed: hashStr(def.id + 'rocks'), minH: -1.6, maxSlope: 1.0, minSpacing: 3.2, rMax: def.radius * 1.16,
       scaleMin: 0.32, scaleMax: 1.15,
-      accept: acceptRock, weight: weightRock,
     });
     for (const sp of rockSpots) {
       const rrng = makeRNG((sp.rng * 1e9) | 0);
@@ -360,10 +382,9 @@ export class World {
 
     // A handful of deliberately large landmark rocks, placed on high ground so
     // they read as part of the island rather than litter.
-    const boulders = scatterOnLand(def, plan?.counts?.boulders ?? (biome === 'rocky' ? 9 : 5), {
+    const boulders = scatterPlanned('boulder', biome === 'rocky' ? 9 : 5, {
       seed: hashStr(def.id + 'boulders'), minH: 3.5, maxSlope: 0.55, minSpacing: 22, rMax: def.radius * 0.8,
       scaleMin: 1.0, scaleMax: 1.7,
-      accept: plan ? (x, z, h) => plan.allow('boulder', x, z, h) : undefined,
     });
     for (const sp of boulders) {
       const brng = makeRNG((sp.rng * 1e9) | 0);
