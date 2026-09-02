@@ -34,6 +34,8 @@ export class Game {
       upscale: true, upscaleScale: 0.75, upscaleSharpness: 0.7, upscaleMSAA: true,
       showFps: false, viewDistance: 1.0, waterQuality: 2, uiScale: 1, autosave: true,
       volMaster: 0.85, volSfx: 1.0, volMusic: 0.45, volAmb: 0.6, subtitles: true,
+      // 'classic' is the island as first shipped; 'reformed' the re-laid one.
+      islandLayout: 'reformed',
     };
     this._accumFrames = 0;
     this._accumTime = 0;

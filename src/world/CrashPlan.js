@@ -6,7 +6,7 @@
  * what landmarks exist. Keeping the plan as data-plus-small-functions means a
  * whole island can be re-laid without touching the placement code, and two
  * plans for the same island can be compared in the running game by swapping
- * one import.
+ * one import (see plans/active.js, which also holds the player's choice).
  *
  * Plan shape (every field optional except allow):
  *   allow(kind, x, z, h) -> bool         kind: 'tree' | 'bush' | 'rock' | 'boulder'
@@ -42,10 +42,13 @@ function startAreaExcluder(anchors, keep) {
   };
 }
 
-/** @returns {object|null} the plan for a region, with the start area excluded. */
-export function planFor(def, anchors) {
+/**
+ * @param {string} [layout] which layout the player chose (settings.islandLayout)
+ * @returns {object|null} the plan for a region, with the start area excluded.
+ */
+export function planFor(def, anchors, layout) {
   if (def.id !== 'crash') return null;
-  const base = ACTIVE_PLAN(def, anchors);
+  const base = ACTIVE_PLAN(def, anchors, layout);
   if (!base) return null;
   const inStart = startAreaExcluder(anchors, base.startKeep ?? START_KEEP);
   return {

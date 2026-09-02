@@ -38,13 +38,17 @@ export class PausePanel extends Panel {
       }
     });
 
-    this.el.querySelectorAll('input[data-setting]').forEach((inp) => {
+    this.el.querySelectorAll('input[data-setting], select[data-setting]').forEach((inp) => {
       inp.oninput = () => {
         const key = inp.dataset.setting;
-        const v = inp.type === 'checkbox' ? inp.checked : parseFloat(inp.value);
+        const v = inp.tagName === 'SELECT' ? inp.value
+          : inp.type === 'checkbox' ? inp.checked : parseFloat(inp.value);
         g.settings[key] = v;
         const out = inp.parentElement.querySelector('.set-val');
-        if (out) out.textContent = inp.type === 'checkbox' ? '' : formatSetting(key, v);
+        if (out) out.textContent = inp.type === 'checkbox' || inp.tagName === 'SELECT' ? '' : formatSetting(key, v);
+        if (key === 'islandLayout') {
+          bus.emit('toast', { text: 'Island layout changes when the island next loads — reload the page to see it', kind: '', duration: 4200 });
+        }
         bus.emit('settings:changed');
       };
     });
@@ -79,6 +83,14 @@ export class PausePanel extends Panel {
         <input data-setting="${key}" type="range" min="${min}" max="${max}" step="${step}" value="${s[key]}" style="width:150px">
         <span class="sl-v set-val" style="width:56px;text-align:right">${formatSetting(key, s[key])}</span>
       </div>`;
+    const choice = (key, label, options) => `
+      <div class="stat-line" style="align-items:center">
+        <span class="sl-k" style="flex:1">${label}</span>
+        <select data-setting="${key}" style="width:150px">
+          ${options.map(([v, name]) => `<option value="${v}" ${s[key] === v ? 'selected' : ''}>${name}</option>`).join('')}
+        </select>
+        <span class="set-val" style="width:56px"></span>
+      </div>`;
     const check = (key, label) => `
       <div class="stat-line" style="align-items:center">
         <span class="sl-k" style="flex:1">${label}</span>
@@ -112,6 +124,7 @@ export class PausePanel extends Panel {
       </div>
       <div class="card"><div class="card-title">🎮 Gameplay</div>
         ${row('maxFish', 'Fish density', 40, 400, 10)}
+        ${choice('islandLayout', 'Crash Island layout', [['reformed', 'Reformed'], ['classic', 'Classic (original)']])}
         ${check('autosave', 'Autosave')}
         ${check('subtitles', 'Worker speech subtitles')}
       </div>`;

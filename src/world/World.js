@@ -212,7 +212,7 @@ export class World {
     // A region can carry a plan (see CrashPlan.js): where things may go, how
     // dense, which species, plus landmarks and paths. The generic pass below
     // still does the placing; the plan only steers it. No plan, no change.
-    const plan = planFor(def, this.buildAnchors(def));
+    const plan = planFor(def, this.buildAnchors(def), this.game.settings?.islandLayout);
     /**
      * Planned scatter is two passes. Pass one is the exact call the island
      * always made -- same seed, same parameters, no plan -- and everything it
